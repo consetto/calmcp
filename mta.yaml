@@ -1,0 +1,55 @@
+_schema-version: '3.3'
+ID: calmcp
+version: 0.1.0
+description: Read-only MCP server for SAP Cloud ALM
+
+parameters:
+  enable-parallel-deployments: true
+
+modules:
+  - name: calmcp-srv
+    type: nodejs
+    path: .
+    parameters:
+      memory: 512M
+      disk-quota: 1024M
+      # Run the Streamable HTTP transport; Cloud Foundry routes traffic to it.
+      command: node dist/index.js --http
+      health-check-type: http
+      health-check-http-endpoint: /health
+    build-parameters:
+      builder: custom
+      commands:
+        - npm ci
+        - npm run build
+      ignore:
+        - node_modules/
+        - YAML/
+        - tests/
+    properties:
+      # The MCP server reads/writes nothing to Cloud ALM; it authenticates via the bound destination.
+      CALM_DESTINATION_NAME: SAP_CALM
+      CALM_CORS_ORIGINS: '*'
+      CALM_DEBUG: 'false'
+    requires:
+      - name: calmcp-xsuaa
+      - name: calmcp-destination
+      - name: calmcp-logs
+
+resources:
+  - name: calmcp-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+  - name: calmcp-destination
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: destination
+      service-plan: lite
+  - name: calmcp-logs
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: application-logs
+      service-plan: lite

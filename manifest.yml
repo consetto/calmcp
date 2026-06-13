@@ -1,0 +1,23 @@
+# Lightweight `cf push` alternative to the MTA deployment. Assumes the backing services
+# (calmcp-xsuaa, calmcp-destination, calmcp-logs) already exist in the target space, and that
+# `npm run build` has produced `dist/` locally.
+---
+applications:
+  - name: calmcp
+    memory: 512M
+    disk_quota: 1024M
+    instances: 1
+    buildpacks:
+      - nodejs_buildpack
+    command: node dist/index.js --http
+    health-check-type: http
+    health-check-http-endpoint: /health
+    env:
+      CALM_DESTINATION_NAME: SAP_CALM
+      CALM_CORS_ORIGINS: '*'
+      CALM_DEBUG: 'false'
+      OPTIMIZE_MEMORY: 'true'
+    services:
+      - calmcp-xsuaa
+      - calmcp-destination
+      - calmcp-logs

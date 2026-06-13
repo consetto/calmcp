@@ -1,0 +1,19 @@
+# Provided OpenAPI specs are reference-only, not part of the shipped package.
+YAML/
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Secrets / local config
+.env
+*.local
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,25 @@
+{
+  "xsappname": "calmcp",
+  "tenant-mode": "dedicated",
+  "description": "Read-only MCP server for SAP Cloud ALM",
+  "scopes": [
+    {
+      "name": "$XSAPPNAME.Viewer",
+      "description": "Read access to SAP Cloud ALM via calmcp"
+    }
+  ],
+  "role-templates": [
+    {
+      "name": "Viewer",
+      "description": "Read-only access to SAP Cloud ALM data",
+      "scope-references": ["$XSAPPNAME.Viewer"]
+    }
+  ],
+  "role-collections": [
+    {
+      "name": "CALMCP_Viewer",
+      "description": "calmcp read-only viewer",
+      "role-template-references": ["$XSAPPNAME.Viewer"]
+    }
+  ]
+}
