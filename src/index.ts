@@ -5,6 +5,7 @@
 import 'dotenv/config';
 import { Command } from 'commander';
 import { Config } from './config.js';
+import { getAppUrl, loadXsuaaCredentials } from './httpAuth/index.js';
 import { createLogger } from './logging.js';
 import { buildMcpServer, createClients } from './server.js';
 import { createHttpApp } from './transport/http.js';
@@ -51,11 +52,18 @@ async function main(): Promise<void> {
 
   if (useHttp) {
     const port = Number(options.port ?? process.env.PORT ?? DEFAULT_PORT);
+    // Protect /mcp with XSUAA + MCP-native OAuth when an XSUAA service is bound (BTP). Without one
+    // (local dev) the endpoint is left open; createHttpApp logs a warning in that case.
+    const xsuaaCredentials = loadXsuaaCredentials(logger);
+    const auth = xsuaaCredentials
+      ? { credentials: xsuaaCredentials, appUrl: getAppUrl() ?? `http://localhost:${port}` }
+      : undefined;
     const app = createHttpApp({
       buildServer: () => buildMcpServer(clients, logger),
       corsOrigins: parseCorsOrigins(process.env.CALM_CORS_ORIGINS),
       rateLimitPerMinute: DEFAULT_RATE_LIMIT,
       logger,
+      auth,
     });
     app.listen(port, () => {
       logger.info({ port }, 'calmcp HTTP transport listening');

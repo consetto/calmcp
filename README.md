@@ -218,6 +218,40 @@ Notes:
   unauthenticated probe. The real check is the deployed app calling a tool.
 - No additional destination properties are needed.
 
+### Endpoint authentication (HTTP transport)
+
+The destination above is how calmcp authenticates **to** Cloud ALM. Separately, the `/mcp` endpoint
+itself is protected so only authorized callers can reach it:
+
+- **On BTP, when the `calmcp-xsuaa` service is bound, `/mcp` requires a valid XSUAA bearer token**
+  carrying the `Viewer` scope (granted via the `CALMCP_Viewer` role collection). No code or config
+  is required — calmcp detects the bound service from `VCAP_SERVICES` and enables auth automatically.
+- calmcp also exposes **MCP-native OAuth** (RFC 8414 discovery + RFC 7591 dynamic client
+  registration, proxied to XSUAA), so MCP clients such as Claude Desktop, Cursor and VS Code can
+  **sign in interactively** — no manual token handling. The OAuth flow is delegated to XSUAA; calmcp
+  never sees the user's password.
+- **Locally (no XSUAA bound), `/mcp` is left open** for development and a warning is logged. Do not
+  expose an unauthenticated instance publicly.
+
+Relevant environment variables (BTP/HTTP only; both optional):
+
+| Variable | Description |
+| --- | --- |
+| `CALM_PUBLIC_URL` | Public base URL used in OAuth metadata and the callback. Defaults to the first route in `VCAP_APPLICATION`, so it's normally not needed. |
+| `CALM_DCR_SIGNING_SECRET` | Secret for HMAC-signing dynamic client registrations. Set it (e.g. `cf set-env calmcp-srv CALM_DCR_SIGNING_SECRET "$(openssl rand -base64 48)"`) so registered clients survive a `cf deploy` (which rotates the XSUAA `clientsecret`). Defaults to the XSUAA `clientsecret`. |
+
+### Consuming the deployed server from an AI tool
+
+`/mcp` speaks the **Streamable HTTP** MCP transport. Point a remote-MCP-capable client at it:
+
+- **Claude Code:** `claude mcp add --transport http calmcp https://<route>/mcp`
+- **Claude Desktop:** Settings → Connectors → add a custom connector with the `/mcp` URL.
+- **Cursor / VS Code / others:** add an MCP server of type HTTP (Streamable) at the `/mcp` URL.
+
+When XSUAA auth is on, the client triggers the OAuth login on first connect; sign in with a user who
+holds the `CALMCP_Viewer` role collection. The four tools (`calm_list`, `calm_get`, `calm_analytics`,
+`calm_resources`) then appear.
+
 ## Testing
 
 ```bash

@@ -21,5 +21,13 @@
       "description": "calmcp read-only viewer",
       "role-template-references": ["$XSAPPNAME.Viewer"]
     }
-  ]
+  ],
+  "oauth2-configuration": {
+    "token-validity": 3600,
+    "refresh-token-validity": 2592000,
+    "redirect-uris": [
+      "https://*.hana.ondemand.com/**",
+      "http://localhost:*/**"
+    ]
+  }
 }
