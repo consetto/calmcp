@@ -138,10 +138,30 @@ calmcp authenticates to Cloud ALM via a bound **Destination** (type OAuth2 clien
 URL = your Cloud ALM API base, e.g. `https://<tenant>.<region>.alm.cloud.sap/api`). Set
 `CALM_DESTINATION_NAME` to that destination's name.
 
+### Prerequisites
+
+The deployment needs the Cloud Foundry CLI, the MultiApps plugin (which provides `cf deploy`), and
+the MTA build tool:
+
+1. **Cloud Foundry CLI** — install for your OS (macOS, Windows, Linux) per the
+   [official guide](https://docs.cloudfoundry.org/cf-cli/install-go-cli.html).
+2. **MultiApps plugin and MTA build tool** (cross-platform):
+
+   ```bash
+   cf install-plugin multiapps -f   # registers the `cf deploy` command used below
+   npm install --global mbt         # MTA build tool
+
+   cf login -a https://api.cf.<region>.hana.ondemand.com --sso   # then pick the org/space
+   ```
+
+> If `cf install-plugin multiapps` fails with `bad CPU type` / architecture errors (e.g. on
+> arm64 machines), download the matching binary for your platform from the
+> [MultiApps releases](https://github.com/cloudfoundry/multiapps-cli-plugin/releases) and install it
+> from file: `cf install-plugin <downloaded-binary> -f`.
+
 ### Using the MTA descriptor
 
 ```bash
-npm install --global mbt
 mbt build
 cf deploy mta_archives/calmcp_0.1.0.mtar
 ```
