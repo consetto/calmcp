@@ -181,8 +181,42 @@ npm run build
 cf push
 ```
 
-After deploy, create the **destination** pointing at your Cloud ALM API and assign the
-`CALMCP_Viewer` role collection to authorized users.
+After deploy, assign the `CALMCP_Viewer` role collection to authorized users and create the
+**destination** as described below.
+
+### Configure the destination
+
+Two differently-named things are involved — don't confuse them:
+
+- **`calmcp-destination`** — the destination *service instance* created and bound by the deploy
+  (mta.yaml / manifest.yml). It is the container that holds destinations; you do not edit it by hand.
+- **`CALM_DESTINATION_NAME`** (default `SAP_CALM`) — the name of the destination *entry* the app
+  looks up at runtime. **This is the name you give the destination you create.** It must match the
+  value of `CALM_DESTINATION_NAME`; change one and change the other.
+
+Create the entry either at the **subaccount level** (Connectivity → Destinations) or inside the
+`calmcp-destination` service instance — the Cloud SDK checks both. Fill it in from your Cloud ALM
+API service key (an OAuth2 client-credentials key for the Cloud ALM API):
+
+| Field | Value |
+| --- | --- |
+| **Name** | the value of `CALM_DESTINATION_NAME` (default `SAP_CALM`) |
+| **Type** | `HTTP` |
+| **Proxy Type** | `Internet` |
+| **URL** | your Cloud ALM API base **including the `/api` suffix**: `https://<tenant>.<region>.alm.cloud.sap/api` (the region-only form `https://<region>.alm.cloud.sap/api` works too) |
+| **Authentication** | `OAuth2ClientCredentials` |
+| **Client ID** | `clientid` from the service key |
+| **Client Secret** | `clientsecret` from the service key |
+| **Token Service URL** | the service key's `url` plus `/oauth/token`: `https://<tenant>.authentication.<region>.hana.ondemand.com/oauth/token` |
+| **Token Service URL Type** | `Dedicated` |
+
+Notes:
+
+- The **`/api` suffix on the URL is required** — calmcp appends per-service paths (e.g.
+  `/calm-features/v1`) directly to this URL.
+- The destination's **Check Connection** button may report 401/403; that is expected for an
+  unauthenticated probe. The real check is the deployed app calling a tool.
+- No additional destination properties are needed.
 
 ## Testing
 
