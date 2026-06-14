@@ -7,9 +7,9 @@
   "description": "Read-only MCP server for SAP Cloud ALM. Query tasks, defects, projects, features, documents, tests, analytics and more from your Cloud ALM tenant.",
   "long_description": "calmcp connects Claude to SAP Cloud ALM via its read APIs, exposed through four consolidated, intent-based tools: calm_list (query any collection), calm_get (fetch one entity), calm_analytics (sorted/aggregated queries) and calm_resources (discover resources, providers and recipes). Covers Tasks, Projects, Features, Documents, Process Hierarchy, Test Management, Analytics, BSM/Status Events, Landscape and Cross-Library objects. calmcp is strictly read-only: it never creates, updates or deletes Cloud ALM data.",
   "author": {
-    "name": "consetto"
+    "name": "consetto",
+    "url": "https://github.com/consetto"
   },
-  "homepage": "https://marianfoo.github.io/arc-1/",
   "server": {
     "type": "node",
     "entry_point": "dist/index.js",
@@ -48,12 +48,6 @@
   ],
   "keywords": ["sap", "cloud-alm", "calm", "alm", "btp", "mcp"],
   "license": "MIT",
-  "compatibility": {
-    "platforms": ["darwin", "win32", "linux"],
-    "runtimes": {
-      "node": ">=22"
-    }
-  },
   "user_config": {
     "calm_tenant": {
       "type": "string",

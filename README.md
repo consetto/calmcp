@@ -7,9 +7,11 @@ remotely, and deploys to **SAP BTP Cloud Foundry**.
 
 > calmcp is read-only: it never creates, updates or deletes data in SAP Cloud ALM.
 
-Architecture and testing follow the [`marianfoo/arc-1`](https://github.com/marianfoo/arc-1)
-reference (TypeScript + Express + the official MCP SDK). See [docs/PREDECESSOR.md](docs/PREDECESSOR.md)
-for the project's lineage.
+`calmcp` is my second SAP Cloud ALM MCP bridge . It succeeds an earlier
+**Rust** implementation [sap-cloud-alm-mcp](https://github.com/consetto/sap-cloud-alm-odata-mcp) and reuses the knowledge of the Cloud ALM APIs, while taking a different technical direction.
+
+The Architecture is innspired by [`marianfoo/arc-1`](https://github.com/marianfoo/arc-1)
+reference. See [docs/PREDECESSOR.md](docs/PREDECESSOR.md) for the project's lineage.
 
 ## Tools
 
