@@ -10,6 +10,11 @@ coverage/
 mcpb-bundle/
 *.mcpb
 
+# SAP MTA build artifacts (mbt build)
+mta_archives/
+.*_mta_build_tmp/
+Makefile.mta
+
 # Secrets / local config
 .env
 *.local
