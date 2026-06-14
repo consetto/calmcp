@@ -59,6 +59,40 @@ auth modes, plus a BTP destination mode:
 | `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port and allowed CORS origins. |
 | `CALM_DEBUG`, `CALM_TIMEOUT_SECONDS` | Verbose tracing and request timeout. |
 
+## Install in Claude Desktop — one-click (`.mcpb`)
+
+The simplest path for a single developer: install calmcp as a Claude Desktop extension.
+
+1. Download the latest `calmcp-<version>.mcpb` from the Releases page (or build it locally — see
+   below).
+2. Double-click it, or open **Claude Desktop → Settings → Extensions** and drag the file in.
+3. Claude prompts for your Cloud ALM connection. **Tenant**, **Region**, **Client ID** and
+   **Client Secret** are required (the secret is stored in your OS keychain). To use the SAP
+   Business Accelerator Hub sandbox instead, turn on **Use Sandbox** and supply a **Sandbox API
+   Key**. **Debug Logging** and **Request Timeout** are optional. Fill them in and enable the
+   extension.
+4. Ask Claude: *"Using the SAP Cloud ALM tools, list the open defects ordered by priority."* — it
+   should call `calm_analytics`.
+
+**What the bundle is:** a pure-JS, cross-platform (macOS / Windows / Linux) build of the stdio
+server packaged with its dependencies — calmcp has no native modules, so one bundle runs
+everywhere. It is **read-only** like the rest of calmcp. For multi-user, HTTP, or BTP deployments,
+use the Docker image or deploy to Cloud Foundry instead (see below).
+
+### Build the bundle locally
+
+```bash
+npm run build:mcpb        # → calmcp-<version>.mcpb in the repo root
+```
+
+This compiles `dist/`, installs production dependencies, then validates and packs the bundle with
+the pinned [`@anthropic-ai/mcpb`](https://github.com/anthropics/mcpb) CLI. The form Claude Desktop
+shows is defined in [`mcpb-manifest.json`](mcpb-manifest.json); keep its `version` in sync with
+`package.json` (the build fails if they differ).
+
+> Prefer to hand-edit JSON? Use the `claude_desktop_config.json` snippet under
+> [Run over stdio](#run-over-stdio-local-mcp-clients) — that path also supports sandbox-only setups.
+
 ## Local development
 
 ```bash

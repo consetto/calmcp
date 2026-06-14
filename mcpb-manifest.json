@@ -1,0 +1,113 @@
+{
+  "$schema": "https://unpkg.com/@anthropic-ai/mcpb@latest/schemas/mcpb-manifest-v0.3.schema.json",
+  "manifest_version": "0.3",
+  "name": "calmcp",
+  "display_name": "calmcp - SAP Cloud ALM MCP Server",
+  "version": "0.1.0",
+  "description": "Read-only MCP server for SAP Cloud ALM. Query tasks, defects, projects, features, documents, tests, analytics and more from your Cloud ALM tenant.",
+  "long_description": "calmcp connects Claude to SAP Cloud ALM via its read APIs, exposed through four consolidated, intent-based tools: calm_list (query any collection), calm_get (fetch one entity), calm_analytics (sorted/aggregated queries) and calm_resources (discover resources, providers and recipes). Covers Tasks, Projects, Features, Documents, Process Hierarchy, Test Management, Analytics, BSM/Status Events, Landscape and Cross-Library objects. calmcp is strictly read-only: it never creates, updates or deletes Cloud ALM data.",
+  "author": {
+    "name": "consetto"
+  },
+  "homepage": "https://marianfoo.github.io/arc-1/",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "CALM_SANDBOX": "${user_config.calm_sandbox}",
+        "CALM_API_KEY": "${user_config.calm_api_key}",
+        "CALM_TENANT": "${user_config.calm_tenant}",
+        "CALM_REGION": "${user_config.calm_region}",
+        "CALM_CLIENT_ID": "${user_config.calm_client_id}",
+        "CALM_CLIENT_SECRET": "${user_config.calm_client_secret}",
+        "CALM_DEBUG": "${user_config.calm_debug}",
+        "CALM_TIMEOUT_SECONDS": "${user_config.calm_timeout_seconds}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "calm_list",
+      "description": "List or query any SAP Cloud ALM collection (tasks, defects, projects, features, documents, test cases, hierarchy nodes, cross-library/landscape objects, code lists)."
+    },
+    {
+      "name": "calm_get",
+      "description": "Fetch a single SAP Cloud ALM entity by id (a feature also by display id, e.g. 6-123)."
+    },
+    {
+      "name": "calm_analytics",
+      "description": "Query an analytics provider (Defects, Tasks, Tests, ...) with $filter/$orderby for sorted and aggregated questions."
+    },
+    {
+      "name": "calm_resources",
+      "description": "Discovery: the catalog of resources/providers, the task type/status/priority code lists, and worked recipes."
+    }
+  ],
+  "keywords": ["sap", "cloud-alm", "calm", "alm", "btp", "mcp"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=22"
+    }
+  },
+  "user_config": {
+    "calm_tenant": {
+      "type": "string",
+      "title": "Cloud ALM Tenant",
+      "description": "Your Cloud ALM tenant subdomain, e.g. 'acme' for acme.eu10.alm.cloud.sap. From the OAuth2 service binding.",
+      "required": true
+    },
+    "calm_region": {
+      "type": "string",
+      "title": "Cloud ALM Region",
+      "description": "Tenant region: eu10, eu20, us10, ap10, jp10, eu10-004, ca10, eu11 or cn20.",
+      "default": "eu10",
+      "required": true
+    },
+    "calm_client_id": {
+      "type": "string",
+      "title": "OAuth2 Client ID",
+      "description": "Client ID (clientid) from the Cloud ALM service key / binding.",
+      "required": true
+    },
+    "calm_client_secret": {
+      "type": "string",
+      "title": "OAuth2 Client Secret",
+      "description": "Client secret (clientsecret) from the Cloud ALM service key. Stored securely in the OS keychain.",
+      "sensitive": true,
+      "required": true
+    },
+    "calm_sandbox": {
+      "type": "boolean",
+      "title": "Use Sandbox (SAP Business Accelerator Hub)",
+      "description": "Use the SAP Business Accelerator Hub sandbox with an API key instead of an OAuth2 tenant. When on, fill in the Sandbox API Key below; the OAuth2 fields are ignored.",
+      "default": false,
+      "required": false
+    },
+    "calm_api_key": {
+      "type": "string",
+      "title": "Sandbox API Key",
+      "description": "API key from sandbox.api.sap.com. Only used when 'Use Sandbox' is on. Stored securely in the OS keychain.",
+      "sensitive": true,
+      "required": false
+    },
+    "calm_debug": {
+      "type": "boolean",
+      "title": "Debug Logging",
+      "description": "Enable verbose request/response tracing (written to stderr).",
+      "default": false,
+      "required": false
+    },
+    "calm_timeout_seconds": {
+      "type": "number",
+      "title": "Request Timeout (seconds)",
+      "description": "HTTP request timeout for Cloud ALM calls.",
+      "default": 30,
+      "required": false
+    }
+  }
+}

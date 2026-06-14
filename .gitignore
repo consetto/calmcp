@@ -6,6 +6,10 @@ node_modules/
 dist/
 coverage/
 
+# MCPB bundle build artifacts
+mcpb-bundle/
+*.mcpb
+
 # Secrets / local config
 .env
 *.local
@@ -17,3 +21,4 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+.claude/
