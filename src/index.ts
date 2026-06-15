@@ -52,18 +52,21 @@ async function main(): Promise<void> {
 
   if (useHttp) {
     const port = Number(options.port ?? process.env.PORT ?? DEFAULT_PORT);
-    // Protect /mcp with XSUAA + MCP-native OAuth when an XSUAA service is bound (BTP). Without one
-    // (local dev) the endpoint is left open; createHttpApp logs a warning in that case.
+    // Protect /mcp with a static API key (CALM_HTTP_API_KEY) and/or XSUAA + MCP-native OAuth when an
+    // XSUAA service is bound (BTP). With neither configured (local dev) the endpoint is left open;
+    // createHttpApp logs a warning in that case.
     const xsuaaCredentials = loadXsuaaCredentials(logger);
-    const auth = xsuaaCredentials
-      ? { credentials: xsuaaCredentials, appUrl: getAppUrl() ?? `http://localhost:${port}` }
-      : undefined;
     const app = createHttpApp({
       buildServer: () => buildMcpServer(clients, logger),
       corsOrigins: parseCorsOrigins(process.env.CALM_CORS_ORIGINS),
       rateLimitPerMinute: DEFAULT_RATE_LIMIT,
       logger,
-      auth,
+      auth: {
+        apiKey: process.env.CALM_HTTP_API_KEY?.trim() || undefined,
+        xsuaa: xsuaaCredentials
+          ? { credentials: xsuaaCredentials, appUrl: getAppUrl() ?? `http://localhost:${port}` }
+          : undefined,
+      },
     });
     app.listen(port, () => {
       logger.info({ port }, 'calmcp HTTP transport listening');

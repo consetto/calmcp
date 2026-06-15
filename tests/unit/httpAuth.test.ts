@@ -2,6 +2,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import pino from 'pino';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+import { Config } from '../../src/config.js';
+import { createApiKeyVerifier } from '../../src/httpAuth/apiKey.js';
 import {
   matchesXsuaaRedirectPattern,
   StatelessDcrClientStore,
@@ -9,6 +11,7 @@ import {
 } from '../../src/httpAuth/dcrClientStore.js';
 import { OAuthStateCodec } from '../../src/httpAuth/oauthState.js';
 import { getAppUrl } from '../../src/httpAuth/xsuaa.js';
+import { buildMcpServer, createClients } from '../../src/server.js';
 import { createHttpApp } from '../../src/transport/http.js';
 
 const logger = pino({ level: 'silent' });
@@ -146,7 +149,7 @@ describe('createHttpApp with XSUAA auth', () => {
     corsOrigins: '*',
     rateLimitPerMinute: 100,
     logger,
-    auth: { credentials, appUrl: 'https://calmcp.example.hana.ondemand.com' },
+    auth: { xsuaa: { credentials, appUrl: 'https://calmcp.example.hana.ondemand.com' } },
   });
 
   it('leaves /health unauthenticated', async () => {
@@ -178,6 +181,71 @@ describe('createHttpApp without auth (local dev)', () => {
       rateLimitPerMinute: 100,
       logger,
     });
+    const res = await request(app).get('/.well-known/oauth-authorization-server');
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('createApiKeyVerifier', () => {
+  it('accepts the configured key and grants the read scope', async () => {
+    const verify = createApiKeyVerifier('s3cret', logger);
+    const info = await verify('s3cret');
+    expect(info.scopes).toEqual(['Viewer']);
+    expect(info.clientId).toBe('api-key');
+  });
+
+  it('rejects a wrong key (including a length-different one)', async () => {
+    const verify = createApiKeyVerifier('s3cret', logger);
+    await expect(verify('wrong')).rejects.toThrow();
+    await expect(verify('s3cret-but-longer')).rejects.toThrow();
+  });
+});
+
+describe('createHttpApp with API-key auth', () => {
+  const config = Config.fromEnv({ CALM_SANDBOX: 'true', CALM_API_KEY: 'x' } as NodeJS.ProcessEnv);
+  const clients = createClients(config, logger);
+  const app = createHttpApp({
+    buildServer: () => buildMcpServer(clients, logger),
+    corsOrigins: '*',
+    rateLimitPerMinute: 100,
+    logger,
+    auth: { apiKey: 'super-secret-key' },
+  });
+
+  it('rejects POST /mcp without a key (401)', async () => {
+    const res = await request(app)
+      .post('/mcp')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects POST /mcp with a wrong key (401)', async () => {
+    const res = await request(app)
+      .post('/mcp')
+      .set('Authorization', 'Bearer nope')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    expect(res.status).toBe(401);
+  });
+
+  it('accepts POST /mcp with the correct key', async () => {
+    const res = await request(app)
+      .post('/mcp')
+      .set('Authorization', 'Bearer super-secret-key')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 't', version: '1' },
+        },
+      });
+    expect(res.status).toBe(200);
+  });
+
+  it('does not mount OAuth discovery when only an API key is configured', async () => {
     const res = await request(app).get('/.well-known/oauth-authorization-server');
     expect(res.status).toBe(404);
   });

@@ -17,7 +17,7 @@ import express, { type Express, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import type { Logger } from 'pino';
-import { mountXsuaaAuth, type XsuaaCredentials } from '../httpAuth/index.js';
+import { type HttpAuthOptions, setupHttpAuth } from '../httpAuth/index.js';
 
 /** Options for the HTTP app. */
 export interface HttpAppOptions {
@@ -30,10 +30,10 @@ export interface HttpAppOptions {
   /** Application logger. */
   logger: Logger;
   /**
-   * When present, protect `/mcp` with XSUAA bearer auth and mount the MCP-native OAuth proxy.
-   * Omit (local dev) to leave `/mcp` unauthenticated.
+   * Authentication for `/mcp` (API key and/or XSUAA OAuth). When neither method is configured the
+   * endpoint is left unauthenticated (local dev) and a warning is logged.
    */
-  auth?: { credentials: XsuaaCredentials; appUrl: string };
+  auth?: HttpAuthOptions;
 }
 
 /** A JSON-RPC error body for non-POST methods and failures. */
@@ -99,14 +99,13 @@ export function createHttpApp(options: HttpAppOptions): Express {
     }
   };
 
-  if (auth) {
-    // Mounts the OAuth router (/authorize, /token, /register, /revoke + discovery) and the callback,
-    // and returns the bearer-auth guard for /mcp.
-    const bearerAuth = mountXsuaaAuth(app, auth.credentials, auth.appUrl, logger);
+  // Mounts any OAuth routes and returns the bearer-auth guard, or undefined when no method is set.
+  const bearerAuth = setupHttpAuth(app, auth ?? {}, logger);
+  if (bearerAuth) {
     app.post('/mcp', bearerAuth, mcpHandler);
   } else {
     logger.warn(
-      'HTTP transport is UNAUTHENTICATED — no XSUAA service bound. Do not expose publicly.',
+      'HTTP transport is UNAUTHENTICATED (no API key or XSUAA configured). Do not expose publicly.',
     );
     app.post('/mcp', mcpHandler);
   }

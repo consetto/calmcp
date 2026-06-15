@@ -1,0 +1,40 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "calmcp - SAP Cloud ALM",
+    "description": "Read-only MCP server for SAP Cloud ALM. Streamable HTTP MCP endpoint protected by an API key.",
+    "version": "1.0.0"
+  },
+  "host": "REPLACE-WITH-YOUR-ROUTE.cfapps.eu10.hana.ondemand.com",
+  "basePath": "/",
+  "schemes": ["https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "paths": {
+    "/mcp": {
+      "post": {
+        "summary": "calmcp MCP server",
+        "description": "Streamable HTTP MCP endpoint for SAP Cloud ALM (list, get, analytics, resources).",
+        "operationId": "InvokeMCP",
+        "x-ms-agentic-protocol": "mcp-streamable-1.0",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    }
+  },
+  "securityDefinitions": {
+    "api_key": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization"
+    }
+  },
+  "security": [
+    {
+      "api_key": []
+    }
+  ]
+}

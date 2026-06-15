@@ -1,13 +1,20 @@
 // HTTP-transport authentication wiring.
 //
-// `mountXsuaaAuth` installs the MCP-native OAuth proxy (RFC 8414 discovery + RFC 7591 dynamic client
-// registration delegated to XSUAA) and returns the bearer-auth middleware that guards `/mcp`. The
-// `/oauth/callback` route re-emits the client's original `state` correctly (XSUAA `+`-bug fix).
+// `setupHttpAuth` builds the bearer-auth guard for `/mcp` from whichever methods are configured:
+//   - a static API key (shared secret), and/or
+//   - XSUAA + the MCP-native OAuth proxy (RFC 8414 discovery + RFC 7591 dynamic client registration
+//     delegated to XSUAA; the `/oauth/callback` route re-emits the client's original `state` to work
+//     around XSUAA's `+`-in-state bug).
+// When both are configured they coexist on the same endpoint (tried API key first, then XSUAA), so
+// e.g. Copilot Studio can use an API key while Claude Desktop uses interactive OAuth.
 
+import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { Express, Request, RequestHandler, Response } from 'express';
 import type { Logger } from 'pino';
+import { createApiKeyVerifier } from './apiKey.js';
 import type { StatelessDcrClientStore } from './dcrClientStore.js';
 import type { OAuthStateCodec } from './oauthState.js';
 import {
@@ -22,6 +29,17 @@ export {
   loadXsuaaCredentials,
   type XsuaaCredentials,
 } from './xsuaa.js';
+
+/** Authentication methods to enable on the HTTP `/mcp` endpoint. */
+export interface HttpAuthOptions {
+  /** Static API key (shared secret). Callers send `Authorization: Bearer <key>`. */
+  apiKey?: string;
+  /** XSUAA bearer validation plus the MCP-native OAuth proxy. */
+  xsuaa?: { credentials: XsuaaCredentials; appUrl: string };
+}
+
+/** A bearer-token verifier (returns `AuthInfo` or throws). */
+type Verifier = (token: string) => Promise<AuthInfo>;
 
 /** A short terminal HTML page for callback errors we cannot safely redirect. */
 function errorPage(message: string): string {
@@ -115,34 +133,37 @@ export function createOAuthCallbackHandler(
   };
 }
 
+/** Try each verifier in order; return the first success, or throw if none accept the token. */
+function chainVerifiers(verifiers: Verifier[]): Verifier {
+  return async (token: string): Promise<AuthInfo> => {
+    for (const verify of verifiers) {
+      try {
+        return await verify(token);
+      } catch {
+        // Try the next method.
+      }
+    }
+    throw new InvalidTokenError(
+      'No valid credentials (a valid API key or XSUAA token is required)',
+    );
+  };
+}
+
 /**
- * Install the XSUAA OAuth proxy on the Express app and return the bearer-auth middleware for `/mcp`.
- *
- * @param app - The Express app (OAuth + discovery routes are mounted on it).
- * @param credentials - XSUAA service credentials.
- * @param appUrl - calmcp's public base URL (for OAuth metadata + callback).
- * @param logger - Application logger.
- * @returns The bearer-auth middleware to place before the `/mcp` handler.
+ * Mount the XSUAA OAuth proxy (callback + discovery/authorize/token/register/revoke) on the app and
+ * return its bearer-token verifier.
  */
-export function mountXsuaaAuth(
+function mountOAuthRouter(
   app: Express,
   credentials: XsuaaCredentials,
   appUrl: string,
   logger: Logger,
-): RequestHandler {
+): Verifier {
   const { provider, clientStore, stateCodec } = createXsuaaOAuthProvider(
     credentials,
     appUrl,
     logger,
   );
-  const verifier = createXsuaaTokenVerifier(credentials, logger);
-
-  // The 401 WWW-Authenticate header points clients at the protected-resource metadata for discovery.
-  const resourceMetadataUrl = `${appUrl.replace(/\/$/, '')}/.well-known/oauth-protected-resource/mcp`;
-  const bearerAuth = requireBearerAuth({
-    verifier: { verifyAccessToken: verifier },
-    resourceMetadataUrl,
-  });
 
   // calmcp's own OAuth callback (the `+`-bug fix). Unauthenticated; does an HMAC verify per hit.
   app.get('/oauth/callback', createOAuthCallbackHandler(stateCodec, clientStore, logger));
@@ -155,10 +176,51 @@ export function mountXsuaaAuth(
       baseUrl: new URL(appUrl),
       resourceServerUrl: new URL(`${appUrl.replace(/\/$/, '')}/mcp`),
       scopesSupported: MCP_SCOPES,
-      resourceName: 'calmcp — SAP Cloud ALM MCP Server',
+      resourceName: 'calmcp (SAP Cloud ALM MCP Server)',
     }),
   );
 
   logger.info({ xsappname: credentials.xsappname, appUrl }, 'XSUAA OAuth proxy enabled on /mcp');
-  return bearerAuth;
+  return createXsuaaTokenVerifier(credentials, logger);
+}
+
+/**
+ * Configure HTTP authentication for `/mcp`.
+ *
+ * Mounts the XSUAA OAuth routes when XSUAA is configured, and returns the bearer-auth middleware to
+ * place before the `/mcp` handler. Returns `undefined` when no method is configured (the caller then
+ * leaves the endpoint open, for local development).
+ *
+ * @param app - The Express app.
+ * @param options - Which auth methods to enable (API key and/or XSUAA).
+ * @param logger - Application logger.
+ */
+export function setupHttpAuth(
+  app: Express,
+  options: HttpAuthOptions,
+  logger: Logger,
+): RequestHandler | undefined {
+  const verifiers: Verifier[] = [];
+  let resourceMetadataUrl: string | undefined;
+
+  if (options.apiKey) {
+    verifiers.push(createApiKeyVerifier(options.apiKey, logger));
+    logger.info('HTTP API-key authentication enabled on /mcp');
+  }
+  if (options.xsuaa) {
+    verifiers.push(mountOAuthRouter(app, options.xsuaa.credentials, options.xsuaa.appUrl, logger));
+    // The 401 WWW-Authenticate header points OAuth clients at the protected-resource metadata.
+    resourceMetadataUrl = `${options.xsuaa.appUrl.replace(/\/$/, '')}/.well-known/oauth-protected-resource/mcp`;
+  }
+
+  const [first, ...rest] = verifiers;
+  if (!first) {
+    return undefined;
+  }
+  // A single verifier is used directly (preserving its specific error); multiple are chained.
+  const verifyAccessToken = rest.length === 0 ? first : chainVerifiers(verifiers);
+  return requireBearerAuth({
+    verifier: { verifyAccessToken },
+    ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
+  });
 }
