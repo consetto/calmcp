@@ -10,8 +10,7 @@ remotely, and deploys to **SAP BTP Cloud Foundry**.
 `calmcp` is my second SAP Cloud ALM MCP bridge . It succeeds an earlier
 **Rust** implementation [sap-cloud-alm-mcp](https://github.com/consetto/sap-cloud-alm-odata-mcp) and reuses the knowledge of the Cloud ALM APIs, while taking a different technical direction.
 
-The Architecture is innspired by [`marianfoo/arc-1`](https://github.com/marianfoo/arc-1)
-reference. See [docs/PREDECESSOR.md](docs/PREDECESSOR.md) for the project's lineage.
+The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc-1`](https://github.com/marianfoo/arc-1) as reference architecutre. See [docs/PREDECESSOR.md](docs/PREDECESSOR.md) for the project's lineage.
 
 ## Tools
 
@@ -275,3 +274,27 @@ npm run build && npm run test:e2e   # real MCP calls over stdio and HTTP
 ## License
 
 MIT
+
+## Contributing
+
+Contributions are welcome! Please ensure your code:
+
+- Builds without errors (`npm run build`)
+- Passes all tests (`npm test`)
+- Passes linting and formatting (`npm run lint`, or `npm run lint:fix` to auto-fix)
+
+## Disclaimer
+
+This software is provided "as is", without warranty of any kind, express or implied.
+
+### No Responsibility
+
+The author(s) and contributor(s) of this tool assume no responsibility or liability for any damages,
+losses, or consequences that may result from the use or misuse of this software. This includes, but
+is not limited to:
+
+- Any kind of data loss
+- Any damage to systems, networks, or data
+- Any legal consequences resulting from unauthorized or improper use
+- Any business losses or operational disruptions
+- Any security incidents or breaches
