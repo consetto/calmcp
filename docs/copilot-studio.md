@@ -16,15 +16,24 @@ caller, so it uses a **static API key** instead of a per-user login.
 
 ## Steps
 
-1. **Set an API key** on the deployed app and restage:
+1. **Set an API key** on the deployed app and restart:
 
    ```bash
    cf set-env calmcp-srv CALM_HTTP_API_KEY "$(openssl rand -base64 48)"
-   cf restage calmcp-srv
+   cf restart calmcp-srv
    ```
 
    This protects `/mcp` with a shared secret. It coexists with XSUAA OAuth, so interactive clients
-   (Claude Desktop, Cursor, VS Code) keep working on the same endpoint.
+   (Claude Desktop, Cursor, VS Code) keep working on the same endpoint. `cf restart` is enough for an
+   environment change; `restage` (a rebuild of the droplet) is not needed.
+
+   The command above never prints the generated key. Read it back from the app environment:
+
+   ```bash
+   cf env calmcp-srv | grep CALM_HTTP_API_KEY
+   ```
+
+   `cf env` also prints the bound services' credentials, so do not paste its full output anywhere.
 
 2. **Create a custom connector** in Power Platform (Power Apps or Power Automate, then Custom
    connectors, then New, then Import an OpenAPI file). Import
@@ -50,18 +59,32 @@ ROUTE=https://calmcp-srv-<suffix>.cfapps.eu10.hana.ondemand.com
 # Without the key -> 401
 curl -s -o /dev/null -w "%{http_code}\n" -X POST "$ROUTE/mcp" \
   -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-# With the key + MCP initialize -> 200
-curl -s -o /dev/null -w "%{http_code}\n" -X POST "$ROUTE/mcp" \
+# With the key -> 200 and the four tool names
+curl -s -X POST "$ROUTE/mcp" \
   -H "Authorization: Bearer <your-key>" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+  | sed 's/^data: //' | grep -o '"name":"calm_[a-z]*"'
 ```
+
+Note that `GET /mcp` answers `405`: the transport runs in stateless mode, which the MCP specification
+allows. That is not a fault, and the connector needs only the single `POST` operation.
+
+## Troubleshooting
+
+**Copilot Studio shows "No tools found" while the connection is green.** Power Platform does not call
+the server when a connection is saved, so green only means a value was stored. Run the `tools/list`
+check above to see what the endpoint really answers. A `401` points at the key (the connection value
+must include the `Bearer ` prefix), a `406` means the client sent `Accept: application/json` without
+`text/event-stream`. After fixing the cause, remove the MCP server from the agent's Tools and add it
+again, because the failed discovery is cached.
 
 ## Rotate or revoke the key
 
-- **Rotate:** set a new `CALM_HTTP_API_KEY`, restage, then update the Copilot Studio connection.
-- **Revoke:** clear `CALM_HTTP_API_KEY` and restage. If XSUAA is still bound, `/mcp` remains protected
+- **Rotate:** set a new `CALM_HTTP_API_KEY`, `cf restart`, then update the Copilot Studio connection.
+  The key of an existing connection cannot be edited, so delete it and create a new one.
+- **Revoke:** clear `CALM_HTTP_API_KEY` and restart. If XSUAA is still bound, `/mcp` remains protected
   by OAuth; otherwise the endpoint would be open, so do not leave it unauthenticated and exposed.
 
 ## Notes
