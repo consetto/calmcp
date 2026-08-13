@@ -3,9 +3,9 @@
 // requested transport: stdio (default, for local MCP clients) or Streamable HTTP (for BTP / remote).
 
 import 'dotenv/config';
+import { loadXsuaaCredentials, resolveAppUrl, type XsuaaCredentials } from '@arc-mcp/xsuaa-auth';
 import { Command } from 'commander';
 import { Config } from './config.js';
-import { getAppUrl, loadXsuaaCredentials } from './httpAuth/index.js';
 import { createLogger } from './logging.js';
 import { buildMcpServer, createClients } from './server.js';
 import { createHttpApp } from './transport/http.js';
@@ -55,16 +55,43 @@ async function main(): Promise<void> {
     // Protect /mcp with a static API key (CALM_HTTP_API_KEY) and/or XSUAA + MCP-native OAuth when an
     // XSUAA service is bound (BTP). With neither configured (local dev) the endpoint is left open;
     // createHttpApp logs a warning in that case.
-    const xsuaaCredentials = loadXsuaaCredentials(logger);
+    //
+    // loadXsuaaCredentials throws when no complete xsuaa binding is present, so guard it: an unbound
+    // app falls back to API-key-only (or open) instead of crashing at startup.
+    let xsuaaCredentials: XsuaaCredentials | undefined;
+    if (process.env.VCAP_SERVICES) {
+      try {
+        xsuaaCredentials = loadXsuaaCredentials();
+      } catch (err) {
+        logger.warn(
+          { err: (err as Error).message },
+          'XSUAA service not bound or incomplete — HTTP XSUAA auth disabled',
+        );
+      }
+    }
+    const httpApiKey = process.env.CALM_HTTP_API_KEY?.trim() || undefined;
     const app = createHttpApp({
       buildServer: () => buildMcpServer(clients, logger),
       corsOrigins: parseCorsOrigins(process.env.CALM_CORS_ORIGINS),
       rateLimitPerMinute: DEFAULT_RATE_LIMIT,
       logger,
       auth: {
-        apiKey: process.env.CALM_HTTP_API_KEY?.trim() || undefined,
+        // Entry form (not a bare string) so the key carries the Viewer scope and passes
+        // requiredScopes when XSUAA is also bound.
+        apiKeys: httpApiKey ? [{ key: httpApiKey, scopes: ['Viewer'] }] : undefined,
         xsuaa: xsuaaCredentials
-          ? { credentials: xsuaaCredentials, appUrl: getAppUrl() ?? `http://localhost:${port}` }
+          ? {
+              credentials: xsuaaCredentials,
+              appUrl: resolveAppUrl(process.env, { publicUrlEnvVar: 'CALM_PUBLIC_URL', port }),
+              clientIdPrefix: 'calmcp-',
+              dcrKdfLabel: 'calmcp-dcr/v1',
+              stateKdfLabel: 'calmcp-oauth-state/v1',
+              scopesSupported: ['Viewer'],
+              requiredScopes: ['Viewer'],
+              resourceName: 'calmcp (SAP Cloud ALM MCP Server)',
+              dcrSigningSecret:
+                process.env.CALM_DCR_SIGNING_SECRET?.trim() || xsuaaCredentials.clientsecret,
+            }
           : undefined,
       },
     });

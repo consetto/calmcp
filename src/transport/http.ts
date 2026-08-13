@@ -10,6 +10,7 @@
 // is mounted so clients like Claude Desktop authenticate automatically. Without `auth`, `/mcp` is
 // open (local development) and a warning is logged.
 
+import { type Logger as AuthLogger, type AuthOptions, setupHttpAuth } from '@arc-mcp/xsuaa-auth';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import cors from 'cors';
@@ -17,7 +18,6 @@ import express, { type Express, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import type { Logger } from 'pino';
-import { type HttpAuthOptions, setupHttpAuth } from '../httpAuth/index.js';
 
 /** Options for the HTTP app. */
 export interface HttpAppOptions {
@@ -33,7 +33,7 @@ export interface HttpAppOptions {
    * Authentication for `/mcp` (API key and/or XSUAA OAuth). When neither method is configured the
    * endpoint is left unauthenticated (local dev) and a warning is logged.
    */
-  auth?: HttpAuthOptions;
+  auth?: AuthOptions;
 }
 
 /** A JSON-RPC error body for non-POST methods and failures. */
@@ -99,8 +99,15 @@ export function createHttpApp(options: HttpAppOptions): Express {
     }
   };
 
+  // Adapt the pino logger (obj, msg) to the auth package's structural Logger (message, data).
+  const authLogger: AuthLogger = {
+    debug: (msg, data) => logger.debug(data ?? {}, msg),
+    info: (msg, data) => logger.info(data ?? {}, msg),
+    warn: (msg, data) => logger.warn(data ?? {}, msg),
+    error: (msg, data) => logger.error(data ?? {}, msg),
+  };
   // Mounts any OAuth routes and returns the bearer-auth guard, or undefined when no method is set.
-  const bearerAuth = setupHttpAuth(app, auth ?? {}, logger);
+  const bearerAuth = setupHttpAuth(app, auth ?? {}, authLogger);
   if (bearerAuth) {
     app.post('/mcp', bearerAuth, mcpHandler);
   } else {
