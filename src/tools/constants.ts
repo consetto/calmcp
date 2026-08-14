@@ -107,6 +107,14 @@ export const RECIPES: Recipe[] = [
     ],
   },
   {
+    question: 'Which user stories are open in Sprint 5?',
+    steps: [
+      "calm_list({ resource: 'tasks', project_id: '<uuid>', task_type: 'CALMUS', status: 'CIPUSOPEN', timebox_name: 'Sprint 5', fields: 'displayId,title,status,assigneeName,dueDate' })",
+      'Always pass `fields` for tasks: a task has 67 attributes, so an unprojected list is hundreds of KB and overflows smaller agent hosts.',
+      'Use timebox_id instead of timebox_name when you already resolved the sprint via project_timeboxes.',
+    ],
+  },
+  {
     question: 'Show me the assigned Features for defect Y',
     steps: [
       "1) calm_list({ resource: 'task_feature_assignments', task_id: 'Y' }) -> collect each featureId",

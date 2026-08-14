@@ -16,7 +16,7 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
 
 | Tool | Purpose |
 | --- | --- |
-| `calm_list` | List/query any collection — tasks (incl. **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, `task_id`, `task_type`, …). |
+| `calm_list` | List/query any collection — tasks (incl. **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource. |
 | `calm_get` | Fetch a single entity by id (a feature also by display id, e.g. `6-123`). |
 | `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Supports `$orderby` — use it for sorted/aggregated questions. |
 | `calm_resources` | Discovery: the catalog of resources/providers, the task type/status/priority code lists, and worked recipes. |
@@ -36,8 +36,27 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
   calm_get({ "resource": "feature", "id": "<featureId>" })                 // -> details
   ```
 
+- **Open user stories in a sprint**
+
+  ```json
+  calm_list({
+    "resource": "tasks", "project_id": "<uuid>",
+    "task_type": "CALMUS", "status": "CIPUSOPEN", "timebox_name": "Sprint 5",
+    "fields": "displayId,title,status,assigneeName,dueDate"
+  })
+  ```
+
 Call `calm_resources` (optionally `{ "topic": "recipes" }`) at any time to discover valid
 `resource`/`provider` values and required parameters.
+
+### Keeping responses small
+
+A task carries 67 attributes, most of them null, and the Tasks REST endpoint supports neither
+`$select` nor a timebox filter. Unprojected task lists therefore run to hundreds of KB and overflow
+agent hosts such as Microsoft Copilot Studio. `calm_list` adds two options, both applied by calmcp
+after fetching: `fields` projects the records, and `timebox_id`/`timebox_name` selects one sprint
+(paging through the project so the filter is complete). Unknown field names and unknown timebox
+names are rejected rather than silently ignored.
 
 ### Covered services
 

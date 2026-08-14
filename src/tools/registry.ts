@@ -25,6 +25,12 @@ export interface ListParams {
   tags?: string[];
   limit?: number;
   offset?: number;
+  /** Timebox (sprint/phase) id — applied by calmcp after fetching; see `tools/shape.ts`. */
+  timebox_id?: string;
+  /** Timebox name (e.g. "Sprint 5") — resolved against the project's timeboxes. */
+  timebox_name?: string;
+  /** Comma-separated field projection applied by calmcp to the response records. */
+  fields?: string;
   /** Free-form REST filters for the Landscape and BSM services (e.g. objectType, serviceName). */
   filters?: Record<string, string>;
 }
@@ -190,7 +196,10 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     kind: 'rest',
     service: 'tasks',
     required: ['project_id'],
-    description: 'Tasks of a project. Filter by task_type (e.g. CALMDEF for Defects), status, etc.',
+    description:
+      'Tasks of a project. Filter by task_type (e.g. CALMDEF for Defects), status, assignee_id, ' +
+      'tags, and timebox_id/timebox_name (sprint). Use `fields` to keep the response small — a ' +
+      'task carries 67 fields, so an unprojected list of a few hundred tasks is hundreds of KB.',
     build: (p) => ({
       path: '/tasks',
       query: buildQueryString({

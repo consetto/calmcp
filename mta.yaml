@@ -17,6 +17,11 @@ modules:
       command: node dist/index.js --http
       health-check-type: http
       health-check-http-endpoint: /health
+      # Without this a redeploy resets the app environment to the `properties` below, dropping
+      # variables set outside the descriptor — notably CALM_HTTP_API_KEY, which API-key clients
+      # such as Microsoft Copilot Studio depend on.
+      keep-existing:
+        env: true
     build-parameters:
       builder: custom
       commands:

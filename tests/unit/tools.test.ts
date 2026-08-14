@@ -96,6 +96,137 @@ describe('handleCalmList', () => {
     });
     expect(parse(result)).toEqual([{ featureId: 'f1' }]);
   });
+
+  it('projects REST records to the requested fields', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMUS' })
+      .reply(200, [{ id: 'u1', displayId: '3-1', title: 'One', customField1: null }]);
+
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_id: 'p1',
+      task_type: 'CALMUS',
+      fields: 'displayId,title',
+    });
+    expect(parse(result)).toEqual([{ displayId: '3-1', title: 'One' }]);
+  });
+
+  it('rejects an unknown name in fields instead of returning empty objects', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1' })
+      .reply(200, [{ id: 'u1', displayId: '3-1' }]);
+
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_id: 'p1',
+      fields: 'displayId,sprint',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('sprint');
+  });
+
+  it('filters tasks by timebox_id, paging through the project', async () => {
+    const page = (n: number, timeboxId: string) =>
+      Array.from({ length: n }, (_, i) => ({ displayId: `3-${i}`, timeboxId }));
+    // A short page ends the paging loop, so one full page plus a short one exercises both.
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMUS&offset=0&limit=500' })
+      .reply(200, [...page(499, 'other'), { displayId: '3-hit', timeboxId: 't5' }]);
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMUS&offset=500&limit=500' })
+      .reply(200, [{ displayId: '3-late', timeboxId: 't5' }]);
+
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_id: 'p1',
+      task_type: 'CALMUS',
+      timebox_id: 't5',
+    });
+    expect(parse(result)).toEqual([
+      { displayId: '3-hit', timeboxId: 't5' },
+      { displayId: '3-late', timeboxId: 't5' },
+    ]);
+  });
+
+  it('resolves timebox_name against the project timeboxes', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-projects/v1/projects/p1/timeboxes' })
+      .reply(200, [
+        { id: 't5', name: 'Sprint 5' },
+        { id: 't6', name: 'Sprint 6' },
+      ]);
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&offset=0&limit=500' })
+      .reply(200, [
+        { displayId: '3-1', timeboxId: 't5' },
+        { displayId: '3-2', timeboxId: 't6' },
+      ]);
+
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_id: 'p1',
+      timebox_name: 'Sprint 5',
+    });
+    expect(parse(result)).toEqual([{ displayId: '3-1', timeboxId: 't5' }]);
+  });
+
+  it('reports the known timeboxes when the name does not match', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-projects/v1/projects/p1/timeboxes' })
+      .reply(200, [{ id: 't5', name: 'Sprint 5' }]);
+
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_id: 'p1',
+      timebox_name: 'Sprint 99',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('Sprint 5');
+  });
+
+  it('rejects a timebox filter on a non-task resource without a network call', async () => {
+    const result = await handleCalmList(makeClients(), {
+      resource: 'projects',
+      timebox_id: 't5',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('tasks');
+  });
+
+  it('rejects timebox_id and timebox_name together', async () => {
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_id: 'p1',
+      timebox_id: 't5',
+      timebox_name: 'Sprint 5',
+    });
+    expect(result.isError).toBe(true);
+  });
+
+  it('combines the timebox filter with a field projection', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&offset=0&limit=500' })
+      .reply(200, [
+        { displayId: '3-1', title: 'One', timeboxId: 't5', customField1: null },
+        { displayId: '3-2', title: 'Two', timeboxId: 't6', customField1: null },
+      ]);
+
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_id: 'p1',
+      timebox_id: 't5',
+      fields: 'displayId,title',
+    });
+    expect(parse(result)).toEqual([{ displayId: '3-1', title: 'One' }]);
+  });
 });
 
 describe('handleCalmGet', () => {

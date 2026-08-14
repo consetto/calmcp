@@ -43,6 +43,28 @@ export const calmListShape = {
   sub_status: z.string().optional().describe('Sub-status code filter (resource:tasks)'),
   assignee_id: z.string().optional().describe('Assignee id filter (resource:tasks)'),
   tags: z.array(z.string()).optional().describe('Tag filters (resource:tasks)'),
+  timebox_id: z
+    .string()
+    .optional()
+    .describe(
+      'Timebox (sprint/phase) id filter (resource:tasks). Applied by calmcp after fetching, ' +
+        'paging through the project automatically',
+    ),
+  timebox_name: z
+    .string()
+    .optional()
+    .describe(
+      'Timebox name filter, e.g. "Sprint 5" (resource:tasks). Resolved against the project\'s ' +
+        'timeboxes; errors listing the known names when it does not match',
+    ),
+  fields: z
+    .string()
+    .optional()
+    .describe(
+      'Comma-separated field projection applied by calmcp to the returned records (any resource). ' +
+        'Use it to keep responses small, e.g. "displayId,title,status,assigneeName,timeboxId". ' +
+        'Unlike $select this works for REST resources too. Unknown names are rejected',
+    ),
   limit: z.number().int().positive().optional().describe('REST page size (REST resources)'),
   offset: z.number().int().nonnegative().optional().describe('REST page offset (REST resources)'),
   filters: z
