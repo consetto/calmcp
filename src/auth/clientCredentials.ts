@@ -2,6 +2,8 @@
 // API key for sandbox mode. Tokens are cached in memory and refreshed shortly before expiry.
 
 import type { Logger } from 'pino';
+// undici's fetch, not the global one — see the note in `calm/httpClient.ts`.
+import { fetch, type Response } from 'undici';
 import type { Config } from '../config.js';
 import { AuthError } from '../errors.js';
 import type { AuthContext, AuthProvider } from './index.js';

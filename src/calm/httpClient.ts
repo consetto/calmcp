@@ -5,6 +5,11 @@
 // responses to `ApiError` — recognising the OData v4 structured error body when present.
 
 import type { Logger } from 'pino';
+// Use undici's fetch rather than the global one. They are the same implementation, but the global
+// is backed by the undici bundled inside Node, which `setGlobalDispatcher` from the npm undici
+// package cannot reach on Node 22/24 — so MockAgent in the tests would be bypassed and every
+// mocked request would hit the network instead.
+import { fetch, type Response } from 'undici';
 import type { AuthProvider } from '../auth/index.js';
 import { SERVICE_PATHS, type ServiceName } from '../config.js';
 import { ApiError } from '../errors.js';
