@@ -12,7 +12,7 @@ import { registerTools } from './tools/index.js';
 /** Server name advertised to MCP clients. */
 const SERVER_NAME = 'calmcp';
 /** Server version advertised to MCP clients. */
-const SERVER_VERSION = '0.1.1';
+const SERVER_VERSION = '0.2.0';
 
 /** Instructions shown to MCP clients on connect. */
 const INSTRUCTIONS =
