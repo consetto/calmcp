@@ -74,12 +74,16 @@ export function buildQueryString(params: Record<string, QueryValue>): string {
 
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null) continue;
+    // Some REST services (Process Scopes, Custom Processes) accept the OData system options
+    // `$top`/`$skip`/`$orderby` alongside their own parameters. Keep the leading `$` literal
+    // rather than percent-encoding it to `%24`, which is what those gateways expect to see.
+    const name = encodeURIComponent(key).replace(/^%24/, '$');
     if (Array.isArray(value)) {
       for (const item of value) {
-        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(item)}`);
+        parts.push(`${name}=${encodeURIComponent(item)}`);
       }
     } else {
-      parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+      parts.push(`${name}=${encodeURIComponent(String(value))}`);
     }
   }
 

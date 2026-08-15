@@ -41,6 +41,9 @@ export const SERVICE_PATHS = {
   xlibConfigurations: '/calm-crosslibraryconfigurations/v1',
   xlibDevelopments: '/calm-crosslibrarydevelopments/v1',
   xlibInterfaces: '/calm-crosslibraryinterfaces/v1',
+  processManagement: '/calm-processmanagement/v1',
+  processAuthoring: '/calm-processauthoring/v1',
+  testPlans: '/calm-testmanagement-testplans/v1',
 } as const;
 
 /** Name of a `calm/` service whose base URL can be built. */

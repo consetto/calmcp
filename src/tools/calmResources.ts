@@ -8,6 +8,7 @@ import {
   RECIPES,
   TASK_PRIORITIES,
   TASK_STATUSES,
+  TASK_SUB_STATUSES,
   TASK_TYPES,
 } from './constants.js';
 import {
@@ -51,6 +52,7 @@ function fullCatalog() {
     codeLists: {
       taskTypes: TASK_TYPES,
       taskStatuses: TASK_STATUSES,
+      taskSubStatuses: TASK_SUB_STATUSES,
       taskPriorities: TASK_PRIORITIES,
     },
     recipes: RECIPES,

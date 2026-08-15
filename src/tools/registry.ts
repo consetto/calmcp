@@ -16,9 +16,18 @@ export interface ListParams {
   skip?: number;
   // Contextual parameters (apply to specific resources; validated via `required`).
   project_id?: string;
+  program_id?: string;
   task_id?: string;
   team_id?: string;
   task_type?: string;
+  /** `gt:`/`eq:`/`lt:` prefixed ISO date, e.g. `gt:2026-08-01` (resource:tasks). */
+  last_changed_date?: string;
+  /** `gt:`/`eq:`/`lt:` prefixed ISO 8601 timestamp (resource:tasks). */
+  last_changed_timestamp?: string;
+  /** Explicit display/UUID ids to fetch (resource:tasks). */
+  ids?: string[];
+  /** Solution process id filter (resource:task_solution_process_assignments). */
+  solution_process_id?: string;
   status?: string;
   sub_status?: string;
   assignee_id?: string;
@@ -190,6 +199,163 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     entitySet: 'Interfaces',
     description: 'Cross-library interfaces',
   },
+  // URL references were added to all four cross-library services in their 1.0.1/1.0.2 specs.
+  xlib_application_url_references: {
+    kind: 'odata',
+    service: 'xlibApplications',
+    entitySet: 'URLReferences',
+    description: 'URL references of cross-library applications',
+  },
+  xlib_configuration_url_references: {
+    kind: 'odata',
+    service: 'xlibConfigurations',
+    entitySet: 'URLReferences',
+    description: 'URL references of cross-library configurations',
+  },
+  xlib_development_url_references: {
+    kind: 'odata',
+    service: 'xlibDevelopments',
+    entitySet: 'URLReferences',
+    description: 'URL references of cross-library developments',
+  },
+  xlib_interface_url_references: {
+    kind: 'odata',
+    service: 'xlibInterfaces',
+    entitySet: 'URLReferences',
+    description: 'URL references of cross-library interfaces',
+  },
+  // Configuration activities arrived with the Cross Library Configurations 1.0.1 spec.
+  xlib_configuration_activities: {
+    kind: 'odata',
+    service: 'xlibConfigurations',
+    entitySet: 'ConfigurationActivities',
+    description: 'Cross-library configuration activities',
+  },
+  xlib_configuration_activity_types: {
+    kind: 'odata',
+    service: 'xlibConfigurations',
+    entitySet: 'ConfigurationActivityTypes',
+    description: 'Cross-library configuration activity type code list',
+  },
+  xlib_configuration_assignments: {
+    kind: 'odata',
+    service: 'xlibConfigurations',
+    entitySet: 'ConfigurationAssignments',
+    description: 'Assignments between configurations and configuration activities',
+  },
+
+  // --- Process Scopes (REST, OData-style system options) ---
+  scopes: {
+    kind: 'rest',
+    service: 'processManagement',
+    required: [],
+    description:
+      'Process scopes. Resolves the scopeId/scopeName carried on every task. Optionally narrowed ' +
+      'by project_id.',
+    build: (p) => ({
+      path: '/scopes',
+      query: buildQueryString({
+        projectId: p.project_id,
+        $top: p.top,
+        $skip: p.skip,
+        $orderby: p.orderby,
+      }),
+    }),
+  },
+  solution_scenario_versions: {
+    kind: 'rest',
+    service: 'processManagement',
+    required: [],
+    description: 'Solution scenario versions available for scoping',
+    build: (p) => ({
+      path: '/solutionScenarioVersions',
+      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+    }),
+  },
+  scope_solution_processes: {
+    kind: 'rest',
+    service: 'processManagement',
+    required: [],
+    description:
+      'Solution processes as seen by process management (scoping). For the authored process ' +
+      "definitions use resource 'solution_processes' instead.",
+    build: (p) => ({
+      path: '/solutionProcesses',
+      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+    }),
+  },
+
+  // --- Custom Processes / process authoring (REST, OData-style system options) ---
+  business_processes: {
+    kind: 'rest',
+    service: 'processAuthoring',
+    required: [],
+    description: 'Authored business processes',
+    build: (p) => ({
+      path: '/businessProcesses',
+      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+    }),
+  },
+  solution_processes: {
+    kind: 'rest',
+    service: 'processAuthoring',
+    required: [],
+    description: 'Authored solution processes',
+    build: (p) => ({
+      path: '/solutionProcesses',
+      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+    }),
+  },
+  solution_process_flows: {
+    kind: 'rest',
+    service: 'processAuthoring',
+    required: [],
+    description: 'Process flows of authored solution processes',
+    build: (p) => ({
+      path: '/solutionProcessFlows',
+      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+    }),
+  },
+  solution_activities: {
+    kind: 'rest',
+    service: 'processAuthoring',
+    required: [],
+    description: 'Activities within authored solution processes',
+    build: (p) => ({
+      path: '/solutionActivities',
+      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+    }),
+  },
+  process_assets: {
+    kind: 'rest',
+    service: 'processAuthoring',
+    required: [],
+    description: 'Assets (documents, links) attached to authored processes',
+    build: (p) => ({
+      path: '/assets',
+      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+    }),
+  },
+
+  // --- Test Plans (OData) ---
+  test_plans: {
+    kind: 'odata',
+    service: 'testPlans',
+    entitySet: 'TestPlans',
+    description: 'Test plans (BETA API — may change)',
+  },
+  test_case_assignments: {
+    kind: 'odata',
+    service: 'testPlans',
+    entitySet: 'TestCaseAssignments',
+    description: 'Test cases assigned to test plans (BETA API — may change)',
+  },
+  test_plan_tag_assignments: {
+    kind: 'odata',
+    service: 'testPlans',
+    entitySet: 'TagAssignments',
+    description: 'Tags assigned to test plans (BETA API — may change)',
+  },
 
   // --- Tasks (REST) ---
   tasks: {
@@ -209,6 +375,26 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
         subStatus: p.sub_status,
         assigneeId: p.assignee_id,
         tags: p.tags,
+        lastChangedDate: p.last_changed_date,
+        lastChangedTimestamp: p.last_changed_timestamp,
+        // The API takes a single comma-separated `id` value, not repeated keys.
+        id: p.ids?.join(','),
+        offset: p.offset,
+        limit: p.limit,
+      }),
+    }),
+  },
+  task_solution_process_assignments: {
+    kind: 'rest',
+    service: 'tasks',
+    required: ['project_id'],
+    description: 'Solution processes assigned to the tasks of a project',
+    build: (p) => ({
+      path: '/tasks/solutionProcessAssignments',
+      query: buildQueryString({
+        projectId: p.project_id,
+        taskId: p.task_id,
+        solutionProcessId: p.solution_process_id,
         offset: p.offset,
         limit: p.limit,
       }),
@@ -316,6 +502,20 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     required: [],
     description: 'Programs',
     build: () => ({ path: '/programs', query: '' }),
+  },
+  program_teams: {
+    kind: 'rest',
+    service: 'projects',
+    required: ['program_id'],
+    description: 'Teams of a program',
+    build: (p) => ({ path: `/programs/${enc(p.program_id ?? '')}/teams`, query: '' }),
+  },
+  program_team_roles: {
+    kind: 'rest',
+    service: 'projects',
+    required: ['team_id'],
+    description: 'Roles and members of a program team',
+    build: (p) => ({ path: `/programTeams/${enc(p.team_id ?? '')}/roles`, query: '' }),
   },
   system_groups: {
     kind: 'rest',
@@ -491,6 +691,60 @@ export const GET_RESOURCES: Record<string, GetResource> = {
     service: 'projects',
     description: 'A single system group by id',
     build: (id) => `/systemGroups/${enc(id)}`,
+  },
+  program_team: {
+    kind: 'rest',
+    service: 'projects',
+    description: 'A single program team by id',
+    build: (id) => `/programTeams/${enc(id)}`,
+  },
+  scope: {
+    kind: 'rest',
+    service: 'processManagement',
+    description: 'A single process scope by id',
+    build: (id) => `/scopes/${enc(id)}`,
+  },
+  solution_scenario_version: {
+    kind: 'rest',
+    service: 'processManagement',
+    description: 'A single solution scenario version by id',
+    build: (id) => `/solutionScenarioVersions/${enc(id)}`,
+  },
+  business_process: {
+    kind: 'rest',
+    service: 'processAuthoring',
+    description: 'A single authored business process by id',
+    build: (id) => `/businessProcesses/${enc(id)}`,
+  },
+  solution_process: {
+    kind: 'rest',
+    service: 'processAuthoring',
+    description: 'A single authored solution process by id',
+    build: (id) => `/solutionProcesses/${enc(id)}`,
+  },
+  solution_activity: {
+    kind: 'rest',
+    service: 'processAuthoring',
+    description: 'A single solution activity by id',
+    build: (id) => `/solutionActivities/${enc(id)}`,
+  },
+  process_asset: {
+    kind: 'rest',
+    service: 'processAuthoring',
+    description: 'A single process asset by id',
+    build: (id) => `/assets/${enc(id)}`,
+  },
+  test_plan: {
+    kind: 'odata',
+    service: 'testPlans',
+    entitySet: 'TestPlans',
+    description: 'A single test plan by uuid (BETA API — may change)',
+  },
+  test_case_assignment: {
+    kind: 'odata',
+    service: 'testPlans',
+    entitySet: 'TestCaseAssignments',
+    description: 'A single test-plan test case assignment by uuid (BETA API — may change)',
   },
 };
 

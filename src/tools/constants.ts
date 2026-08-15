@@ -38,11 +38,13 @@ export const TASK_STATUSES: CodeEntry[] = [
   { code: 'CIPTKBLK', label: 'Blocked (Task/Roadmap/Sub-task)' },
   { code: 'CIPTKCLOSE', label: 'Done (Task/Roadmap/Sub-task)' },
   { code: 'CIPTKNO', label: 'Not Relevant (Task/Roadmap/Sub-task)' },
+  { code: 'CIPTKREV', label: 'In Review (Task/Roadmap/Sub-task)' },
   { code: 'CIPUSOPEN', label: 'Open (User Story)' },
   { code: 'CIPUSINP', label: 'In Progress (User Story)' },
   { code: 'CIPUSBLK', label: 'Blocked (User Story)' },
   { code: 'CIPUSCLOSE', label: 'Done (User Story)' },
   { code: 'CIPUSNO', label: 'Not Relevant (User Story)' },
+  { code: 'CIPUSREV', label: 'In Review (User Story)' },
   { code: 'CIPREQUOPEN', label: 'Open (Requirement)' },
   { code: 'CIPREQUINP', label: 'In Progress (Requirement)' },
   { code: 'CIPREQUBLK', label: 'Blocked (Requirement)' },
@@ -56,6 +58,36 @@ export const TASK_STATUSES: CodeEntry[] = [
   { code: 'CIPQGBLK', label: 'Blocked (Quality Gate)' },
   { code: 'CIPQGNR', label: 'Not Relevant (Quality Gate)' },
   { code: 'CIPQGDONE', label: 'Done (Quality Gate)' },
+  { code: 'CIPRIOPEN', label: 'Open (Risk)' },
+  { code: 'CIPRIINP', label: 'In Progress (Risk)' },
+  { code: 'CIPRIDONE', label: 'Done (Risk)' },
+];
+
+/**
+ * Task `sub_status` codes. Sub-statuses refine a status and are type-specific (the `DFC_*` values
+ * apply to Defects, `QG_*` to Quality Gates, the rest to implementation tasks). Filter with
+ * `calm_list resource:tasks sub_status:<code>`.
+ */
+export const TASK_SUB_STATUSES: CodeEntry[] = [
+  { code: 'CREATED', label: 'Created' },
+  { code: 'TO_BE_APPROVED', label: 'To Be Approved' },
+  { code: 'IN_PLANNING', label: 'In Planning' },
+  { code: 'IN_REALIZATION', label: 'In Realization' },
+  { code: 'APPROVED_FOR_DEPLOYMENT', label: 'Approved for Deployment' },
+  { code: 'SUCCESSFULLY_TESTED', label: 'Successfully Tested' },
+  { code: 'CONFIRMED', label: 'Confirmed' },
+  { code: 'BLOCKED', label: 'Blocked' },
+  { code: 'NOT_PLANNED', label: 'Not Planned' },
+  { code: 'DFC_NEW', label: 'New (Defect)' },
+  { code: 'DFC_INP', label: 'In Progress (Defect)' },
+  { code: 'DFC_RETEST_REQ', label: 'Retest Required (Defect)' },
+  { code: 'DFC_POSTPONE', label: 'Postponed (Defect)' },
+  { code: 'DFC_CLOSED', label: 'Closed (Defect)' },
+  { code: 'QG_UNCHECKED', label: 'Unchecked (Quality Gate)' },
+  { code: 'QG_ACCEPTED', label: 'Accepted (Quality Gate)' },
+  { code: 'QG_COND_ACCEPTED', label: 'Conditionally Accepted (Quality Gate)' },
+  { code: 'QG_UNACCEPTED', label: 'Not Accepted (Quality Gate)' },
+  { code: 'QG_NR', label: 'Not Relevant (Quality Gate)' },
 ];
 
 /** Task `priority` codes (integers). */

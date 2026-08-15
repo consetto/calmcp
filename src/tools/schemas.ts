@@ -30,8 +30,9 @@ export const calmListShape = {
   ...odataOptions,
   expand: z.string().optional().describe('OData $expand — comma-separated navigation properties'),
   project_id: z.string().optional().describe('Project id (required for tasks/deliverables/etc.)'),
+  program_id: z.string().optional().describe('Program id (required for program_teams)'),
   task_id: z.string().optional().describe('Task id (required for task sub-resources)'),
-  team_id: z.string().optional().describe('Team id (required for team_roles)'),
+  team_id: z.string().optional().describe('Team id (required for team_roles/program_team_roles)'),
   task_type: z
     .enum(toEnumValues(TASK_TYPE_CODES))
     .optional()
@@ -43,6 +44,28 @@ export const calmListShape = {
   sub_status: z.string().optional().describe('Sub-status code filter (resource:tasks)'),
   assignee_id: z.string().optional().describe('Assignee id filter (resource:tasks)'),
   tags: z.array(z.string()).optional().describe('Tag filters (resource:tasks)'),
+  last_changed_date: z
+    .string()
+    .optional()
+    .describe(
+      'Last-changed date filter (resource:tasks). Prefix with an operator: gt:, eq: or lt:, ' +
+        'e.g. "gt:2026-08-01"',
+    ),
+  last_changed_timestamp: z
+    .string()
+    .optional()
+    .describe(
+      'Last-changed timestamp filter (resource:tasks). Prefix with gt:, eq: or lt: and use ISO ' +
+        '8601, e.g. "gt:2026-08-01T00:00:00Z". Use this for incremental "what changed since" queries',
+    ),
+  ids: z
+    .array(z.string())
+    .optional()
+    .describe('Fetch specific tasks by id (resource:tasks); sent as a comma-separated list'),
+  solution_process_id: z
+    .string()
+    .optional()
+    .describe('Solution process id filter (resource:task_solution_process_assignments)'),
   timebox_id: z
     .string()
     .optional()

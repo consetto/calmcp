@@ -305,13 +305,23 @@ describe('handleCalmResources', () => {
     const catalog = parse(handleCalmResources({})) as {
       listResources: unknown[];
       analyticsProviders: string[];
-      codeLists: { taskTypes: { code: string }[] };
+      codeLists: {
+        taskTypes: { code: string }[];
+        taskStatuses: { code: string }[];
+        taskSubStatuses: { code: string }[];
+      };
       recipes: unknown[];
     };
     expect(catalog.listResources.length).toBeGreaterThan(10);
     expect(catalog.analyticsProviders).toContain('Defects');
     expect(catalog.codeLists.taskTypes.some((t) => t.code === 'CALMDEF')).toBe(true);
     expect(catalog.recipes.length).toBeGreaterThanOrEqual(2);
+    // Statuses the Tasks API accepts but calmcp used to omit — CIPUSREV occurs on real projects.
+    const statuses = catalog.codeLists.taskStatuses.map((s) => s.code);
+    for (const code of ['CIPUSREV', 'CIPTKREV', 'CIPRIOPEN', 'CIPRIINP', 'CIPRIDONE']) {
+      expect(statuses).toContain(code);
+    }
+    expect(catalog.codeLists.taskSubStatuses.map((s) => s.code)).toContain('DFC_RETEST_REQ');
   });
 
   it('focuses on recipes when topic=recipes', () => {

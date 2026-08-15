@@ -60,9 +60,24 @@ names are rejected rather than silently ignored.
 
 ### Covered services
 
-Tasks, Projects, Features, Documents, Process Hierarchy, Test Management (manual + automated),
+Tasks, Projects (incl. programs and program teams), Features, Documents, Process Hierarchy,
+Process Scopes, Custom Processes, Test Management (manual + automated), Test Plans *(BETA)*,
 Analytics, BSM/Status Events, Landscape, and Cross-Library (Applications, Configurations,
 Developments, Interfaces).
+
+All services are on API version `v1`. The OpenAPI specs they were built from live in `YAML/`
+(reference only, not part of the package) and correspond to these SAP Business Accelerator Hub
+artifact versions, pulled **15 August 2026**:
+
+| | | | |
+| --- | --- | --- | --- |
+| CALM_TKM 1.0.30 | CALM_PJM 1.0.11 | CALM_PH 1.2.0 | CALM_TM 1.0.5 |
+| CALM_CDM_ODATA 1.0.6 | CALM_SD 1.0.4 | CALM_LMS 1.0.0 | CALM_BSM 1.0.0 |
+| CALM_ANALYTICS_ODATA 1.0.0 | CALM_PM 1.1.0 | CALM_PMGE 1.0.0 | CALM_TM_PLAN 1.0.0 |
+| CALM_XLIB_APP 1.0.2 | CALM_XLIB_DEV 1.0.2 | CALM_XLIB_CON 1.0.1 | CALM_XLIB_INT 1.0.1 |
+
+Refresh them from <https://api.sap.com/package/SAPCloudALM/odatav4> and `.../rest` (downloads need
+a logged-in session), then compare against this table to see what moved.
 
 ## Configuration
 
