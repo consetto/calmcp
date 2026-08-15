@@ -1,0 +1,49 @@
+# Build gate for pushes to main and for every pull request.
+#
+# `npm ci` installs strictly from package-lock.json, which is the point: a stale local node_modules
+# once made a missing dependency look like a test-infrastructure failure. CI reproduces the install
+# from scratch so that cannot happen again.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch supersedes the previous run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported runtime (package.json engines) and the current release.
+        node-version: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Check version consistency
+        run: npm run version:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
