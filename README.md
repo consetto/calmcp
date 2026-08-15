@@ -1,7 +1,7 @@
-# calmcp
+# calmcp - Cloud ALM MCP Server
 
 A read-only [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that bridges AI
-assistants (Claude, GitHub Copilot, …) to **SAP Cloud ALM**. It exposes the Cloud ALM read APIs
+assistants (Claude, GitHub Copilot, …) to **SAP Cloud ALM** (aka CALM). It exposes the Cloud ALM read APIs
 through four consolidated, intent-based tools, runs over **stdio** locally or **Streamable HTTP**
 remotely, and deploys to **SAP BTP Cloud Foundry**.
 
