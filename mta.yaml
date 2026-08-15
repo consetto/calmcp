@@ -1,6 +1,6 @@
 _schema-version: '3.3'
 ID: calmcp
-version: 0.1.0
+version: 0.1.1
 description: Read-only MCP server for SAP Cloud ALM
 
 parameters:
