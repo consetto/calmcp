@@ -16,7 +16,7 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
 
 | Tool | Purpose |
 | --- | --- |
-| `calm_list` | List/query any collection — tasks (incl. **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource. |
+| `calm_list` | List/query any collection — tasks (incl. **requirements**, **user stories** and **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource. |
 | `calm_get` | Fetch a single entity by id (a feature also by display id, e.g. `6-123`). |
 | `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Supports `$orderby` — use it for sorted/aggregated questions. |
 | `calm_resources` | Discovery: the catalog of resources/providers, the task type/status/priority code lists, and worked recipes. |
@@ -64,6 +64,12 @@ Tasks, Projects (incl. programs and program teams), Features, Documents, Process
 Process Scopes, Custom Processes, Test Management (manual + automated), Test Plans *(BETA)*,
 Analytics, BSM/Status Events, Landscape, and Cross-Library (Applications, Configurations,
 Developments, Interfaces).
+
+In Cloud ALM the Tasks service is not just to-dos: **requirements, user stories, defects,
+sub-tasks, roadmap and project tasks, quality gates, checklist items and risks are all tasks**,
+distinguished by a `type` code. So `resource: "tasks"` with `task_type: "CALMREQU"`, `"CALMUS"` or
+`"CALMDEF"` is how you list requirements, user stories or defects. Call `calm_resources` for the
+full code list.
 
 All services are on API version `v1`. For the spec revision behind each one, and how to refresh
 them, see [docs/API_VERSIONS.md](docs/API_VERSIONS.md).

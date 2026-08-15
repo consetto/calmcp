@@ -18,6 +18,7 @@ Makefile.mta
 # Secrets / local config
 .env
 *.local
+*.local.md
 
 # Logs
 *.log
