@@ -13,7 +13,7 @@ import { configureResults } from './tools/result.js';
 /** Server name advertised to MCP clients. */
 const SERVER_NAME = 'calmcp';
 /** Server version advertised to MCP clients. */
-const SERVER_VERSION = '0.2.3';
+const SERVER_VERSION = '0.2.4';
 
 /** Instructions shown to MCP clients on connect. */
 const INSTRUCTIONS =
