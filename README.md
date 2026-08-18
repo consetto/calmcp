@@ -18,7 +18,7 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
 | --- | --- |
 | `calm_list` | List/query any collection — tasks (incl. **requirements**, **user stories** and **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource; `count_only`/`group_by` return a live count instead of the records. |
 | `calm_get` | Fetch a single entity by id (a feature also by display id, e.g. `6-123`). |
-| `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Supports `$orderby` — use it for sorted/aggregated questions. Providers span the whole tenant, so `count_only`/`group_by` here answer "how many across all projects". |
+| `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Providers span the whole tenant, so `count_only`/`group_by` here answer "how many across all projects". It aggregates but does **not** sort: `$orderby` is silently ignored by the service, so it is not offered. |
 | `calm_resources` | Discovery: the catalog of resources/providers, per-provider analytics dimensions and measures, the task type/status/priority code lists, and worked recipes. |
 
 ### Worked examples
@@ -35,10 +35,12 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
   calm_analytics({ "provider": "Defects", "filter": "defectStatus eq 'CIPDFCTOPEN'", "group_by": "projectName" })
   ```
 
-- **All open defects ordered by priority**
+- **All open defects ordered by priority** (sort the records yourself; nothing in Cloud ALM sorts
+  these, and analytics ignores `$orderby`)
 
   ```json
-  calm_analytics({ "provider": "Defects", "filter": "status eq 'CIPDFCTOPEN'", "orderby": "priority desc" })
+  calm_list({ "resource": "tasks", "project_id": "<uuid>", "task_type": "CALMDEF",
+              "status": "CIPDFCTOPEN", "fields": "displayId,title,priority,assigneeName" })
   ```
 
 - **Assigned features for defect `Y`** (two steps)

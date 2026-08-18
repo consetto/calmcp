@@ -100,8 +100,9 @@ export const TASK_PRIORITIES: CodeEntry[] = [
 
 /**
  * Analytics providers — the entity sets exposed by the Analytics OData service. Each is queried
- * via `calm_analytics provider:<name>` and supports `$filter`/`$orderby`, making this the right
- * tool for sorted/aggregated questions (e.g. "open defects ordered by priority").
+ * via `calm_analytics provider:<name>`. Each supports `$filter` and aggregates server-side, making
+ * this the right tool for tenant-wide totals and breakdowns. It does not sort: the service accepts
+ * `$orderby` and ignores it.
  */
 export const ANALYTICS_PROVIDERS: string[] = [
   'Requirements',
@@ -215,7 +216,7 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
         'back, so filtering on the wrong one yields the total task count looking like an answer.',
       "Confirm before trusting any filtered count: group_by:'typeID' uses no filter and so " +
         'cannot be dropped. It returns the real per-type counts and the values in use.',
-      'Rows are not records. The service returns one row per combination of a record\'s ' +
+      "Rows are not records. The service returns one row per combination of a record's " +
         'dimension values (one observed task produced 192), so counting rows, or reading ' +
         '$count without a $select, overstates the number badly. calmcp counts distinct ' +
         '`taskGUID` and reads the `counter` measure instead.',
@@ -350,7 +351,7 @@ export const RECIPES: Recipe[] = [
       'It uses no filter, so nothing can be silently dropped, and one call returns every task ' +
         'type with its count. Read the CALMUS row: that is the answer.',
       'The counts are entity counts. Do not compute them yourself from analytics rows: the ' +
-        'service emits one row per combination of a record\'s dimension values, so a single task ' +
+        "service emits one row per combination of a record's dimension values, so a single task " +
         'with several tags and workstreams can produce a hundred rows or more.',
       'Analytics providers span the whole tenant, so no project_id is needed. calm_list ' +
         "resource:'tasks' cannot answer this at all, because it requires one.",
@@ -396,8 +397,16 @@ export const RECIPES: Recipe[] = [
   {
     question: 'Show me all open defects ordered by priority',
     steps: [
-      "calm_analytics({ provider: 'Defects', filter: \"status eq 'CIPDFCTOPEN'\", orderby: 'priority desc' })",
-      "Alternative (unsorted): calm_list({ resource: 'tasks', project_id: '<uuid>', task_type: 'CALMDEF', status: 'CIPDFCTOPEN' })",
+      "calm_list({ resource: 'tasks', project_id: '<uuid>', task_type: 'CALMDEF', status: " +
+        "'CIPDFCTOPEN', fields: 'displayId,title,priority,assigneeName,dueDate' })",
+      'Then sort the returned records by priority yourself. Nothing in Cloud ALM sorts these for ' +
+        'you: the Tasks REST endpoint has no sort parameter, and calm_analytics accepts $orderby ' +
+        'but ignores it, returning unsorted rows with a 200. Never present analytics output as ' +
+        'sorted.',
+      'Priority codes rank 10 Very High, 20 High, 30 Medium, 40 Low, so ascending code order is ' +
+        'descending urgency.',
+      "For how many rather than which: calm_analytics({ provider: 'Defects', group_by: " +
+        "'priority' }) counts open defects per priority tenant-wide.",
     ],
   },
   {

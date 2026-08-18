@@ -58,7 +58,9 @@ function describeProvider(name: string) {
   return {
     provider: name,
     tool: 'calm_analytics',
-    supportsOrderby: true,
+    // Verified on a tenant: the service accepts $orderby, ignores it, and returns 200 even for a
+    // field that does not exist. Sorting must happen in the caller.
+    supportsOrderby: false,
     scope: 'tenant-wide; no project_id needed',
     freshness: 'daily snapshot, so counts may differ from a live calm_list read',
     countExample: `calm_analytics({ provider: '${name}', count_only: true })`,

@@ -65,8 +65,9 @@ export function registerTools(server: McpServer, clients: CalmClients, logger: L
       title: 'Query SAP Cloud ALM analytics',
       description:
         'Query an SAP Cloud ALM analytics provider (Defects, Tasks, Tests, Features, Projects, ' +
-        'Metrics, ...). Supports $filter and $orderby — use this for sorted/aggregated questions ' +
-        'such as "open defects ordered by priority". Every provider spans the whole tenant, so ' +
+        'Metrics, ...). Supports $filter, and aggregates: it is the tool for tenant-wide totals ' +
+        'and breakdowns. It does NOT sort — $orderby is ignored, so sort the records yourself. ' +
+        'Every provider spans the whole tenant, so ' +
         'this is how you count without naming a project: count_only=true for a total, ' +
         'group_by="status" for a breakdown. Tasks covers user stories, defects and requirements, ' +
         'filtered by the type TEXT, e.g. filter="type eq \'User Story\'".',

@@ -1,6 +1,7 @@
-// `calm_analytics` — query an Analytics provider (entity set) with OData options. Because the
-// Analytics service supports $orderby and $filter, this is the right tool for sorted/aggregated
-// questions such as "open defects ordered by priority".
+// `calm_analytics` — query an Analytics provider (entity set) with OData options. The service
+// supports $filter and aggregates server-side, which makes this the tool for tenant-wide totals
+// and breakdowns. It does NOT sort: $orderby is accepted and ignored (verified on a tenant), so it
+// is not advertised on this tool and its output must never be presented as sorted.
 //
 // It is also the only tenant-wide counting path: `calm_list resource:'tasks'` requires a
 // project_id, while every analytics provider spans the tenant. Pass `count_only` for a total or
@@ -28,6 +29,7 @@ export interface CalmAnalyticsArgs {
   provider: string;
   filter?: string;
   select?: string;
+  /** Accepted for compatibility and forwarded, but the Analytics service ignores it. */
   orderby?: string;
   top?: number;
   skip?: number;

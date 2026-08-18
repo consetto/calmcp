@@ -352,6 +352,18 @@ describe('handleCalmResources', () => {
     expect(recipes.countingHint).toContain('count_only');
   });
 
+  it('does not advertise sorting for analytics, which the service ignores', () => {
+    const provider = parse(handleCalmResources({ topic: 'Tasks' })) as { supportsOrderby: boolean };
+    expect(provider.supportsOrderby).toBe(false);
+    // The recipe must not tell a caller to sort through analytics.
+    const recipes = parse(handleCalmResources({ topic: 'recipes' })) as {
+      recipes: { question: string; steps: string[] }[];
+    };
+    const sorted = recipes.recipes.find((r) => /ordered by priority/i.test(r.question));
+    expect(sorted?.steps.join(' ')).toContain('calm_list');
+    expect(sorted?.steps.join(' ')).toContain('ignores it');
+  });
+
   it('describes an analytics provider with its filterable dimensions and measures', () => {
     const provider = parse(handleCalmResources({ topic: 'Tasks' })) as {
       filterable: string[];

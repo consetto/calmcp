@@ -11,13 +11,12 @@ function toEnumValues(values: string[]): [string, ...string[]] {
 }
 
 // Shared OData system query options, reused by `calm_list` (OData resources) and `calm_analytics`.
+// `orderby` is deliberately NOT in here: the Analytics service ignores it silently (verified on a
+// tenant), so advertising it there would promise sorting that never happens. It is added to
+// `calmListShape` alone.
 const odataOptions = {
   filter: z.string().optional().describe('OData $filter, e.g. "status eq \'CIPDFCTOPEN\'"'),
   select: z.string().optional().describe('OData $select — comma-separated field list'),
-  orderby: z
-    .string()
-    .optional()
-    .describe('OData $orderby, e.g. "priority desc" (OData resources / analytics only)'),
   top: z.number().int().positive().optional().describe('OData $top — maximum number of records'),
   skip: z.number().int().nonnegative().optional().describe('OData $skip — records to skip'),
 };
@@ -63,6 +62,13 @@ export const calmListShape = {
     .describe('Which collection to list (see calm_resources for the catalog and required params)'),
   ...odataOptions,
   ...countingOptions,
+  orderby: z
+    .string()
+    .optional()
+    .describe(
+      'OData $orderby, e.g. "priority desc". OData resources only; REST resources and ' +
+        'calm_analytics ignore it',
+    ),
   expand: z.string().optional().describe('OData $expand — comma-separated navigation properties'),
   project_id: z.string().optional().describe('Project id (required for tasks/deliverables/etc.)'),
   program_id: z.string().optional().describe('Program id (required for program_teams)'),
@@ -145,8 +151,9 @@ export const calmAnalyticsShape = {
   provider: z
     .enum(toEnumValues(ANALYTICS_PROVIDERS))
     .describe(
-      'Analytics provider (e.g. Defects, Tasks, Tests). Supports $orderby. Every provider spans ' +
-        'the whole tenant, so this is the only way to count without naming a project',
+      'Analytics provider (e.g. Defects, Tasks, Tests). Every provider spans the whole tenant, ' +
+        'so this is the only way to count without naming a project. It aggregates but does not ' +
+        'sort: the service ignores $orderby, so never present its output as sorted',
     ),
   ...odataOptions,
   ...countingOptions,
