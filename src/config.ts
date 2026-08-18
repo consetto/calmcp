@@ -9,6 +9,15 @@ import { ConfigError } from './errors.js';
 /** Sandbox API base URL for SAP Cloud ALM (SAP Business Accelerator Hub). */
 const SANDBOX_BASE_URL = 'https://sandbox.api.sap.com/SAPCALM';
 
+/**
+ * Default cap on a serialized tool result, in bytes.
+ *
+ * An unprojected list of a few hundred tasks runs to ~260 KB (see `tools/shape.ts`), which several
+ * agent hosts silently cut mid-JSON. 100 KB leaves ample room for a legitimately large list while
+ * staying well inside the limits those hosts impose.
+ */
+const DEFAULT_MAX_RESPONSE_BYTES = 100_000;
+
 /** Regions accepted for productive (OAuth2) tenants. */
 const VALID_REGIONS = [
   'eu10',
@@ -71,6 +80,12 @@ export interface ConfigValues {
   tokenRefreshBufferSeconds: number;
   /** Name of the bound BTP Destination pointing at the Cloud ALM API (optional, BTP only). */
   destinationName?: string;
+  /**
+   * Maximum size of a serialized tool result in bytes. Beyond this calmcp returns an explicit
+   * summary instead of the payload, rather than letting the AI client truncate the JSON itself.
+   * Defaults to {@link DEFAULT_MAX_RESPONSE_BYTES} when omitted.
+   */
+  maxResponseBytes?: number;
 }
 
 /**
@@ -90,6 +105,7 @@ export class Config {
   readonly timeoutSeconds: number;
   readonly tokenRefreshBufferSeconds: number;
   readonly destinationName?: string;
+  readonly maxResponseBytes: number;
 
   constructor(values: ConfigValues) {
     this.sandbox = values.sandbox;
@@ -102,6 +118,7 @@ export class Config {
     this.timeoutSeconds = values.timeoutSeconds;
     this.tokenRefreshBufferSeconds = values.tokenRefreshBufferSeconds;
     this.destinationName = values.destinationName;
+    this.maxResponseBytes = values.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
   }
 
   /**
@@ -124,6 +141,7 @@ export class Config {
       timeoutSeconds: parseNumber(env.CALM_TIMEOUT_SECONDS, 30),
       tokenRefreshBufferSeconds: parseNumber(env.CALM_TOKEN_REFRESH_BUFFER_SECONDS, 5),
       destinationName: env.CALM_DESTINATION_NAME?.trim() || undefined,
+      maxResponseBytes: parseNumber(env.CALM_MAX_RESPONSE_BYTES, DEFAULT_MAX_RESPONSE_BYTES),
     };
 
     const config = new Config(values);

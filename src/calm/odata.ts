@@ -24,13 +24,44 @@ export interface ODataQueryOptions {
 /**
  * OData v4 collection-response envelope.
  *
+ * Cloud ALM emits the OData 4.01 minimal-metadata annotations (`@count`, `@nextLink`), not the
+ * `@odata.`-prefixed forms: `@odata.count` appears in none of the OpenAPI specs under `YAML/`.
+ * Both spellings are declared so the type also fits a gateway that uses the full metadata form,
+ * and `@count` is typed `number | string` because the specs declare it `anyOf: [number, string]`.
+ * Read it through {@link readODataCount} rather than reaching for a key directly.
+ *
  * @typeParam T - The entity type contained in `value`.
  */
 export interface ODataCollection<T> {
   '@odata.context'?: string;
-  '@odata.count'?: number;
+  '@context'?: string;
+  '@odata.count'?: number | string;
+  '@count'?: number | string;
   '@odata.nextLink'?: string;
+  '@nextLink'?: string;
   value: T[];
+}
+
+/**
+ * Read the total-match count from an OData collection envelope.
+ *
+ * Only meaningful when the request asked for it with `$count=true`.
+ *
+ * @param data - A parsed response body.
+ * @returns The count, or `undefined` when the envelope carries none or it is not numeric.
+ */
+export function readODataCount(data: unknown): number | undefined {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
+  const envelope = data as Record<string, unknown>;
+  for (const key of ['@count', '@odata.count']) {
+    const raw = envelope[key];
+    if (raw === undefined || raw === null) continue;
+    // `Number('')` is 0, which would report an empty annotation as a real count of zero.
+    if (typeof raw === 'string' && raw.trim() === '') continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) return value;
+  }
+  return undefined;
 }
 
 /**

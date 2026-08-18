@@ -71,7 +71,31 @@ curl -s -X POST "$ROUTE/mcp" \
 Note that `GET /mcp` answers `405`: the transport runs in stateless mode, which the MCP specification
 allows. That is not a fault, and the connector needs only the single `POST` operation.
 
+## After a calmcp upgrade: refresh the tool list
+
+The connector carries no tool definitions: it is a single `POST /mcp` operation marked
+`x-ms-agentic-protocol`, and Copilot Studio discovers the tools over MCP at design time. So the
+connector never needs re-importing, and the connection and its key are unaffected by a redeploy.
+
+Copilot Studio does cache that discovery, including each tool's input schema. An upgrade that adds
+a tool **or a parameter** therefore stays invisible until the tool list is refreshed: remove the
+MCP server from the agent's Tools and add it again (some versions offer a Refresh action on the
+tool instead). Topics, instructions and other tools are unaffected.
+
+Purely behavioural changes need none of this. The response-size cap and the recipes returned by
+`calm_resources`, for instance, take effect as soon as the new build is running.
+
+Verify what the agent can currently see with the `tools/list` call below, and compare the parameter
+names against the release you deployed.
+
 ## Troubleshooting
+
+**The agent says the response was truncated, or it counted records by listing them.** That is the
+symptom of a query that returned every matching record. Instruct the agent to use `count_only: true`
+for a total and `group_by: "<field>"` for a breakdown, and to pass `fields` whenever it does need
+the records. If the agent has no such parameters, its cached tool list predates them; refresh it as
+described above. calmcp itself will no longer hand over an oversized payload: past
+`CALM_MAX_RESPONSE_BYTES` it returns a summary telling the agent how to narrow the query.
 
 **Copilot Studio shows "No tools found" while the connection is green.** Power Platform does not call
 the server when a connection is saved, so green only means a value was stored. Run the `tools/list`

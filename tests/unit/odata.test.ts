@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildODataQueryString, buildQueryString } from '../../src/calm/odata.js';
+import { buildODataQueryString, buildQueryString, readODataCount } from '../../src/calm/odata.js';
 
 describe('buildODataQueryString', () => {
   it('returns empty string for no options', () => {
@@ -35,6 +35,10 @@ describe('buildODataQueryString', () => {
     expect(buildODataQueryString({ search: 'defect' })).toBe('?$search=defect');
   });
 
+  it('emits $top=0, which is how a count-only request avoids transferring records', () => {
+    expect(buildODataQueryString({ top: 0, count: true })).toBe('?$top=0&$count=true');
+  });
+
   it('combines multiple options in order', () => {
     const result = buildODataQueryString({
       filter: "projectId eq 'abc'",
@@ -66,5 +70,35 @@ describe('buildQueryString (REST)', () => {
 
   it('returns empty string when nothing is set', () => {
     expect(buildQueryString({ a: undefined })).toBe('');
+  });
+});
+
+describe('readODataCount', () => {
+  it('reads the @count annotation Cloud ALM actually emits', () => {
+    expect(readODataCount({ '@count': 935, value: [] })).toBe(935);
+  });
+
+  it('coerces a string annotation, which the specs allow', () => {
+    expect(readODataCount({ '@count': '935', value: [] })).toBe(935);
+  });
+
+  it('also reads the @odata.count spelling', () => {
+    expect(readODataCount({ '@odata.count': 12, value: [] })).toBe(12);
+  });
+
+  it('prefers @count when a gateway emits both', () => {
+    expect(readODataCount({ '@count': 1, '@odata.count': 2, value: [] })).toBe(1);
+  });
+
+  it('returns undefined when there is no count to read', () => {
+    expect(readODataCount({ value: [] })).toBeUndefined();
+    expect(readODataCount([])).toBeUndefined();
+    expect(readODataCount(null)).toBeUndefined();
+    expect(readODataCount('935')).toBeUndefined();
+    expect(readODataCount({ '@count': 'abc' })).toBeUndefined();
+  });
+
+  it('does not read an empty annotation as a count of zero', () => {
+    expect(readODataCount({ '@count': '' })).toBeUndefined();
   });
 });

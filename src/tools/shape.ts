@@ -8,6 +8,9 @@
 //   - `projectFields` — narrow each record to an explicit field list.
 //   - `pickTimebox`   — select the records belonging to one timebox.
 //
+// `locateRecords` and `collectFieldNames` are the shared primitives underneath, reused by the
+// response-size guard in `result.ts` and by the group-by tally in `aggregate.ts`.
+//
 // Both are deliberately strict: an unknown field name or an unknown timebox is reported as an
 // error rather than silently yielding empty objects or an empty list. Silent filter drops are the
 // worst failure mode for an LLM caller, because the answer looks authoritative and is wrong.
@@ -54,7 +57,7 @@ export function parseFields(fields: string): string[] {
  * @param data - The parsed response body.
  * @returns The records plus a function rebuilding the original shape around new records.
  */
-function locateRecords(data: unknown): {
+export function locateRecords(data: unknown): {
   records: Record_[];
   rebuild: (records: Record_[]) => unknown;
 } | null {
@@ -72,6 +75,24 @@ function locateRecords(data: unknown): {
     return { records: [data], rebuild: (records) => records[0] ?? {} };
   }
   return null;
+}
+
+/**
+ * Collect every key present on at least one record.
+ *
+ * Cloud ALM omits rather than nulls some attributes, so the union across records is the only
+ * reliable field list. Used both to validate a projection and to tell a caller which field names
+ * they could have asked for.
+ *
+ * @param records - The records to inspect.
+ * @returns The field names, sorted.
+ */
+export function collectFieldNames(records: Record_[]): string[] {
+  const available = new Set<string>();
+  for (const record of records) {
+    for (const key of Object.keys(record)) available.add(key);
+  }
+  return [...available].sort();
 }
 
 /**
@@ -96,15 +117,12 @@ export function projectFields(data: unknown, fields: string): unknown {
   // Nothing came back — there are no keys to validate against, so return the empty shape as is.
   if (records.length === 0) return data;
 
-  const available = new Set<string>();
-  for (const record of records) {
-    for (const key of Object.keys(record)) available.add(key);
-  }
-  const unknown = names.filter((name) => !available.has(name));
+  const available = collectFieldNames(records);
+  const unknown = names.filter((name) => !available.includes(name));
   if (unknown.length > 0) {
     throw new ShapeError(
       `Unknown field(s) in 'fields': ${unknown.join(', ')}. ` +
-        `Available fields: ${[...available].sort().join(', ')}`,
+        `Available fields: ${available.join(', ')}`,
     );
   }
 

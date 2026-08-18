@@ -8,6 +8,7 @@ import { handleCalmAnalytics } from '../../src/tools/calmAnalytics.js';
 import { handleCalmGet } from '../../src/tools/calmGet.js';
 import { handleCalmList } from '../../src/tools/calmList.js';
 import { handleCalmResources } from '../../src/tools/calmResources.js';
+import { responseBudget } from '../../src/tools/result.js';
 
 const ORIGIN = 'https://acme.eu10.alm.cloud.sap';
 
@@ -330,7 +331,53 @@ describe('handleCalmResources', () => {
   });
 
   it('focuses on a single resource when given its name', () => {
-    const result = parse(handleCalmResources({ topic: 'tasks' })) as { required: string[] };
+    const result = parse(handleCalmResources({ topic: 'tasks' })) as {
+      required: string[];
+      countMethod: string;
+    };
     expect(result.required).toContain('project_id');
+    expect(result.countMethod).toContain('pages');
+  });
+
+  it('steers counting questions away from listing', () => {
+    const catalog = parse(handleCalmResources({})) as { countingHint: string };
+    expect(catalog.countingHint).toContain('count_only');
+    expect(catalog.countingHint).toContain('group_by');
+
+    const recipes = parse(handleCalmResources({ topic: 'recipes' })) as {
+      recipes: { question: string }[];
+      countingHint: string;
+    };
+    expect(recipes.recipes.some((r) => /how many/i.test(r.question))).toBe(true);
+    expect(recipes.countingHint).toContain('count_only');
+  });
+
+  it('describes an analytics provider with its filterable dimensions and measures', () => {
+    const provider = parse(handleCalmResources({ topic: 'Tasks' })) as {
+      filterable: string[];
+      measures: string[];
+      notes: string[];
+      countExample: string;
+    };
+    // `type` is filterable and `typeID` is not; getting this backwards returns unfiltered rows.
+    expect(provider.filterable).toContain('type');
+    expect(provider.filterable).not.toContain('typeID');
+    expect(provider.measures).toContain('counter');
+    expect(provider.notes.join(' ')).toContain('typeID');
+    expect(provider.countExample).toContain('count_only');
+  });
+
+  it('admits when a provider has no transcribed field list rather than inventing one', () => {
+    const provider = parse(handleCalmResources({ topic: 'Jobs' })) as {
+      fieldsUnknown?: string;
+      filterable?: string[];
+    };
+    expect(provider.filterable).toBeUndefined();
+    expect(provider.fieldsUnknown).toContain('group_by');
+  });
+
+  it('keeps the full catalog inside the response budget', () => {
+    const text = handleCalmResources({}).content[0]?.text ?? '';
+    expect(Buffer.byteLength(text, 'utf8')).toBeLessThan(responseBudget());
   });
 });

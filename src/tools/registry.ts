@@ -14,6 +14,15 @@ export interface ListParams {
   orderby?: string;
   top?: number;
   skip?: number;
+  /** `$count` — return the total alongside the records (OData resources only). */
+  count?: boolean;
+  // Counting options applied by calmcp itself; see `tools/counting.ts`.
+  /** Return only the total, no records. Works for REST resources too, by paging. */
+  count_only?: boolean;
+  /** Comma-separated field name(s) to break the count down by. Implies counting. */
+  group_by?: string;
+  /** Maximum groups returned by `group_by`. */
+  group_limit?: number;
   // Contextual parameters (apply to specific resources; validated via `required`).
   project_id?: string;
   program_id?: string;

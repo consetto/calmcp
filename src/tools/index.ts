@@ -39,7 +39,9 @@ export function registerTools(server: McpServer, clients: CalmClients, logger: L
         'cases, hierarchy nodes, cross-library objects, landscape objects, status events, code ' +
         'lists). Choose a "resource"; OData resources accept $filter/$select/$expand/$orderby/' +
         '$top/$skip, REST resources accept contextual params. Defects: resource="tasks", ' +
-        'task_type="CALMDEF". See calm_resources for the full catalog.',
+        'task_type="CALMDEF". To answer "how many?" pass count_only=true, or group_by="status" ' +
+        'for a breakdown — never list records to count them, as a few hundred tasks overflow most ' +
+        'clients. See calm_resources for the full catalog.',
       inputSchema: calmListShape,
     },
     traced('calm_list', (args: CalmListArgs) => handleCalmList(clients, args)),
@@ -64,7 +66,10 @@ export function registerTools(server: McpServer, clients: CalmClients, logger: L
       description:
         'Query an SAP Cloud ALM analytics provider (Defects, Tasks, Tests, Features, Projects, ' +
         'Metrics, ...). Supports $filter and $orderby — use this for sorted/aggregated questions ' +
-        'such as "open defects ordered by priority".',
+        'such as "open defects ordered by priority". Every provider spans the whole tenant, so ' +
+        'this is how you count without naming a project: count_only=true for a total, ' +
+        'group_by="status" for a breakdown. Tasks covers user stories, defects and requirements, ' +
+        'filtered by the type TEXT, e.g. filter="type eq \'User Story\'".',
       inputSchema: calmAnalyticsShape,
     },
     traced('calm_analytics', (args: CalmAnalyticsArgs) => handleCalmAnalytics(clients, args)),

@@ -8,6 +8,7 @@ import { createAuthProvider } from './auth/index.js';
 import { CalmClients } from './calm/index.js';
 import type { Config } from './config.js';
 import { registerTools } from './tools/index.js';
+import { configureResults } from './tools/result.js';
 
 /** Server name advertised to MCP clients. */
 const SERVER_NAME = 'calmcp';
@@ -19,7 +20,11 @@ const INSTRUCTIONS =
   'Read-only access to SAP Cloud ALM (tasks/defects, projects, features, documents, test ' +
   'management, process hierarchy, analytics, status events, landscape, cross-library). Start with ' +
   'calm_resources to discover resources, providers and worked recipes. Use calm_list/calm_get for ' +
-  'entities and calm_analytics for sorted/aggregated queries (e.g. open defects ordered by priority).';
+  'entities and calm_analytics for sorted/aggregated queries (e.g. open defects ordered by ' +
+  'priority). Never answer "how many ...?" by listing records and counting them: pass ' +
+  'count_only:true for a total, or group_by:"<field>" for a breakdown. Both return a few hundred ' +
+  'bytes instead of hundreds of KB. calm_analytics counts tenant-wide, calm_list counts live ' +
+  'within a project.';
 
 /**
  * Create the shared Cloud ALM client container for the current configuration.
@@ -29,6 +34,9 @@ const INSTRUCTIONS =
  * @returns A {@link CalmClients} container wired to the selected auth provider.
  */
 export function createClients(config: Config, logger: Logger): CalmClients {
+  // Both transports build their clients here, so this is the one place the response budget is
+  // guaranteed to be applied before any tool can produce a result.
+  configureResults({ maxBytes: config.maxResponseBytes });
   const auth = createAuthProvider(config, logger);
   return new CalmClients(auth, config, logger);
 }

@@ -22,12 +22,47 @@ const odataOptions = {
   skip: z.number().int().nonnegative().optional().describe('OData $skip — records to skip'),
 };
 
+// Counting options, shared by `calm_list` and `calm_analytics`. These change what comes back, so
+// each description says so: a model that cannot tell records from a tally will misread the result.
+const countingOptions = {
+  count_only: z
+    .boolean()
+    .optional()
+    .describe(
+      'Return ONLY the total number of matching records, no records at all. Use this for every ' +
+        '"how many ...?" question — the answer is a few hundred bytes instead of hundreds of KB. ' +
+        'Works for every resource and provider',
+    ),
+  group_by: z
+    .string()
+    .optional()
+    .describe(
+      'Comma-separated field name(s) to break the count down by, e.g. "status" or ' +
+        '"projectName,status". Returns {total, groups:[{value,count}]} instead of records. Also ' +
+        'the quickest way to discover which values a field actually takes',
+    ),
+  group_limit: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Maximum groups returned by group_by (default 50); the rest fold into otherCount'),
+  count: z
+    .boolean()
+    .optional()
+    .describe(
+      'Return the total as "@count" ALONGSIDE the records (OData resources and analytics only). ' +
+        'For a total without the records, use count_only instead',
+    ),
+};
+
 /** Input shape for `calm_list`. */
 export const calmListShape = {
   resource: z
     .enum(toEnumValues(LIST_RESOURCE_NAMES))
     .describe('Which collection to list (see calm_resources for the catalog and required params)'),
   ...odataOptions,
+  ...countingOptions,
   expand: z.string().optional().describe('OData $expand — comma-separated navigation properties'),
   project_id: z.string().optional().describe('Project id (required for tasks/deliverables/etc.)'),
   program_id: z.string().optional().describe('Program id (required for program_teams)'),
@@ -109,8 +144,26 @@ export const calmGetShape = {
 export const calmAnalyticsShape = {
   provider: z
     .enum(toEnumValues(ANALYTICS_PROVIDERS))
-    .describe('Analytics provider (e.g. Defects, Tasks, Tests). Supports $orderby.'),
+    .describe(
+      'Analytics provider (e.g. Defects, Tasks, Tests). Supports $orderby. Every provider spans ' +
+        'the whole tenant, so this is the only way to count without naming a project',
+    ),
   ...odataOptions,
+  ...countingOptions,
+  period: z
+    .string()
+    .optional()
+    .describe(
+      'Analytics time window, sent inside $filter. Format <L|C><n><H|D|W|M|Y>, e.g. "L1D" (last ' +
+        'day) or "C1M" (current month). Counting defaults to "C1D" so each record is counted once',
+    ),
+  resolution: z
+    .string()
+    .optional()
+    .describe(
+      'Analytics bucket size, sent inside $filter: D, W, M or Y. A record appears once per ' +
+        'bucket, so a wide window with a small bucket multiplies the count. Counting defaults to "D"',
+    ),
 };
 
 /** Input shape for `calm_resources`. */

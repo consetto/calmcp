@@ -123,6 +123,163 @@ export const ANALYTICS_PROVIDERS: string[] = [
   'Messages',
 ];
 
+/**
+ * The dimensions and measures of one analytics provider.
+ *
+ * Transcribed from the endpoint descriptions in `YAML/CALM_ANALYTICS_ODATA.yaml`. The split
+ * matters: the spec marks filterable dimensions with `(*)`, and the service **silently ignores**
+ * a `$filter` on anything else rather than rejecting it, so filtering on a non-filterable field
+ * returns unfiltered rows that look like a valid answer.
+ */
+export interface ProviderFields {
+  /** Dimensions usable in `$filter`. */
+  filterable: string[];
+  /** Dimensions returned but not usable in `$filter`. */
+  dimensions: string[];
+  /** Measures, pre-aggregated per bucket by the service. */
+  measures: string[];
+  /** Provider-specific traps worth stating before a caller hits them. */
+  notes?: string[];
+}
+
+/**
+ * Field catalogues for the analytics providers behind the common questions.
+ *
+ * Deliberately partial. A provider absent from this map has not been transcribed from the spec,
+ * and `calm_resources` says so rather than inventing field names; `group_by` is the reliable way
+ * to discover what an untranscribed provider actually returns.
+ */
+export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
+  Tasks: {
+    filterable: [
+      'project',
+      'scope',
+      'requirementId',
+      'requirementGUID',
+      'parentTask',
+      'parentTaskId',
+      'status',
+      'phase',
+      'role',
+      'type',
+      'priority',
+      'processor',
+      'overDue',
+      'team',
+      'period',
+      'resolution',
+      'timeZone',
+      'firstWeekDay',
+      'timestampFormat',
+    ],
+    dimensions: [
+      'projectName',
+      'scopeName',
+      'requirement',
+      'name',
+      'statusText',
+      'typeID',
+      'taskGUID',
+      'taskId',
+      'dueDate',
+      'timeboxName',
+      'release',
+      'process',
+      'workstream',
+      'tag',
+      'timestamp',
+      'date',
+      'week',
+      'dayOfWeek',
+    ],
+    measures: ['counter', 'storyPoint', 'storyPointAvg', 'effort', 'effortAvg'],
+    notes: [
+      'Filter on `type`, the task type TEXT (e.g. "User Story", "Defect"), not on `typeID` ' +
+        '(CALMUS, CALMDEF): typeID is returned but is not filterable.',
+      'The texts do not always match the CALMCP task-type labels, so confirm them with ' +
+        "group_by:'type' before filtering on one.",
+      '`timeboxName` is returned but not filterable; group_by it instead, or use calm_list with ' +
+        'timebox_name for a live per-sprint read.',
+    ],
+  },
+  Defects: {
+    filterable: [
+      'project',
+      'scope',
+      'name',
+      'defectStatus',
+      'team',
+      'role',
+      'priority',
+      'testCaseId',
+      'testPlan',
+      'period',
+      'resolution',
+      'timeZone',
+      'firstWeekDay',
+    ],
+    dimensions: [
+      'projectName',
+      'scopeName',
+      'GUID',
+      'defectId',
+      'statusText',
+      'dueDate',
+      'creationDate',
+      'updateDate',
+      'completionDate',
+      'workstream',
+      'testCaseName',
+      'assignee',
+      'timestamp',
+      'date',
+      'week',
+    ],
+    measures: ['counter'],
+    notes: [
+      'The status dimension is `defectStatus` here, not `status` (values CIPDFCTOPEN, ' +
+        'CIPDFCTINP, CIPDFCTBLK, CIPDFCTDONE).',
+    ],
+  },
+  Requirements: {
+    filterable: [
+      'project',
+      'scope',
+      'status',
+      'team',
+      'assignee',
+      'priority',
+      'role',
+      'approval',
+      'period',
+      'resolution',
+      'timeZone',
+      'firstWeekDay',
+    ],
+    dimensions: [
+      'projectName',
+      'scopeName',
+      'name',
+      'GUID',
+      'requirementId',
+      'statusText',
+      'workstream',
+      'process',
+      'release',
+      'tag',
+      'plannedCompDate',
+      'timestamp',
+      'date',
+      'week',
+    ],
+    measures: ['counter'],
+    notes: [
+      'Status values here are the requirement lifecycle codes (CREATED, IN_REALIZATION, ' +
+        'APPROVED_FOR_DEPLOYMENT, CONFIRMED, TO_BE_APPROVED, BLOCKED, NOT_PLANNED).',
+    ],
+  },
+};
+
 /** A worked, multi-step example showing an AI client how to answer a common question. */
 export interface Recipe {
   question: string;
@@ -131,6 +288,47 @@ export interface Recipe {
 
 /** Ready-made recipes surfaced by `calm_resources` so clients know how to chain queries. */
 export const RECIPES: Recipe[] = [
+  {
+    question: 'How many user stories are there in the tenant?',
+    steps: [
+      "calm_analytics({ provider: 'Tasks', filter: \"type eq 'User Story'\", count_only: true })",
+      'Analytics providers span the whole tenant, so no project_id is needed. calm_list resource:' +
+        "'tasks' cannot answer this at all, because it requires one.",
+      "Filter on `type` (the type TEXT), not `typeID`/'CALMUS': typeID is not filterable and the " +
+        'service ignores a filter on it silently, returning every task as if the filter matched.',
+      "Unsure of the exact text? calm_analytics({ provider: 'Tasks', group_by: 'type' }) lists " +
+        'every value with its count, which doubles as the value list.',
+      'Never list the records and count them: a few hundred tasks are hundreds of KB and your ' +
+        'client will truncate the response.',
+      'The number is a daily snapshot. For a live count of one project use calm_list({ resource:' +
+        " 'tasks', project_id: '<uuid>', task_type: 'CALMUS', count_only: true }).",
+    ],
+  },
+  {
+    question: 'How many open defects are there per project?',
+    steps: [
+      "calm_analytics({ provider: 'Defects', filter: \"defectStatus eq 'CIPDFCTOPEN'\", " +
+        "group_by: 'projectName' })",
+      'Returns { total, groups: [{ value, count }, ...] }: a few hundred bytes rather than a few ' +
+        'hundred KB.',
+      "Swap group_by for 'priority', 'team', 'statusText' or 'assignee' to break the same set " +
+        'down another way, or pass several: group_by: "projectName,priority".',
+      'On the Defects provider the status dimension is `defectStatus`, not `status`. Call ' +
+        "calm_resources({ topic: 'Defects' }) for the full field list.",
+    ],
+  },
+  {
+    question: 'How many user stories are open in project X, by sprint?',
+    steps: [
+      "calm_list({ resource: 'tasks', project_id: '<uuid>', task_type: 'CALMUS', status: " +
+        "'CIPUSOPEN', group_by: 'timeboxId' })",
+      'The Tasks REST API has no count of any kind, so calmcp pages through and returns only the ' +
+        'tally. This is a live read, unlike the analytics snapshot.',
+      'Drop group_by and pass count_only: true for the plain total.',
+      "Resolve timebox ids to names with calm_list({ resource: 'project_timeboxes', project_id: " +
+        "'<uuid>' }), which is a short list.",
+    ],
+  },
   {
     question: 'Show me all open defects ordered by priority',
     steps: [

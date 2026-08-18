@@ -16,12 +16,24 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
 
 | Tool | Purpose |
 | --- | --- |
-| `calm_list` | List/query any collection — tasks (incl. **requirements**, **user stories** and **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource. |
+| `calm_list` | List/query any collection — tasks (incl. **requirements**, **user stories** and **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource; `count_only`/`group_by` return a live count instead of the records. |
 | `calm_get` | Fetch a single entity by id (a feature also by display id, e.g. `6-123`). |
-| `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Supports `$orderby` — use it for sorted/aggregated questions. |
-| `calm_resources` | Discovery: the catalog of resources/providers, the task type/status/priority code lists, and worked recipes. |
+| `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Supports `$orderby` — use it for sorted/aggregated questions. Providers span the whole tenant, so `count_only`/`group_by` here answer "how many across all projects". |
+| `calm_resources` | Discovery: the catalog of resources/providers, per-provider analytics dimensions and measures, the task type/status/priority code lists, and worked recipes. |
 
 ### Worked examples
+
+- **How many user stories are there in the tenant?**
+
+  ```json
+  calm_analytics({ "provider": "Tasks", "filter": "type eq 'User Story'", "count_only": true })
+  ```
+
+- **Open defects per project**
+
+  ```json
+  calm_analytics({ "provider": "Defects", "filter": "defectStatus eq 'CIPDFCTOPEN'", "group_by": "projectName" })
+  ```
 
 - **All open defects ordered by priority**
 
@@ -57,6 +69,35 @@ agent hosts such as Microsoft Copilot Studio. `calm_list` adds two options, both
 after fetching: `fields` projects the records, and `timebox_id`/`timebox_name` selects one sprint
 (paging through the project so the filter is complete). Unknown field names and unknown timebox
 names are rejected rather than silently ignored.
+
+calmcp also caps the response itself. A payload over `CALM_MAX_RESPONSE_BYTES` (default 100 KB) is
+withheld and replaced by a summary naming how many records matched, which fields they carry, and
+how to ask again. Handing the payload over instead means the client truncates the JSON mid-record
+and the model answers from a fragment, which reads as authoritative and is wrong.
+
+### Counting and breakdowns
+
+Never answer "how many?" by listing records and counting them. Both query tools take:
+
+| Option | Effect |
+| --- | --- |
+| `count_only: true` | Returns only the total. One `$count` request on OData and analytics; on REST resources calmcp pages and keeps just the tally. |
+| `group_by: "status"` | Returns `{ total, groups: [{ value, count }] }` instead of records. Accepts several fields (`"projectName,priority"`). Doubles as a way to discover the values a field actually takes. |
+| `group_limit` | Caps the number of groups (default 50); the tail folds into `otherCount` rather than being dropped. |
+| `count: true` | Returns the total *alongside* the records (OData and analytics only). |
+
+Which tool you call decides where the number comes from:
+
+- **`calm_analytics`** counts tenant-wide, with no `project_id`. It reads a daily snapshot, so the
+  result carries a note saying so, and the `period`/`resolution` window is pinned and echoed back
+  in the response. That matters because an analytics row is a data point, not an entity: a wide
+  window with a small bucket counts each record once per bucket.
+- **`calm_list`** counts live, within whatever the resource is scoped to (`resource: "tasks"` needs
+  a `project_id`).
+
+Every counting result reports `method`, the effective `filter`, and `complete`. A walk stopped by
+the 20 000-record page cap comes back with `complete: false` and says the real total is higher,
+rather than presenting a floor as the answer.
 
 ### Covered services
 
