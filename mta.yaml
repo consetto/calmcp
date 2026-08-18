@@ -27,10 +27,25 @@ modules:
       commands:
         - npm ci
         - npm run build
+      # The MTA builder honours this list only; `.cfignore` applies to `cf push`, not to MTA
+      # packaging. Anything missing here is uploaded to Cloud Foundry on every deploy. Note
+      # mta_archives/ in particular: leaving it out makes each release embed every earlier one,
+      # so the archive roughly doubles each time.
       ignore:
         - node_modules/
         - YAML/
         - tests/
+        - mta_archives/
+        - marketing/
+        - coverage/
+        - .git/
+        - .github/
+        - docs/
+        - scripts/
+        - copilot-studio/
+        - "*.mcpb"
+        - "*.log"
+        - .env
     properties:
       # The MCP server reads/writes nothing to Cloud ALM; it authenticates via the bound destination.
       CALM_DESTINATION_NAME: SAP_CALM
