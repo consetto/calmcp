@@ -1,6 +1,9 @@
 # Provided OpenAPI specs are reference-only, not part of the shipped package.
 YAML/
 
+# Blog posts, release announcements and other marketing drafts.
+marketing/
+
 # Node
 node_modules/
 dist/
