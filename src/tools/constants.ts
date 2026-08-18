@@ -132,6 +132,18 @@ export const ANALYTICS_PROVIDERS: string[] = [
  * returns unfiltered rows that look like a valid answer.
  */
 export interface ProviderFields {
+  /**
+   * The field identifying one entity. An analytics row is not an entity: the service emits one row
+   * per combination of a record's dimension values, so a single task with several tags and
+   * workstreams produces many rows (192, in one observed case). Counting rows therefore massively
+   * overstates the entity count, and only a distinct count over this field is meaningful.
+   */
+  identity?: string;
+  /**
+   * The measure holding the entity count. Selecting it together with dimensions makes the service
+   * aggregate server-side and return one pre-counted row per group.
+   */
+  countMeasure?: string;
   /** Dimensions usable in `$filter`. */
   filterable: string[];
   /** Dimensions returned but not usable in `$filter`. */
@@ -151,6 +163,8 @@ export interface ProviderFields {
  */
 export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
   Tasks: {
+    identity: 'taskGUID',
+    countMeasure: 'counter',
     filterable: [
       'project',
       'scope',
@@ -201,11 +215,17 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
         'back, so filtering on the wrong one yields the total task count looking like an answer.',
       "Confirm before trusting any filtered count: group_by:'typeID' uses no filter and so " +
         'cannot be dropped. It returns the real per-type counts and the values in use.',
+      'Rows are not records. The service returns one row per combination of a record\'s ' +
+        'dimension values (one observed task produced 192), so counting rows, or reading ' +
+        '$count without a $select, overstates the number badly. calmcp counts distinct ' +
+        '`taskGUID` and reads the `counter` measure instead.',
       '`status` is honoured. `timeboxName` is not: group_by it instead, or use calm_list with ' +
         'timebox_name for a live per-sprint read.',
     ],
   },
   Defects: {
+    identity: 'GUID',
+    countMeasure: 'counter',
     filterable: [
       'project',
       'scope',
@@ -244,7 +264,39 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
         'CIPDFCTINP, CIPDFCTBLK, CIPDFCTDONE).',
     ],
   },
+  Features: {
+    identity: 'featureId',
+    countMeasure: 'counter',
+    filterable: [
+      'projectId',
+      'scopeId',
+      'requirementId',
+      'featureId',
+      'status',
+      'priority',
+      'responsible',
+      'release',
+      'period',
+      'resolution',
+      'timeZone',
+      'firstWeekDay',
+    ],
+    dimensions: [
+      'projectName',
+      'scopeName',
+      'requirementName',
+      'featureName',
+      'statusText',
+      'workstream',
+      'timestamp',
+      'date',
+      'week',
+    ],
+    measures: ['counter'],
+  },
   Requirements: {
+    identity: 'GUID',
+    countMeasure: 'counter',
     filterable: [
       'project',
       'scope',
@@ -297,6 +349,9 @@ export const RECIPES: Recipe[] = [
       "Start here: calm_analytics({ provider: 'Tasks', group_by: 'typeID' })",
       'It uses no filter, so nothing can be silently dropped, and one call returns every task ' +
         'type with its count. Read the CALMUS row: that is the answer.',
+      'The counts are entity counts. Do not compute them yourself from analytics rows: the ' +
+        'service emits one row per combination of a record\'s dimension values, so a single task ' +
+        'with several tags and workstreams can produce a hundred rows or more.',
       'Analytics providers span the whole tenant, so no project_id is needed. calm_list ' +
         "resource:'tasks' cannot answer this at all, because it requires one.",
       "For a filtered count instead: calm_analytics({ provider: 'Tasks', filter: \"typeID eq " +

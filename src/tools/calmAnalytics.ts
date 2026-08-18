@@ -14,14 +14,14 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { CalmClients } from '../calm/index.js';
 import { errorMessage } from '../errors.js';
 import { COUNT_PERIOD, COUNT_RESOLUTION, mergeAnalyticsFilter } from './analyticsFilter.js';
-import { countOData } from './counting.js';
+import { ANALYTICS_PROVIDER_FIELDS } from './constants.js';
+import { countAnalytics } from './counting.js';
 import { errorResult, jsonResult } from './result.js';
 import { ShapeError } from './shape.js';
 
 /** Caveat attached to every analytics count, so a snapshot is never quoted as a live number. */
 const SNAPSHOT_NOTE =
-  'Analytics is a daily snapshot counted over a single time bucket, so it may differ from a live ' +
-  'read of the same records.';
+  'Analytics is a daily snapshot, so it may differ from a live read of the same records.';
 
 /** Arguments accepted by the `calm_analytics` tool. */
 export interface CalmAnalyticsArgs {
@@ -70,11 +70,11 @@ export async function handleCalmAnalytics(
           })
         : undefined;
 
-      const result = await countOData(
+      const result = await countAnalytics(
         clients,
-        'analytics',
         args.provider,
-        { filter },
+        filter,
+        ANALYTICS_PROVIDER_FIELDS[args.provider],
         {
           subject: { provider: args.provider },
           groupBy: args.group_by,

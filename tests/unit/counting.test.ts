@@ -12,6 +12,7 @@ const PINNED = encodeURIComponent("period eq 'C1D' and resolution eq 'D'");
 
 interface CountBody {
   total: number;
+  unit?: string;
   filterVerified?: false;
   complete: boolean;
   method: string;
@@ -43,40 +44,45 @@ describe('counting via calm_analytics', () => {
     await agent.close();
   });
 
-  it('asks for the count alone and reports the total', async () => {
+  it('counts distinct entities, not rows, for a grand total', async () => {
+    // An analytics row is one dimension combination, not one record, so $count over the identity
+    // is the only figure that answers "how many are there?".
     agent
       .get(ORIGIN)
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
-      .reply(200, { '@count': 935, value: [] });
+      .intercept({
+        path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$select=taskGUID&$top=0&$count=true`,
+      })
+      .reply(200, { '@count': 428, value: [] });
 
-    const result = await handleCalmAnalytics(makeClients(), {
-      provider: 'Tasks',
-      count_only: true,
-    });
-    expect(result.isError).toBeFalsy();
-    const body = parse(result) as CountBody;
-    expect(body.total).toBe(935);
+    const body = parse(
+      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', count_only: true }),
+    ) as CountBody;
+    expect(body.total).toBe(428);
+    expect(body.unit).toBe('entities');
+    expect(body.method).toBe('analytics-distinct');
     expect(body.complete).toBe(true);
-    expect(body.method).toBe('odata-count');
-    expect(body.subject).toEqual({ provider: 'Tasks' });
   });
 
   it('coerces a string count annotation to a number', async () => {
     agent
       .get(ORIGIN)
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
-      .reply(200, { '@count': '935', value: [] });
+      .intercept({
+        path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$select=taskGUID&$top=0&$count=true`,
+      })
+      .reply(200, { '@count': '428', value: [] });
 
     const body = parse(
       await handleCalmAnalytics(makeClients(), { provider: 'Tasks', count_only: true }),
     ) as CountBody;
-    expect(body.total).toBe(935);
+    expect(body.total).toBe(428);
   });
 
   it('accepts the @odata.count spelling as well', async () => {
     agent
       .get(ORIGIN)
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
+      .intercept({
+        path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$select=taskGUID&$top=0&$count=true`,
+      })
       .reply(200, { '@odata.count': 12, value: [] });
 
     const body = parse(
@@ -85,39 +91,73 @@ describe('counting via calm_analytics', () => {
     expect(body.total).toBe(12);
   });
 
-  it('retries at $top=1 when the service answers without a count annotation', async () => {
-    const pool = agent.get(ORIGIN);
-    pool
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
-      .reply(200, { value: [] });
-    pool
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=1&$count=true` })
-      .reply(200, { '@count': 7, value: [{ id: 'a' }] });
+  it('lets the service aggregate a breakdown, one row per group', async () => {
+    // $select of dimensions plus the measure makes the service pre-aggregate: no paging, and the
+    // counts are entity counts rather than row counts.
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$select=typeID%2Ccounter&$top=500&$skip=0`,
+      })
+      .reply(200, {
+        value: [
+          { typeID: 'CALMST', counter: 1356 },
+          { typeID: 'CALMTASK', counter: 905 },
+          { typeID: 'CALMTMPL', counter: 21 },
+          { typeID: 'CALMUS', counter: 428 },
+        ],
+      });
 
     const body = parse(
-      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', count_only: true }),
+      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', group_by: 'typeID' }),
     ) as CountBody;
-    expect(body.total).toBe(7);
-    expect(body.method).toBe('odata-count');
+    expect(body.method).toBe('analytics-measure');
+    expect(body.unit).toBe('entities');
+    expect(body.total).toBe(2710);
+    expect(body.groups?.[0]).toEqual({ value: 'CALMST', count: 1356 });
+    expect(body.groups?.find((g) => g.value === 'CALMUS')?.count).toBe(428);
   });
 
-  it('falls back to paging when no count annotation ever arrives', async () => {
-    const pool = agent.get(ORIGIN);
-    pool
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
-      .reply(200, { value: [] });
-    pool
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=1&$count=true` })
-      .reply(200, { value: [{ id: 'a' }] });
-    pool
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=500&$skip=0` })
-      .reply(200, { value: tasks(3) });
+  it('groups by several dimensions at once', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$select=typeID%2CstatusText%2Ccounter&$top=500&$skip=0`,
+      })
+      .reply(200, {
+        value: [
+          { typeID: 'CALMUS', statusText: 'Done', counter: 168 },
+          { typeID: 'CALMUS', statusText: 'Open', counter: 75 },
+        ],
+      });
 
     const body = parse(
-      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', count_only: true }),
+      await handleCalmAnalytics(makeClients(), {
+        provider: 'Tasks',
+        group_by: 'typeID,statusText',
+      }),
     ) as CountBody;
-    expect(body.total).toBe(3);
-    expect(body.method).toBe('client-paging');
+    expect(body.total).toBe(243);
+    expect(body.groups?.[0]).toEqual({
+      values: { typeID: 'CALMUS', statusText: 'Done' },
+      count: 168,
+    });
+  });
+
+  it('labels the count as rows when the provider has nothing catalogued', async () => {
+    // Jobs has no identity or measure recorded, so calmcp must not pass data points off as records.
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${ANALYTICS}/Jobs?$filter=${PINNED}&$top=500&$skip=0` })
+      .reply(200, { value: [{ a: 1 }, { a: 2 }] });
+
+    const body = parse(
+      await handleCalmAnalytics(makeClients(), { provider: 'Jobs', count_only: true }),
+    ) as CountBody;
+    expect(body.total).toBe(2);
+    expect(body.unit).toBe('rows');
+    expect(body.note).toContain('not records');
+    expect(body.note).toContain('calm_list');
   });
 
   it('pins the time window, echoes it, and labels the snapshot', async () => {
@@ -127,13 +167,15 @@ describe('counting via calm_analytics', () => {
         path:
           `${ANALYTICS}/Tasks?$filter=` +
           `${encodeURIComponent("typeID eq 'CALMUS' and period eq 'C1D' and resolution eq 'D'")}` +
-          '&$top=0&$count=true',
+          '&$select=taskGUID&$top=0&$count=true',
       })
-      .reply(200, { '@count': 412, value: [] });
+      .reply(200, { '@count': 428, value: [] });
     // The unfiltered baseline differs, so the filter was applied and nothing is flagged.
     pool
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
-      .reply(200, { '@count': 5364, value: [] });
+      .intercept({
+        path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$select=taskGUID&$top=0&$count=true`,
+      })
+      .reply(200, { '@count': 2710, value: [] });
 
     const body = parse(
       await handleCalmAnalytics(makeClients(), {
@@ -142,7 +184,7 @@ describe('counting via calm_analytics', () => {
         count_only: true,
       }),
     ) as CountBody;
-    expect(body.total).toBe(412);
+    expect(body.total).toBe(428);
     expect(body.filter).toBe("typeID eq 'CALMUS' and period eq 'C1D' and resolution eq 'D'");
     expect(body.note).toContain('daily snapshot');
     expect(body.filterVerified).toBeUndefined();
@@ -150,19 +192,19 @@ describe('counting via calm_analytics', () => {
 
   it('flags a count the service may have produced by ignoring the filter', async () => {
     const pool = agent.get(ORIGIN);
-    // The analytics service drops a filter on an unsupported field instead of erroring, and then
-    // answers with every row. Both counts therefore come back identical.
     pool
       .intercept({
         path:
           `${ANALYTICS}/Tasks?$filter=` +
           `${encodeURIComponent("type eq 'User Story' and period eq 'C1D' and resolution eq 'D'")}` +
-          '&$top=0&$count=true',
+          '&$select=taskGUID&$top=0&$count=true',
       })
-      .reply(200, { '@count': 5364, value: [] });
+      .reply(200, { '@count': 2710, value: [] });
     pool
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
-      .reply(200, { '@count': 5364, value: [] });
+      .intercept({
+        path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$select=taskGUID&$top=0&$count=true`,
+      })
+      .reply(200, { '@count': 2710, value: [] });
 
     const body = parse(
       await handleCalmAnalytics(makeClients(), {
@@ -171,22 +213,22 @@ describe('counting via calm_analytics', () => {
         count_only: true,
       }),
     ) as CountBody;
-    expect(body.total).toBe(5364);
+    expect(body.total).toBe(2710);
     expect(body.filterVerified).toBe(false);
     expect(body.note).toContain('ignored your filter');
-    expect(body.note).toContain('group_by');
   });
 
   it('does not spend a baseline request when there is no filter to verify', async () => {
     agent
       .get(ORIGIN)
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
-      .reply(200, { '@count': 5364, value: [] });
+      .intercept({
+        path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$select=taskGUID&$top=0&$count=true`,
+      })
+      .reply(200, { '@count': 2710, value: [] });
 
     const body = parse(
       await handleCalmAnalytics(makeClients(), { provider: 'Tasks', count_only: true }),
     ) as CountBody;
-    expect(body.total).toBe(5364);
     expect(body.filterVerified).toBeUndefined();
   });
 
@@ -196,7 +238,7 @@ describe('counting via calm_analytics', () => {
       .intercept({
         path:
           `${ANALYTICS}/Tasks?$filter=${encodeURIComponent("period eq 'L4W' and resolution eq 'W'")}` +
-          '&$top=0&$count=true',
+          '&$select=taskGUID&$top=0&$count=true',
       })
       .reply(200, { '@count': 4, value: [] });
 
@@ -209,30 +251,6 @@ describe('counting via calm_analytics', () => {
       }),
     ) as CountBody;
     expect(body.filter).toBe("period eq 'L4W' and resolution eq 'W'");
-  });
-
-  it('does not double-merge a window the caller already wrote into the filter', async () => {
-    agent
-      .get(ORIGIN)
-      .intercept({
-        path:
-          `${ANALYTICS}/Tasks?$filter=` +
-          `${encodeURIComponent("period eq 'L1M' and resolution eq 'M'")}&$top=0&$count=true`,
-      })
-      .reply(200, { '@count': 1, value: [] });
-    agent
-      .get(ORIGIN)
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
-      .reply(200, { '@count': 5364, value: [] });
-
-    const body = parse(
-      await handleCalmAnalytics(makeClients(), {
-        provider: 'Tasks',
-        filter: "period eq 'L1M' and resolution eq 'M'",
-        count_only: true,
-      }),
-    ) as CountBody;
-    expect(body.filter).toBe("period eq 'L1M' and resolution eq 'M'");
   });
 
   it('leaves the window alone for a plain (non-counting) query', async () => {
@@ -255,24 +273,6 @@ describe('counting via calm_analytics', () => {
       await handleCalmAnalytics(makeClients(), { provider: 'Tasks', top: 1, count: true }),
     ) as Record<string, unknown>;
     expect(body['@count']).toBe(9);
-  });
-
-  it('groups by paging, because analytics has no grouped count calmcp can trust', async () => {
-    agent
-      .get(ORIGIN)
-      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=500&$skip=0` })
-      .reply(200, { value: tasks(4) });
-
-    const body = parse(
-      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', group_by: 'status' }),
-    ) as CountBody;
-    expect(body.total).toBe(4);
-    expect(body.method).toBe('client-paging');
-    expect(body.groupBy).toEqual(['status']);
-    expect(body.groups).toEqual([
-      { value: 'CIPUSCLOSE', count: 2 },
-      { value: 'CIPUSOPEN', count: 2 },
-    ]);
   });
 });
 

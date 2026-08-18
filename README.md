@@ -89,9 +89,12 @@ Never answer "how many?" by listing records and counting them. Both query tools 
 Which tool you call decides where the number comes from:
 
 - **`calm_analytics`** counts tenant-wide, with no `project_id`. It reads a daily snapshot, so the
-  result carries a note saying so, and the `period`/`resolution` window is pinned and echoed back
-  in the response. That matters because an analytics row is a data point, not an entity: a wide
-  window with a small bucket counts each record once per bucket.
+  result says so. An analytics row is a data point rather than a record: the service emits one row
+  per combination of a record's dimension values, so one task with several tags and workstreams can
+  produce a hundred rows. Counting rows would overstate the answer badly, so calmcp instead selects
+  the provider's count measure and lets the service aggregate, or counts distinct record ids for a
+  grand total. Results carry `unit: "entities"`. A provider whose identity and measure calmcp does
+  not know is counted by rows and labelled `unit: "rows"` with a warning.
 - **`calm_list`** counts live, within whatever the resource is scoped to (`resource: "tasks"` needs
   a `project_id`).
 
