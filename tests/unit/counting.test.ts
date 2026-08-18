@@ -12,6 +12,7 @@ const PINNED = encodeURIComponent("period eq 'C1D' and resolution eq 'D'");
 
 interface CountBody {
   total: number;
+  filterVerified?: false;
   complete: boolean;
   method: string;
   filter?: string;
@@ -120,15 +121,48 @@ describe('counting via calm_analytics', () => {
   });
 
   it('pins the time window, echoes it, and labels the snapshot', async () => {
-    agent
-      .get(ORIGIN)
+    const pool = agent.get(ORIGIN);
+    pool
+      .intercept({
+        path:
+          `${ANALYTICS}/Tasks?$filter=` +
+          `${encodeURIComponent("typeID eq 'CALMUS' and period eq 'C1D' and resolution eq 'D'")}` +
+          '&$top=0&$count=true',
+      })
+      .reply(200, { '@count': 412, value: [] });
+    // The unfiltered baseline differs, so the filter was applied and nothing is flagged.
+    pool
+      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
+      .reply(200, { '@count': 5364, value: [] });
+
+    const body = parse(
+      await handleCalmAnalytics(makeClients(), {
+        provider: 'Tasks',
+        filter: "typeID eq 'CALMUS'",
+        count_only: true,
+      }),
+    ) as CountBody;
+    expect(body.total).toBe(412);
+    expect(body.filter).toBe("typeID eq 'CALMUS' and period eq 'C1D' and resolution eq 'D'");
+    expect(body.note).toContain('daily snapshot');
+    expect(body.filterVerified).toBeUndefined();
+  });
+
+  it('flags a count the service may have produced by ignoring the filter', async () => {
+    const pool = agent.get(ORIGIN);
+    // The analytics service drops a filter on an unsupported field instead of erroring, and then
+    // answers with every row. Both counts therefore come back identical.
+    pool
       .intercept({
         path:
           `${ANALYTICS}/Tasks?$filter=` +
           `${encodeURIComponent("type eq 'User Story' and period eq 'C1D' and resolution eq 'D'")}` +
           '&$top=0&$count=true',
       })
-      .reply(200, { '@count': 412, value: [] });
+      .reply(200, { '@count': 5364, value: [] });
+    pool
+      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
+      .reply(200, { '@count': 5364, value: [] });
 
     const body = parse(
       await handleCalmAnalytics(makeClients(), {
@@ -137,9 +171,23 @@ describe('counting via calm_analytics', () => {
         count_only: true,
       }),
     ) as CountBody;
-    expect(body.total).toBe(412);
-    expect(body.filter).toBe("type eq 'User Story' and period eq 'C1D' and resolution eq 'D'");
-    expect(body.note).toContain('daily snapshot');
+    expect(body.total).toBe(5364);
+    expect(body.filterVerified).toBe(false);
+    expect(body.note).toContain('ignored your filter');
+    expect(body.note).toContain('group_by');
+  });
+
+  it('does not spend a baseline request when there is no filter to verify', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
+      .reply(200, { '@count': 5364, value: [] });
+
+    const body = parse(
+      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', count_only: true }),
+    ) as CountBody;
+    expect(body.total).toBe(5364);
+    expect(body.filterVerified).toBeUndefined();
   });
 
   it('lets a caller-supplied window win over the counting default', async () => {
@@ -172,6 +220,10 @@ describe('counting via calm_analytics', () => {
           `${encodeURIComponent("period eq 'L1M' and resolution eq 'M'")}&$top=0&$count=true`,
       })
       .reply(200, { '@count': 1, value: [] });
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${ANALYTICS}/Tasks?$filter=${PINNED}&$top=0&$count=true` })
+      .reply(200, { '@count': 5364, value: [] });
 
     const body = parse(
       await handleCalmAnalytics(makeClients(), {

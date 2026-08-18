@@ -162,6 +162,8 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
       'phase',
       'role',
       'type',
+      // Not marked filterable by the spec, but honoured by the service; see `notes`.
+      'typeID',
       'priority',
       'processor',
       'overDue',
@@ -178,7 +180,6 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
       'requirement',
       'name',
       'statusText',
-      'typeID',
       'taskGUID',
       'taskId',
       'dueDate',
@@ -194,11 +195,13 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
     ],
     measures: ['counter', 'storyPoint', 'storyPointAvg', 'effort', 'effortAvg'],
     notes: [
-      'Filter on `type`, the task type TEXT (e.g. "User Story", "Defect"), not on `typeID` ' +
-        '(CALMUS, CALMDEF): typeID is returned but is not filterable.',
-      'The texts do not always match the CALMCP task-type labels, so confirm them with ' +
-        "group_by:'type' before filtering on one.",
-      '`timeboxName` is returned but not filterable; group_by it instead, or use calm_list with ' +
+      'Filter by `typeID` (CALMUS, CALMDEF, CALMREQU), NOT by `type`. The OpenAPI spec marks ' +
+        '`type` filterable and `typeID` not, but on a real tenant it is `typeID` that is ' +
+        'honoured. A filter the service does not honour is dropped silently and every row comes ' +
+        'back, so filtering on the wrong one yields the total task count looking like an answer.',
+      "Confirm before trusting any filtered count: group_by:'typeID' uses no filter and so " +
+        'cannot be dropped. It returns the real per-type counts and the values in use.',
+      '`status` is honoured. `timeboxName` is not: group_by it instead, or use calm_list with ' +
         'timebox_name for a live per-sprint read.',
     ],
   },
@@ -291,17 +294,21 @@ export const RECIPES: Recipe[] = [
   {
     question: 'How many user stories are there in the tenant?',
     steps: [
-      "calm_analytics({ provider: 'Tasks', filter: \"type eq 'User Story'\", count_only: true })",
-      'Analytics providers span the whole tenant, so no project_id is needed. calm_list resource:' +
-        "'tasks' cannot answer this at all, because it requires one.",
-      "Filter on `type` (the type TEXT), not `typeID`/'CALMUS': typeID is not filterable and the " +
-        'service ignores a filter on it silently, returning every task as if the filter matched.',
-      "Unsure of the exact text? calm_analytics({ provider: 'Tasks', group_by: 'type' }) lists " +
-        'every value with its count, which doubles as the value list.',
+      "Start here: calm_analytics({ provider: 'Tasks', group_by: 'typeID' })",
+      'It uses no filter, so nothing can be silently dropped, and one call returns every task ' +
+        'type with its count. Read the CALMUS row: that is the answer.',
+      'Analytics providers span the whole tenant, so no project_id is needed. calm_list ' +
+        "resource:'tasks' cannot answer this at all, because it requires one.",
+      "For a filtered count instead: calm_analytics({ provider: 'Tasks', filter: \"typeID eq " +
+        "'CALMUS'\", count_only: true }). Filter by typeID, never by type: the service drops a " +
+        'filter it does not honour without erroring and then counts ALL tasks, which looks like a ' +
+        'plausible answer. calmcp flags that when it can detect it, but the group_by above avoids ' +
+        'the trap entirely.',
       'Never list the records and count them: a few hundred tasks are hundreds of KB and your ' +
         'client will truncate the response.',
       'The number is a daily snapshot. For a live count of one project use calm_list({ resource:' +
-        " 'tasks', project_id: '<uuid>', task_type: 'CALMUS', count_only: true }).",
+        " 'tasks', project_id: '<uuid>', task_type: 'CALMUS', count_only: true }), and expect the " +
+        'two to differ.',
     ],
   },
   {
@@ -311,6 +318,8 @@ export const RECIPES: Recipe[] = [
         "group_by: 'projectName' })",
       'Returns { total, groups: [{ value, count }, ...] }: a few hundred bytes rather than a few ' +
         'hundred KB.',
+      'Sanity-check any filtered analytics number against the same call without the filter. If ' +
+        'the two totals match, the service ignored the filter rather than applying it.',
       "Swap group_by for 'priority', 'team', 'statusText' or 'assignee' to break the same set " +
         'down another way, or pass several: group_by: "projectName,priority".',
       'On the Defects provider the status dimension is `defectStatus`, not `status`. Call ' +

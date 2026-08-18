@@ -95,6 +95,13 @@ Which tool you call decides where the number comes from:
 - **`calm_list`** counts live, within whatever the resource is scoped to (`resource: "tasks"` needs
   a `project_id`).
 
+The analytics service drops a `$filter` on a field it does not support instead of rejecting it,
+and then answers with every row, so a wrong field name yields a confident count of the wrong thing.
+A filtered analytics count therefore also counts the same window unfiltered, and sets
+`filterVerified: false` when the two totals match. That detects a dropped filter but cannot prove
+one was applied, so prefer `group_by` on the field you would have filtered: it sends no filter, so
+nothing can be dropped, and it returns every value with its count in one call.
+
 Every counting result reports `method`, the effective `filter`, and `complete`. A walk stopped by
 the 20 000-record page cap comes back with `complete: false` and says the real total is higher,
 rather than presenting a floor as the answer.

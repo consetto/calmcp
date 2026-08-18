@@ -35,6 +35,11 @@ export interface CountResult {
   complete: boolean;
   method: CountMethod;
   pagesFetched?: number;
+  /**
+   * Present and `false` when the count could not be distinguished from an unfiltered one, so the
+   * filter may have been ignored. Absent means no such doubt, not that the filter was verified.
+   */
+  filterVerified?: false;
   groupBy?: string[];
   groups?: Group[];
   groupsOmitted?: number;
@@ -52,6 +57,12 @@ export interface CountRequest {
   groupLimit?: number;
   /** Appended to `note`, e.g. the analytics snapshot caveat. */
   note?: string;
+  /**
+   * A `$filter` selecting everything the caller's filter was narrowing, used to detect a filter
+   * the service dropped. Set it only when the caller actually supplied a filter, and only for a
+   * service known to ignore unsupported filter fields rather than rejecting them.
+   */
+  unfilteredBaseline?: string;
 }
 
 /**
@@ -80,13 +91,16 @@ export async function countOData(
   if (keys.length === 0) {
     const total = await serverSideCount(clients, service, entitySet, query);
     if (total !== undefined) {
+      const warning = await filterWarning(clients, service, entitySet, request, total);
+      const note = [request.note, warning].filter(Boolean).join(' ');
       return {
         subject: request.subject,
         filter: query.filter,
         total,
         complete: true,
         method: 'odata-count',
-        ...(request.note ? { note: request.note } : {}),
+        ...(warning ? { filterVerified: false } : {}),
+        ...(note ? { note } : {}),
       };
     }
     // The service answered without a count annotation. Fall through rather than report nothing.
@@ -199,6 +213,42 @@ async function pagedTally(
     ...(tally.groupsOmitted !== undefined ? { groupsOmitted: tally.groupsOmitted } : {}),
     ...(tally.otherCount !== undefined ? { otherCount: tally.otherCount } : {}),
   };
+}
+
+/**
+ * Detect a `$filter` the service silently ignored.
+ *
+ * The Cloud ALM Analytics service drops a filter on a field it does not support instead of
+ * rejecting the request, and then answers with every row. The count that comes back is a real
+ * number for a query nobody asked, which is the worst possible failure here: it is plausible,
+ * confident and wrong. Counting the same window without the caller's filter costs one cheap
+ * request and catches it.
+ *
+ * Equal totals are suspicious, not proof: a filter matching every record produces the same
+ * equality. The wording says so, and the result is still returned rather than withheld.
+ *
+ * @returns A warning to append to `note`, or `undefined` when there is nothing to flag.
+ */
+async function filterWarning(
+  clients: CalmClients,
+  service: ServiceName,
+  entitySet: string,
+  request: CountRequest,
+  total: number,
+): Promise<string | undefined> {
+  const baseline = request.unfilteredBaseline;
+  if (baseline === undefined) return undefined;
+
+  const unfiltered = await serverSideCount(clients, service, entitySet, { filter: baseline });
+  if (unfiltered === undefined || unfiltered !== total) return undefined;
+
+  return (
+    `This count is identical to the unfiltered count (${unfiltered}), so the service may have ` +
+    'ignored your filter rather than applying it: this service drops a filter on a field it does ' +
+    'not support instead of erroring. Do not report this as a filtered count until you have ' +
+    'checked it. Re-run with group_by on the field you were filtering, which needs no filter and ' +
+    'so cannot be dropped, and read the count off the relevant group.'
+  );
 }
 
 /**

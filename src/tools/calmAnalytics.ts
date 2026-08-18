@@ -61,6 +61,15 @@ export async function handleCalmAnalytics(
     });
 
     if (counting) {
+      // The same window with the caller's dimension filter removed. Comparing against it is how a
+      // filter the service dropped is caught; see `filterWarning` in `counting.ts`.
+      const baseline = args.filter
+        ? mergeAnalyticsFilter(undefined, {
+            period: args.period ?? COUNT_PERIOD,
+            resolution: args.resolution ?? COUNT_RESOLUTION,
+          })
+        : undefined;
+
       const result = await countOData(
         clients,
         'analytics',
@@ -71,6 +80,7 @@ export async function handleCalmAnalytics(
           groupBy: args.group_by,
           groupLimit: args.group_limit,
           note: SNAPSHOT_NOTE,
+          unfilteredBaseline: baseline,
         },
       );
       return jsonResult(result);

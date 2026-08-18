@@ -359,9 +359,10 @@ describe('handleCalmResources', () => {
       notes: string[];
       countExample: string;
     };
-    // `type` is filterable and `typeID` is not; getting this backwards returns unfiltered rows.
-    expect(provider.filterable).toContain('type');
-    expect(provider.filterable).not.toContain('typeID');
+    // `typeID` is what the service actually honours, whatever the spec marks; getting this
+    // backwards returns unfiltered rows that look like a filtered answer.
+    expect(provider.filterable).toContain('typeID');
+    expect(provider.notes.join(' ')).toContain('NOT by `type`');
     expect(provider.measures).toContain('counter');
     expect(provider.notes.join(' ')).toContain('typeID');
     expect(provider.countExample).toContain('count_only');
