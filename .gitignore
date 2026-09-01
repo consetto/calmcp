@@ -22,6 +22,8 @@ Makefile.mta
 .env
 *.local
 *.local.md
+# MCP client config: the endpoint URL carries the customer's subaccount and org name.
+.mcp.json
 
 # Logs
 *.log
