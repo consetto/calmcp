@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  asRecords,
   parseFields,
   pickTimebox,
   projectFields,
@@ -11,13 +10,6 @@ import {
 describe('parseFields', () => {
   it('trims names and drops empty entries', () => {
     expect(parseFields(' displayId , title ,, ')).toEqual(['displayId', 'title']);
-  });
-});
-
-describe('asRecords', () => {
-  it('keeps object entries and ignores everything else', () => {
-    expect(asRecords([{ a: 1 }, 'x', null, [1]])).toEqual([{ a: 1 }]);
-    expect(asRecords({ value: [] })).toEqual([]);
   });
 });
 

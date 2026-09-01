@@ -27,16 +27,6 @@ function isRecord(value: unknown): value is Record_ {
 }
 
 /**
- * Narrow an arbitrary response body to the object records it contains.
- *
- * @param data - The parsed response body (expected to be an array for REST list endpoints).
- * @returns The records, or an empty array when the body is not a list of objects.
- */
-export function asRecords(data: unknown): Record_[] {
-  return Array.isArray(data) ? data.filter(isRecord) : [];
-}
-
-/**
  * Split a comma-separated field list into trimmed, non-empty names.
  *
  * @param fields - The raw `fields` argument.

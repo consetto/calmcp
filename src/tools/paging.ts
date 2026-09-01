@@ -14,7 +14,7 @@
 
 import type { CalmClients } from '../calm/index.js';
 import type { ODataListResource, RestListResource } from './registry.js';
-import { asRecords, locateRecords, type Record_ } from './shape.js';
+import { locateRecords, type Record_ } from './shape.js';
 
 /** Upstream page size used whenever calmcp pages a collection itself. */
 export const PAGE_SIZE = 500;
@@ -83,7 +83,11 @@ export async function fetchAllRest(
     }
     previousQuery = query;
 
-    const rows = asRecords(await clients.getRest(def.service, path, query));
+    // Some REST endpoints answer with a bare array, others (process authoring/management) wrap
+    // the records in an OData-style `{ value: [...] }` envelope. Both shapes must page, or a
+    // count silently walks zero records and reports a total of 0.
+    const body = await clients.getRest(def.service, path, query);
+    const rows = locateRecords(body)?.records ?? [];
     collect(rows, all, options.onPage);
     if (rows.length < PAGE_SIZE) return { records: all, complete: true, pages: page + 1 };
   }

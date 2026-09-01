@@ -6,6 +6,7 @@ import { makeClients, ORIGIN, parse } from './helpers.js';
 
 const ANALYTICS = '/api/calm-analytics/v1/odata/v4/analytics';
 const TASKS = '/api/calm-tasks/v1/tasks';
+const SOLUTION_PROCESSES = '/api/calm-processauthoring/v1/solutionProcesses';
 
 /** The `$filter` calmcp pins onto an analytics count, percent-encoded as it goes on the wire. */
 const PINNED = encodeURIComponent("period eq 'C1D' and resolution eq 'D'");
@@ -348,6 +349,40 @@ describe('counting via calm_list', () => {
     expect(body.total).toBe(20000);
     expect(body.complete).toBe(false);
     expect(body.note).toContain('higher');
+  });
+
+  it('counts a REST resource that wraps its records in an OData envelope', async () => {
+    // Process authoring/management answer `{ value: [...] }` rather than a bare array. Reading
+    // only the array shape walked zero records and reported a total of 0 for a full collection.
+    agent
+      .get(ORIGIN)
+      .intercept({ path: SOLUTION_PROCESSES })
+      .reply(200, { value: tasks(7) });
+
+    const body = parse(
+      await handleCalmList(makeClients(), { resource: 'solution_processes', count_only: true }),
+    ) as CountBody;
+    expect(body.total).toBe(7);
+    expect(body.complete).toBe(true);
+  });
+
+  it('tallies a whole envelope from a resource that ignores limit/offset', async () => {
+    // These endpoints take `$top`/`$skip`, not `limit`/`offset`, so page 1 would repeat page 0.
+    // The walk stops on the identical query, and the total must still cover every record fetched.
+    agent
+      .get(ORIGIN)
+      .intercept({ path: SOLUTION_PROCESSES })
+      .reply(200, { value: tasks(884) });
+
+    const body = parse(
+      await handleCalmList(makeClients(), {
+        resource: 'solution_processes',
+        group_by: 'status',
+      }),
+    ) as CountBody;
+    expect(body.total).toBe(884);
+    expect(body.complete).toBe(true);
+    expect((body.groups ?? []).reduce((sum, g) => sum + g.count, 0)).toBe(884);
   });
 
   it('counts an OData resource with a single server-side request', async () => {
