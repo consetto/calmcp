@@ -356,7 +356,7 @@ describe('counting via calm_list', () => {
     // only the array shape walked zero records and reported a total of 0 for a full collection.
     agent
       .get(ORIGIN)
-      .intercept({ path: SOLUTION_PROCESSES })
+      .intercept({ path: `${SOLUTION_PROCESSES}?$top=500&$skip=0` })
       .reply(200, { value: tasks(7) });
 
     const body = parse(
@@ -366,22 +366,39 @@ describe('counting via calm_list', () => {
     expect(body.complete).toBe(true);
   });
 
-  it('tallies a whole envelope from a resource that ignores limit/offset', async () => {
-    // These endpoints take `$top`/`$skip`, not `limit`/`offset`, so page 1 would repeat page 0.
-    // The walk stops on the identical query, and the total must still cover every record fetched.
-    agent
-      .get(ORIGIN)
-      .intercept({ path: SOLUTION_PROCESSES })
-      .reply(200, { value: tasks(884) });
+  it('pages a process service with $top/$skip, not limit/offset', async () => {
+    // These services read the OData system options. Driving them with limit/offset left every page
+    // on one URL, so the walk stopped after the first response and reported the service's default
+    // page size (100) as a complete total.
+    const pool = agent.get(ORIGIN);
+    pool
+      .intercept({ path: `${SOLUTION_PROCESSES}?$top=500&$skip=0` })
+      .reply(200, { value: tasks(500) });
+    pool
+      .intercept({ path: `${SOLUTION_PROCESSES}?$top=500&$skip=500` })
+      .reply(200, { value: tasks(384, 500) });
 
     const body = parse(
-      await handleCalmList(makeClients(), {
-        resource: 'solution_processes',
-        group_by: 'status',
-      }),
+      await handleCalmList(makeClients(), { resource: 'solution_processes', count_only: true }),
     ) as CountBody;
     expect(body.total).toBe(884);
+    expect(body.pagesFetched).toBe(2);
     expect(body.complete).toBe(true);
+  });
+
+  it('groups a process service across every page', async () => {
+    const pool = agent.get(ORIGIN);
+    pool
+      .intercept({ path: `${SOLUTION_PROCESSES}?$top=500&$skip=0` })
+      .reply(200, { value: tasks(500) });
+    pool
+      .intercept({ path: `${SOLUTION_PROCESSES}?$top=500&$skip=500` })
+      .reply(200, { value: tasks(384, 500) });
+
+    const body = parse(
+      await handleCalmList(makeClients(), { resource: 'solution_processes', group_by: 'status' }),
+    ) as CountBody;
+    expect(body.total).toBe(884);
     expect((body.groups ?? []).reduce((sum, g) => sum + g.count, 0)).toBe(884);
   });
 

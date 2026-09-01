@@ -76,6 +76,23 @@ export type ListResource = ODataListResource | RestListResource;
 
 const enc = encodeURIComponent;
 
+/**
+ * Paging window for the process services, which read the OData system options rather than their own
+ * `limit`/`offset`.
+ *
+ * calmcp pages these collections itself (counting, task windows) by driving `limit`/`offset`. A
+ * build that forwarded only the caller's `$top`/`$skip` pinned every page to one URL, so the walk
+ * stopped after a single request and reported the service's default page size as a complete total.
+ * Letting the pager's window win makes the walk advance; the caller's own values still apply when
+ * nothing is paging.
+ *
+ * @param p - The caller's parameters, with any pager window already merged in.
+ * @returns The `$top`/`$skip` pair to put on the query.
+ */
+function systemPaging(p: ListParams): { $top?: number; $skip?: number } {
+  return { $top: p.limit ?? p.top, $skip: p.offset ?? p.skip };
+}
+
 /** Resources listable via `calm_list`, keyed by the public `resource` value. */
 export const LIST_RESOURCES: Record<string, ListResource> = {
   // --- Features (OData) ---
@@ -265,8 +282,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
       path: '/scopes',
       query: buildQueryString({
         projectId: p.project_id,
-        $top: p.top,
-        $skip: p.skip,
+        ...systemPaging(p),
         $orderby: p.orderby,
       }),
     }),
@@ -278,7 +294,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     description: 'Solution scenario versions available for scoping',
     build: (p) => ({
       path: '/solutionScenarioVersions',
-      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+      query: buildQueryString({ ...systemPaging(p), $orderby: p.orderby }),
     }),
   },
   scope_solution_processes: {
@@ -290,7 +306,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
       "definitions use resource 'solution_processes' instead.",
     build: (p) => ({
       path: '/solutionProcesses',
-      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+      query: buildQueryString({ ...systemPaging(p), $orderby: p.orderby }),
     }),
   },
 
@@ -302,7 +318,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     description: 'Authored business processes',
     build: (p) => ({
       path: '/businessProcesses',
-      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+      query: buildQueryString({ ...systemPaging(p), $orderby: p.orderby }),
     }),
   },
   solution_processes: {
@@ -312,7 +328,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     description: 'Authored solution processes',
     build: (p) => ({
       path: '/solutionProcesses',
-      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+      query: buildQueryString({ ...systemPaging(p), $orderby: p.orderby }),
     }),
   },
   solution_process_flows: {
@@ -322,7 +338,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     description: 'Process flows of authored solution processes',
     build: (p) => ({
       path: '/solutionProcessFlows',
-      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+      query: buildQueryString({ ...systemPaging(p), $orderby: p.orderby }),
     }),
   },
   solution_activities: {
@@ -332,7 +348,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     description: 'Activities within authored solution processes',
     build: (p) => ({
       path: '/solutionActivities',
-      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+      query: buildQueryString({ ...systemPaging(p), $orderby: p.orderby }),
     }),
   },
   process_assets: {
@@ -342,7 +358,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     description: 'Assets (documents, links) attached to authored processes',
     build: (p) => ({
       path: '/assets',
-      query: buildQueryString({ $top: p.top, $skip: p.skip, $orderby: p.orderby }),
+      query: buildQueryString({ ...systemPaging(p), $orderby: p.orderby }),
     }),
   },
 

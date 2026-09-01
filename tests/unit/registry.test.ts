@@ -87,6 +87,17 @@ describe('LIST_RESOURCES', () => {
     expect(query).toContain('lastChangedDate=lt%3A2026-08-14');
   });
 
+  it("lets a pager window win over the caller's $top/$skip on the process services", () => {
+    // calmcp pages with limit/offset; these services only read $top/$skip. Without the mapping the
+    // walk repeated page 0 forever and stopped after one request.
+    const { query } = (
+      LIST_RESOURCES.solution_processes as {
+        build: (p: ListParams) => { path: string; query: string };
+      }
+    ).build({ top: 5, skip: 0, limit: 500, offset: 500 });
+    expect(query).toBe('?$top=500&$skip=500');
+  });
+
   it('keeps the OData system options literal on the process services', () => {
     const { path, query } = (
       LIST_RESOURCES.scopes as { build: (p: ListParams) => { path: string; query: string } }
