@@ -20,6 +20,8 @@ Makefile.mta
 
 # Secrets / local config
 .env
+.env.*
+!.env.example
 *.local
 *.local.md
 # MCP client config: the endpoint URL carries the customer's subaccount and org name.
