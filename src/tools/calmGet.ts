@@ -34,6 +34,13 @@ export async function handleCalmGet(
       `Unknown resource '${args.resource}'. Use calm_resources to list valid ones.`,
     );
   }
+  // The REST endpoints take no $expand. Fetching without it would silently omit what was asked for.
+  if (def.kind === 'rest' && args.expand !== undefined) {
+    return errorResult(
+      `Resource '${args.resource}' is a REST endpoint and does not read expand. Drop it: the ` +
+        'entity comes back with the fields the endpoint always returns.',
+    );
+  }
 
   try {
     if (def.kind === 'rest') {

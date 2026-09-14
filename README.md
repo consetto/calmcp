@@ -72,6 +72,12 @@ after fetching: `fields` projects the records, and `timebox_id`/`timebox_name` s
 (paging through the project so the filter is complete). Unknown field names and unknown timebox
 names are rejected rather than silently ignored.
 
+REST resources have no server-side `$filter`, and each reads only a few parameters. A parameter the
+chosen resource does not read (for example `filter` on a REST resource, or `project_id` on an OData
+one) is rejected with the list of parameters it does read, rather than left off the request: an
+unfiltered answer to a filtered question reads as authoritative and is wrong. `calm_resources`
+reports those `parameters` per resource, derived from how calmcp builds the request.
+
 calmcp also caps the response itself. A payload over `CALM_MAX_RESPONSE_BYTES` (default 100 KB) is
 withheld and replaced by a summary naming how many records matched, which fields they carry, and
 how to ask again. Handing the payload over instead means the client truncates the JSON mid-record

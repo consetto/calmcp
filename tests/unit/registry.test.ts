@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   GET_RESOURCE_NAMES,
   GET_RESOURCES,
+  ignoredParams,
   LIST_RESOURCE_NAMES,
   LIST_RESOURCES,
   type ListParams,
+  type ListResource,
+  type RestListResource,
+  readParams,
 } from '../../src/tools/registry.js';
 
 // Exercises every REST build function so URL composition is validated across the whole registry.
@@ -105,6 +109,61 @@ describe('LIST_RESOURCES', () => {
     expect(path).toBe('/scopes');
     // `$` must not be percent-encoded to `%24` — the gateway expects the literal option name.
     expect(query).toBe('?projectId=p1&$top=5&$skip=10&$orderby=name%20asc');
+  });
+});
+
+describe('readParams', () => {
+  const rest = (name: string) => LIST_RESOURCES[name] as RestListResource;
+
+  it('reports the system options a process service reads, and no filter', () => {
+    const params = readParams(rest('solution_processes'));
+    expect(params).toEqual(expect.arrayContaining(['orderby', 'top', 'skip']));
+    expect(params).not.toContain('filter');
+  });
+
+  it('reports the contextual parameters of the tasks resource', () => {
+    const params = readParams(rest('tasks'));
+    expect(params).toEqual(expect.arrayContaining(['project_id', 'task_type', 'ids', 'limit']));
+    expect(params).not.toContain('orderby');
+  });
+
+  it('reports path parameters too', () => {
+    expect(readParams(rest('project_timeboxes'))).toEqual(['project_id']);
+  });
+
+  it('reports nothing for a resource that takes no parameters', () => {
+    expect(readParams(rest('workstreams'))).toEqual([]);
+  });
+});
+
+describe('ignoredParams', () => {
+  const def = (name: string) => LIST_RESOURCES[name] as ListResource;
+
+  it('flags OData options a REST resource never sends', () => {
+    expect(
+      ignoredParams(def('solution_processes'), { filter: "name eq 'x'", select: 'id', top: 5 }),
+    ).toEqual(['filter', 'select']);
+  });
+
+  it('flags a parameter shadowed by another on the same request', () => {
+    // The process services put `limit` into $top, so a `top` passed next to it never goes out.
+    expect(ignoredParams(def('solution_processes'), { top: 5, limit: 10 })).toEqual(['top']);
+  });
+
+  it('flags contextual parameters of another resource', () => {
+    expect(ignoredParams(def('project_teams'), { project_id: 'p1', status: 'x' })).toEqual([
+      'status',
+    ]);
+  });
+
+  it('flags REST parameters passed to an OData resource', () => {
+    expect(
+      ignoredParams(def('features'), { filter: "status eq 'x'", project_id: 'p1', limit: 5 }),
+    ).toEqual(['project_id', 'limit']);
+  });
+
+  it('accepts a zero value the request still carries', () => {
+    expect(ignoredParams(def('tasks'), { project_id: 'p1', offset: 0 })).toEqual([]);
   });
 });
 

@@ -393,4 +393,91 @@ describe('handleCalmResources', () => {
     const text = handleCalmResources({}).content[0]?.text ?? '';
     expect(Buffer.byteLength(text, 'utf8')).toBeLessThan(responseBudget());
   });
+
+  it('lists the parameters a REST resource reads, so a caller never guesses at a filter', () => {
+    const resource = parse(handleCalmResources({ topic: 'solution_processes' })) as {
+      parameters: string[];
+      supportsFilter: boolean;
+      supportsOrderby: boolean;
+    };
+    expect(resource.parameters).toContain('top');
+    expect(resource.supportsFilter).toBe(false);
+    expect(resource.supportsOrderby).toBe(true);
+
+    const odata = parse(handleCalmResources({ topic: 'features' })) as {
+      parameters: string[];
+      supportsFilter: boolean;
+    };
+    expect(odata.supportsFilter).toBe(true);
+    expect(odata.parameters).not.toContain('project_id');
+  });
+});
+
+describe('parameters a resource does not read', () => {
+  let agent: MockAgent;
+  beforeEach(() => {
+    agent = new MockAgent();
+    agent.disableNetConnect();
+    setGlobalDispatcher(agent);
+  });
+  afterEach(async () => {
+    await agent.close();
+  });
+
+  it('rejects a filter on a REST resource and names what it reads', async () => {
+    const result = await handleCalmList(makeClients(), {
+      resource: 'solution_processes',
+      filter: "startswith(name,'X')",
+    });
+    expect(result.isError).toBe(true);
+    const text = result.content[0]?.text ?? '';
+    expect(text).toContain('does not read: filter');
+    expect(text).toContain('orderby');
+  });
+
+  it('rejects before counting, so a count is never taken over the unfiltered set', async () => {
+    const result = await handleCalmList(makeClients(), {
+      resource: 'solution_processes',
+      filter: "status eq 'ACTIVE'",
+      count_only: true,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('filter');
+  });
+
+  it('rejects a REST parameter on an OData resource', async () => {
+    const result = await handleCalmList(makeClients(), {
+      resource: 'features',
+      project_id: 'p1',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('project_id');
+  });
+
+  it('still forwards the system options a process service reads', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: '/api/calm-processauthoring/v1/solutionProcesses?$top=5&$orderby=name%20asc',
+      })
+      .reply(200, { value: [{ id: 'a' }] });
+
+    const result = await handleCalmList(makeClients(), {
+      resource: 'solution_processes',
+      top: 5,
+      orderby: 'name asc',
+    });
+    expect(result.isError).toBeUndefined();
+    expect(parse(result)).toEqual({ value: [{ id: 'a' }] });
+  });
+
+  it('rejects expand on a REST entity in calm_get', async () => {
+    const result = await handleCalmGet(makeClients(), {
+      resource: 'solution_process',
+      id: 'a',
+      expand: 'activities',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('expand');
+  });
 });

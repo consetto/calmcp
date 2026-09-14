@@ -38,7 +38,9 @@ export function registerTools(server: McpServer, clients: CalmClients, logger: L
         'List or query any SAP Cloud ALM collection (tasks, projects, features, documents, test ' +
         'cases, hierarchy nodes, cross-library objects, landscape objects, status events, code ' +
         'lists). Choose a "resource"; OData resources accept $filter/$select/$expand/$orderby/' +
-        '$top/$skip, REST resources accept contextual params. Defects: resource="tasks", ' +
+        '$top/$skip; REST resources read only the params calm_resources lists for them, and ' +
+        'any other param (including $filter) is rejected rather than ignored. Defects: ' +
+        'resource="tasks", ' +
         'task_type="CALMDEF". To answer "how many?" pass count_only=true, or group_by="status" ' +
         'for a breakdown — never list records to count them, as a few hundred tasks overflow most ' +
         'clients. See calm_resources for the full catalog.',

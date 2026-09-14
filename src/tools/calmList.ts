@@ -16,7 +16,14 @@ import type { CalmClients } from '../calm/index.js';
 import { errorMessage } from '../errors.js';
 import { countOData, countRest } from './counting.js';
 import { fetchAllRest, MAX_PAGES_RETURN, PAGE_SIZE } from './paging.js';
-import { LIST_RESOURCES, type ListParams, type RestListResource } from './registry.js';
+import {
+  ignoredParams,
+  LIST_RESOURCES,
+  type ListParams,
+  type ListResource,
+  type RestListResource,
+  readParams,
+} from './registry.js';
 import { errorResult, jsonResult } from './result.js';
 import {
   pickTimebox,
@@ -122,6 +129,31 @@ function countSubject(args: CalmListArgs): Record<string, string> {
 }
 
 /**
+ * Explain which supplied parameters a resource does not read, and what it reads instead.
+ *
+ * @param resource - The public resource name.
+ * @param def - The resource definition.
+ * @param ignored - The supplied parameters that would not reach the request.
+ * @returns The error message.
+ */
+function unsupportedParamsMessage(resource: string, def: ListResource, ignored: string[]): string {
+  const names = ignored.join(', ');
+  if (def.kind === 'odata') {
+    return (
+      `Resource '${resource}' is an OData entity set and does not read: ${names}. ` +
+      'Express conditions in filter and page with top/skip.'
+    );
+  }
+  const reads = readParams(def);
+  return (
+    `Resource '${resource}' is a REST endpoint and does not read: ${names}. The request would ` +
+    'go out without them and return records they were meant to exclude, so calmcp rejects the ' +
+    `call instead. This resource reads: ${reads.length > 0 ? reads.join(', ') : 'nothing'}. ` +
+    'Shape the response with fields, or count with count_only/group_by.'
+  );
+}
+
+/**
  * Handle a `calm_list` call.
  *
  * @param clients - The Cloud ALM client container.
@@ -145,6 +177,13 @@ export async function handleCalmList(
   const byTimebox = args.timebox_id !== undefined || args.timebox_name !== undefined;
   if (byTimebox && args.resource !== 'tasks') {
     return errorResult("timebox_id/timebox_name apply to resource 'tasks' only.");
+  }
+
+  // A parameter the resource does not read would be dropped on the way out, and the answer would
+  // come back unfiltered while looking filtered. Reject it and name what the resource does read.
+  const ignored = ignoredParams(def, args);
+  if (ignored.length > 0) {
+    return errorResult(unsupportedParamsMessage(args.resource, def, ignored));
   }
 
   const counting = args.count_only === true || args.group_by !== undefined;

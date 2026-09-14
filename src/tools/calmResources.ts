@@ -17,6 +17,8 @@ import {
   LIST_RESOURCE_NAMES,
   LIST_RESOURCES,
   type ListResource,
+  odataParams,
+  readParams,
 } from './registry.js';
 import { jsonResult } from './result.js';
 
@@ -37,12 +39,16 @@ const COUNTING_HINT =
 
 /** Describe one `calm_list` resource for the catalog. */
 function describeListResource(name: string, def: ListResource) {
+  // Everything else is rejected by calm_list, so this is the complete list a caller can narrow by.
+  const parameters = def.kind === 'rest' ? readParams(def) : odataParams();
   return {
     resource: name,
     transport: def.kind,
     service: def.service,
     required: def.kind === 'rest' ? def.required : [],
-    supportsOrderby: def.kind === 'odata',
+    parameters,
+    supportsFilter: parameters.includes('filter'),
+    supportsOrderby: parameters.includes('orderby'),
     // Both forms are exact; only the cost differs, so the caller can judge when to narrow first.
     countMethod:
       def.kind === 'odata'

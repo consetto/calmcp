@@ -62,12 +62,19 @@ export const calmListShape = {
     .describe('Which collection to list (see calm_resources for the catalog and required params)'),
   ...odataOptions,
   ...countingOptions,
+  filter: z
+    .string()
+    .optional()
+    .describe(
+      'OData $filter, e.g. "status eq \'CIPDFCTOPEN\'". OData resources only: REST resources have ' +
+        'no server-side filter and reject it. calm_resources lists the parameters each resource reads',
+    ),
   orderby: z
     .string()
     .optional()
     .describe(
-      'OData $orderby, e.g. "priority desc". OData resources only; REST resources and ' +
-        'calm_analytics ignore it',
+      'OData $orderby, e.g. "priority desc". OData resources, and REST resources whose ' +
+        'calm_resources entry lists orderby; any other resource rejects it',
     ),
   expand: z.string().optional().describe('OData $expand — comma-separated navigation properties'),
   project_id: z.string().optional().describe('Project id (required for tasks/deliverables/etc.)'),
@@ -143,7 +150,10 @@ export const calmGetShape = {
     .enum(toEnumValues(GET_RESOURCE_NAMES))
     .describe('Which single entity to fetch (see calm_resources)'),
   id: z.string().describe('Entity id (uuid, REST id, or feature display id like "6-123")'),
-  expand: z.string().optional().describe('OData $expand for OData entities'),
+  expand: z
+    .string()
+    .optional()
+    .describe('OData $expand for OData entities; REST entities reject it'),
 };
 
 /** Input shape for `calm_analytics`. */
