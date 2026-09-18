@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { ANALYTICS_PROVIDERS, TASK_TYPE_CODES } from './constants.js';
+import { CREATE_RESOURCE_NAMES } from './create.js';
 import { GET_RESOURCE_NAMES, LIST_RESOURCE_NAMES } from './registry.js';
 
 /** Cast a string list to the non-empty tuple shape `z.enum` requires. */
@@ -189,4 +190,23 @@ export const calmResourcesShape = {
     .string()
     .optional()
     .describe('Optional: a resource/provider name, or "recipes" for worked examples'),
+};
+
+/** Input shape for `calm_create` (registered only when write access is enabled). */
+export const calmCreateShape = {
+  resource: z
+    .enum(toEnumValues(CREATE_RESOURCE_NAMES))
+    .describe(
+      'What to create: "document" or a library entry (xlib_application, xlib_configuration, ' +
+        'xlib_configuration_activity, xlib_development, xlib_interface). ' +
+        'calm_resources({ topic: "<resource>" }) lists the fields',
+    ),
+  data: z
+    .record(z.string(), z.unknown())
+    .describe(
+      'The new entity. A document needs title and projectId (uuid), optionally content (HTML). ' +
+        'A library entry needs title. Related links and assignments (toURLReferences, ' +
+        'toLibraryAssignments, ...) can be included and are created in the same call. Unknown ' +
+        'fields are rejected, never dropped',
+    ),
 };

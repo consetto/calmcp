@@ -1,6 +1,7 @@
 // `calm_resources` — discovery tool. Returns the catalog of resources/providers, the static code
-// lists (task types/statuses/priorities), and worked recipes, so an AI client can build correct
-// `calm_list` / `calm_get` / `calm_analytics` calls without guessing. Purely static; no API calls.
+// lists (task types/statuses/priorities), worked recipes, and (when write access is on) the
+// payload fields of every `calm_create` resource, so an AI client can build correct calls without
+// guessing. Purely static; no API calls.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
@@ -12,6 +13,7 @@ import {
   TASK_SUB_STATUSES,
   TASK_TYPES,
 } from './constants.js';
+import { CREATE_RESOURCES, type CreateResource, describeObject } from './create.js';
 import {
   GET_RESOURCES,
   LIST_RESOURCE_NAMES,
@@ -25,6 +27,48 @@ import { jsonResult } from './result.js';
 /** Arguments accepted by the `calm_resources` tool. */
 export interface CalmResourcesArgs {
   topic?: string;
+}
+
+/** Deployment facts the catalog depends on. */
+export interface CalmResourcesOptions {
+  /** Whether `calm_create` is registered (`CALM_WRITE_ENABLED`). */
+  writeEnabled: boolean;
+}
+
+/** What the catalog says about creating when the operator left calmcp read-only. */
+const WRITE_DISABLED_NOTE =
+  'Write access is off: this deployment is read-only and offers no calm_create tool. An operator ' +
+  'can enable create-only access for documents and library entries with CALM_WRITE_ENABLED=true.';
+
+/** Describe one `calm_create` resource with the fields its payload accepts. */
+function describeCreateResource(name: string, def: CreateResource) {
+  return {
+    resource: name,
+    tool: 'calm_create',
+    service: def.service,
+    entitySet: def.entitySet,
+    description: def.description,
+    fields: describeObject(def.schema),
+    example: `calm_create({ resource: '${name}', data: { title: '...'${
+      name === 'document' ? ", projectId: '<project uuid>'" : ''
+    } } })`,
+  };
+}
+
+/** The `createResources` section of the catalog. */
+function createSection(options: CalmResourcesOptions) {
+  if (!options.writeEnabled) {
+    return { enabled: false, note: WRITE_DISABLED_NOTE };
+  }
+  return {
+    enabled: true,
+    note:
+      'calm_create only creates. It never updates or deletes, so check with calm_list first ' +
+      'whether an equivalent entry already exists.',
+    resources: Object.entries(CREATE_RESOURCES).map(([name, def]) =>
+      describeCreateResource(name, def),
+    ),
+  };
 }
 
 /**
@@ -80,7 +124,7 @@ function describeProvider(name: string) {
 }
 
 /** Build the full discovery catalog. */
-function fullCatalog() {
+function fullCatalog(options: CalmResourcesOptions) {
   return {
     listResources: LIST_RESOURCE_NAMES.map((name) =>
       describeListResource(name, LIST_RESOURCES[name] as ListResource),
@@ -91,6 +135,7 @@ function fullCatalog() {
       service: def.service,
       description: def.description,
     })),
+    createResources: createSection(options),
     analyticsProviders: ANALYTICS_PROVIDERS,
     analyticsProviderFields: ANALYTICS_PROVIDER_FIELDS,
     countingHint: COUNTING_HINT,
@@ -112,9 +157,13 @@ function fullCatalog() {
  * Handle a `calm_resources` call.
  *
  * @param args - Validated tool arguments (optional `topic` to narrow the response).
+ * @param options - Deployment facts; defaults to the read-only deployment.
  * @returns The catalog (or a focused subset) as a JSON tool result.
  */
-export function handleCalmResources(args: CalmResourcesArgs): CallToolResult {
+export function handleCalmResources(
+  args: CalmResourcesArgs,
+  options: CalmResourcesOptions = { writeEnabled: false },
+): CallToolResult {
   const topic = args.topic?.trim();
 
   if (topic === 'recipes') {
@@ -126,9 +175,16 @@ export function handleCalmResources(args: CalmResourcesArgs): CallToolResult {
     if (LIST_RESOURCES[topic]) {
       return jsonResult(describeListResource(topic, LIST_RESOURCES[topic] as ListResource));
     }
-    if (GET_RESOURCES[topic]) {
-      const def = GET_RESOURCES[topic];
-      return jsonResult({ resource: topic, ...def, build: undefined });
+    // `document` and the xlib names are both a calm_get and a calm_create resource: describe the
+    // read side as before and add the create payload when the tool is actually offered.
+    const get = GET_RESOURCES[topic];
+    const create = options.writeEnabled ? CREATE_RESOURCES[topic] : undefined;
+    if (get || create) {
+      return jsonResult({
+        resource: topic,
+        ...(get ? { ...get, build: undefined } : {}),
+        ...(create ? { create: describeCreateResource(topic, create) } : {}),
+      });
     }
     if (ANALYTICS_PROVIDERS.includes(topic)) {
       return jsonResult(describeProvider(topic));
@@ -136,5 +192,5 @@ export function handleCalmResources(args: CalmResourcesArgs): CallToolResult {
     // Unknown topic — fall through to the full catalog so the caller can see valid names.
   }
 
-  return jsonResult(fullCatalog());
+  return jsonResult(fullCatalog(options));
 }

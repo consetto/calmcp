@@ -1,7 +1,7 @@
 _schema-version: '3.3'
 ID: calmcp
 version: 0.2.7
-description: Read-only MCP server for SAP Cloud ALM
+description: MCP server for SAP Cloud ALM (read-only by default; CALM_WRITE_ENABLED opts into creating documents and library entries)
 
 parameters:
   enable-parallel-deployments: true
@@ -47,10 +47,14 @@ modules:
         - "*.log"
         - .env
     properties:
-      # The MCP server reads/writes nothing to Cloud ALM; it authenticates via the bound destination.
+      # The MCP server authenticates to Cloud ALM via the bound destination.
       CALM_DESTINATION_NAME: SAP_CALM
       CALM_CORS_ORIGINS: '*'
       CALM_DEBUG: 'false'
+      # Read-only by default. 'true' registers calm_create, which only creates new documents and
+      # library entries (never updates or deletes). Every authenticated caller of this deployment
+      # then gets it, so enable it on a dedicated app rather than a shared viewer instance.
+      CALM_WRITE_ENABLED: 'false'
     requires:
       - name: calmcp-xsuaa
       - name: calmcp-destination

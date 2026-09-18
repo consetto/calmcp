@@ -86,6 +86,11 @@ export interface ConfigValues {
    * Defaults to {@link DEFAULT_MAX_RESPONSE_BYTES} when omitted.
    */
   maxResponseBytes?: number;
+  /**
+   * Enable the create-only write tool (`calm_create`). Off by default: calmcp stays read-only unless
+   * an operator turns this on deliberately via `CALM_WRITE_ENABLED=true`.
+   */
+  writeEnabled?: boolean;
 }
 
 /**
@@ -106,6 +111,7 @@ export class Config {
   readonly tokenRefreshBufferSeconds: number;
   readonly destinationName?: string;
   readonly maxResponseBytes: number;
+  readonly writeEnabled: boolean;
 
   constructor(values: ConfigValues) {
     this.sandbox = values.sandbox;
@@ -119,6 +125,7 @@ export class Config {
     this.tokenRefreshBufferSeconds = values.tokenRefreshBufferSeconds;
     this.destinationName = values.destinationName;
     this.maxResponseBytes = values.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
+    this.writeEnabled = values.writeEnabled ?? false;
   }
 
   /**
@@ -142,6 +149,7 @@ export class Config {
       tokenRefreshBufferSeconds: parseNumber(env.CALM_TOKEN_REFRESH_BUFFER_SECONDS, 5),
       destinationName: env.CALM_DESTINATION_NAME?.trim() || undefined,
       maxResponseBytes: parseNumber(env.CALM_MAX_RESPONSE_BYTES, DEFAULT_MAX_RESPONSE_BYTES),
+      writeEnabled: parseBool(env.CALM_WRITE_ENABLED),
     };
 
     const config = new Config(values);

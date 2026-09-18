@@ -18,9 +18,10 @@ export class StubAuth implements AuthProvider {
 /**
  * Build a client container pointing at {@link ORIGIN}.
  *
+ * @param options - `writeEnabled` turns on the create primitive (default off, like production).
  * @returns The clients under test.
  */
-export function makeClients(): CalmClients {
+export function makeClients(options: { writeEnabled?: boolean } = {}): CalmClients {
   const config = new Config({
     sandbox: false,
     tenant: 'acme',
@@ -30,6 +31,7 @@ export function makeClients(): CalmClients {
     debug: false,
     timeoutSeconds: 30,
     tokenRefreshBufferSeconds: 5,
+    writeEnabled: options.writeEnabled,
   });
   return new CalmClients(new StubAuth(), config, createLogger(false));
 }

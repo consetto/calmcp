@@ -34,6 +34,13 @@ export class ConfigError extends CalmError {
   static invalid(detail: string): ConfigError {
     return new ConfigError(`Invalid configuration: ${detail}`);
   }
+
+  /** A write was attempted while calmcp runs in its default read-only mode. */
+  static writeDisabled(): ConfigError {
+    return new ConfigError(
+      'Write access is disabled: calmcp is read-only unless CALM_WRITE_ENABLED=true is set.',
+    );
+  }
 }
 
 /** Authentication / token acquisition failed. */

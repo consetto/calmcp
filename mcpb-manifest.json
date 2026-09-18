@@ -4,8 +4,8 @@
   "name": "calmcp",
   "display_name": "calmcp - SAP Cloud ALM MCP Server",
   "version": "0.2.7",
-  "description": "Read-only MCP server for SAP Cloud ALM. Query tasks, defects, projects, features, documents, tests, analytics and more from your Cloud ALM tenant.",
-  "long_description": "calmcp connects Claude to SAP Cloud ALM via its read APIs, exposed through four consolidated, intent-based tools: calm_list (query any collection), calm_get (fetch one entity), calm_analytics (sorted/aggregated queries) and calm_resources (discover resources, providers and recipes). Covers Tasks, Projects, Features, Documents, Process Hierarchy, Test Management, Analytics, BSM/Status Events, Landscape and Cross-Library objects. calmcp is strictly read-only: it never creates, updates or deletes Cloud ALM data.",
+  "description": "MCP server for SAP Cloud ALM. Query tasks, defects, projects, features, documents, tests, analytics and more from your Cloud ALM tenant. Read-only by default; optionally create documents and library entries.",
+  "long_description": "calmcp connects Claude to SAP Cloud ALM via its APIs, exposed through four consolidated, intent-based read tools: calm_list (query any collection), calm_get (fetch one entity), calm_analytics (sorted/aggregated queries) and calm_resources (discover resources, providers and recipes). Covers Tasks, Projects, Features, Documents, Process Hierarchy, Test Management, Analytics, BSM/Status Events, Landscape and Cross-Library objects. calmcp is read-only by default. Turning on 'Write Access' adds a fifth tool, calm_create, which only creates new documents and library entries (cross-library applications, configurations, configuration activities, developments, interfaces). It never updates or deletes existing Cloud ALM data.",
   "author": {
     "name": "consetto",
     "url": "https://github.com/consetto"
@@ -24,7 +24,8 @@
         "CALM_CLIENT_ID": "${user_config.calm_client_id}",
         "CALM_CLIENT_SECRET": "${user_config.calm_client_secret}",
         "CALM_DEBUG": "${user_config.calm_debug}",
-        "CALM_TIMEOUT_SECONDS": "${user_config.calm_timeout_seconds}"
+        "CALM_TIMEOUT_SECONDS": "${user_config.calm_timeout_seconds}",
+        "CALM_WRITE_ENABLED": "${user_config.calm_write_enabled}"
       }
     }
   },
@@ -44,6 +45,10 @@
     {
       "name": "calm_resources",
       "description": "Discovery: the catalog of resources/providers, the task type/status/priority code lists, and worked recipes."
+    },
+    {
+      "name": "calm_create",
+      "description": "Only with 'Write Access' on: create a new document or library entry (cross-library application, configuration, configuration activity, development, interface). Never updates or deletes."
     }
   ],
   "keywords": ["sap", "cloud-alm", "calm", "alm", "btp", "mcp"],
@@ -101,6 +106,13 @@
       "title": "Request Timeout (seconds)",
       "description": "HTTP request timeout for Cloud ALM calls.",
       "default": 30,
+      "required": false
+    },
+    "calm_write_enabled": {
+      "type": "boolean",
+      "title": "Write Access (create documents and library entries)",
+      "description": "Off by default: calmcp is read-only. When on, Claude gets one extra tool, calm_create, that creates NEW documents and library entries only. Existing objects are never changed or deleted. The OAuth2 client needs the calm-api.documents.write and calm-api.lib.write scopes.",
+      "default": false,
       "required": false
     }
   }

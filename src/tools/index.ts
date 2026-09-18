@@ -1,5 +1,6 @@
-// Registers the four read-only MCP tools on an `McpServer`, wiring each to its handler and the
-// shared Cloud ALM client container. Tool calls and (truncated) results are traced via the logger.
+// Registers the MCP tools on an `McpServer`, wiring each to its handler and the shared Cloud ALM
+// client container. The four read tools are always present; `calm_create` is registered only when
+// the operator enabled write access. Tool calls and (truncated) results are traced via the logger.
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -7,16 +8,24 @@ import type { Logger } from 'pino';
 import type { CalmClients } from '../calm/index.js';
 import { logToolCall, logToolResult } from '../logging.js';
 import { type CalmAnalyticsArgs, handleCalmAnalytics } from './calmAnalytics.js';
+import { type CalmCreateArgs, handleCalmCreate } from './calmCreate.js';
 import { type CalmGetArgs, handleCalmGet } from './calmGet.js';
 import { type CalmListArgs, handleCalmList } from './calmList.js';
 import { type CalmResourcesArgs, handleCalmResources } from './calmResources.js';
-import { calmAnalyticsShape, calmGetShape, calmListShape, calmResourcesShape } from './schemas.js';
+import {
+  calmAnalyticsShape,
+  calmCreateShape,
+  calmGetShape,
+  calmListShape,
+  calmResourcesShape,
+} from './schemas.js';
 
 /**
  * Register all calmcp tools on the given MCP server.
  *
  * @param server - The MCP server to register tools on.
- * @param clients - The Cloud ALM client container handlers call into.
+ * @param clients - The Cloud ALM client container handlers call into. Its `writeEnabled` flag
+ *   decides whether `calm_create` is registered at all.
  * @param logger - Application logger.
  */
 export function registerTools(server: McpServer, clients: CalmClients, logger: Logger): void {
@@ -84,9 +93,34 @@ export function registerTools(server: McpServer, clients: CalmClients, logger: L
       description:
         'Discovery helper: lists every resource/provider the other tools accept, their required ' +
         'parameters, the task type/status/priority code lists, and worked recipes. Pass ' +
-        'topic="recipes" for multi-step examples, or a resource/provider name to focus.',
+        'topic="recipes" for multi-step examples, or a resource/provider name to focus.' +
+        (clients.writeEnabled
+          ? ' Also lists what calm_create accepts, with the fields of each payload.'
+          : ''),
       inputSchema: calmResourcesShape,
     },
-    traced('calm_resources', (args: CalmResourcesArgs) => handleCalmResources(args)),
+    traced('calm_resources', (args: CalmResourcesArgs) =>
+      handleCalmResources(args, { writeEnabled: clients.writeEnabled }),
+    ),
+  );
+
+  if (!clients.writeEnabled) {
+    return;
+  }
+
+  server.registerTool(
+    'calm_create',
+    {
+      title: 'Create a SAP Cloud ALM document or library entry',
+      description:
+        'Create a NEW SAP Cloud ALM document, or a new library entry (cross-library application, ' +
+        'configuration, configuration activity, development or interface). This is create-only: ' +
+        'it never updates or deletes an existing object, so calling it twice makes two entries. ' +
+        'Pass "resource" and a "data" object; calm_resources({ topic: "<resource>" }) lists the ' +
+        'fields. Links and assignments can be included in "data" and are created with the entity. ' +
+        'Returns the created entity including its uuid and displayId.',
+      inputSchema: calmCreateShape,
+    },
+    traced('calm_create', (args: CalmCreateArgs) => handleCalmCreate(clients, args)),
   );
 }

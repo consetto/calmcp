@@ -1,8 +1,10 @@
-// Shared HTTP client for the read-only SAP Cloud ALM services.
+// Shared HTTP client for the SAP Cloud ALM services.
 //
 // One instance is bound to a single Cloud ALM service (e.g. "features"). It resolves auth per
-// request via the configured `AuthProvider`, performs GET requests, and maps non-success
-// responses to `ApiError` — recognising the OData v4 structured error body when present.
+// request via the configured `AuthProvider`, performs GET (and, for the opt-in create tool, POST)
+// requests, and maps non-success responses to `ApiError` — recognising the OData v4 structured
+// error body when present. There is deliberately no PUT/PATCH/DELETE: calmcp never modifies or
+// removes an existing Cloud ALM object.
 
 import type { Logger } from 'pino';
 // Use undici's fetch rather than the global one. They are the same implementation, but the global
@@ -31,7 +33,7 @@ interface ODataErrorBody {
 }
 
 /**
- * HTTP client for one Cloud ALM service. Read-only: it exposes GET helpers only.
+ * HTTP client for one Cloud ALM service. Exposes GET for reads and POST for creating new entities.
  */
 export class CalmHttpClient {
   private readonly auth: AuthProvider;
@@ -60,16 +62,45 @@ export class CalmHttpClient {
    * @throws {AuthError} If authentication cannot be resolved.
    */
   async get<T>(endpoint: string, query = ''): Promise<T> {
+    return this.request<T>('GET', endpoint, query);
+  }
+
+  /**
+   * POST a JSON body to create a resource and parse the JSON response.
+   *
+   * @typeParam T - The expected response type (normally the created entity).
+   * @param endpoint - Service-relative path beginning with `/` (e.g. `/Documents`).
+   * @param body - The JSON-serialisable request body.
+   * @returns The parsed response body.
+   * @throws {ApiError} On a non-success status or an unparseable body.
+   * @throws {AuthError} If authentication cannot be resolved.
+   */
+  async post<T>(endpoint: string, body: unknown): Promise<T> {
+    return this.request<T>('POST', endpoint, '', body);
+  }
+
+  /** Perform one request with auth resolved, mapping transport failures to `ApiError`. */
+  private async request<T>(
+    method: 'GET' | 'POST',
+    endpoint: string,
+    query: string,
+    body?: unknown,
+  ): Promise<T> {
     const { baseUrl, headers } = await this.auth.authorize();
     const url = `${baseUrl}${SERVICE_PATHS[this.service]}${endpoint}${query}`;
 
-    this.options.logger.debug({ url }, 'GET request');
+    this.options.logger.debug({ url }, `${method} request`);
 
     let response: Response;
     try {
       response = await fetch(url, {
-        method: 'GET',
-        headers: { ...headers, Accept: 'application/json' },
+        method,
+        headers: {
+          ...headers,
+          Accept: 'application/json',
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(this.options.timeoutMs),
       });
     } catch (error) {

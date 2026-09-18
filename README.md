@@ -1,11 +1,13 @@
 # calmcp - Cloud ALM MCP Server
 
-A read-only [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that bridges AI
+A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that bridges AI
 assistants (Claude, GitHub Copilot, …) to **SAP Cloud ALM** (aka CALM). It exposes the Cloud ALM read APIs
 through four consolidated, intent-based tools, runs over **stdio** locally or **Streamable HTTP**
 remotely, and deploys to **SAP BTP Cloud Foundry**.
 
-> calmcp is read-only: it never creates, updates or deletes data in SAP Cloud ALM.
+> calmcp is read-only by default: it never updates or deletes data in SAP Cloud ALM. An operator
+> can opt in to **create-only** access for documents and library entries with
+> `CALM_WRITE_ENABLED=true`; see [Write access](#write-access-opt-in).
 
 `calmcp` is my second SAP Cloud ALM MCP bridge . It succeeds an earlier
 **Rust** implementation [sap-cloud-alm-mcp](https://github.com/consetto/sap-cloud-alm-odata-mcp) and reuses the knowledge of the Cloud ALM APIs, while taking a different technical direction.
@@ -19,7 +21,8 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
 | `calm_list` | List/query any collection — tasks (incl. **requirements**, **user stories** and **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource; `count_only`/`group_by` return a live count instead of the records. |
 | `calm_get` | Fetch a single entity by id (a feature also by display id, e.g. `6-123`). |
 | `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Providers span the whole tenant, so `count_only`/`group_by` here answer "how many across all projects". It aggregates but does **not** sort: `$orderby` is silently ignored by the service, so it is not offered. |
-| `calm_resources` | Discovery: the catalog of resources/providers, per-provider analytics dimensions and measures, the task type/status/priority code lists, and worked recipes. |
+| `calm_resources` | Discovery: the catalog of resources/providers, per-provider analytics dimensions and measures, the task type/status/priority code lists, and worked recipes. With write access on, also the payload fields of every `calm_create` resource. |
+| `calm_create` | **Only when `CALM_WRITE_ENABLED=true`.** Create a new document or a new library entry (cross-library application, configuration, configuration activity, development, interface). Create-only: never updates or deletes. See [Write access](#write-access-opt-in). |
 
 ### Worked examples
 
@@ -133,6 +136,54 @@ full code list.
 All services are on API version `v1`. For the spec revision behind each one, and how to refresh
 them, see [docs/API_VERSIONS.md](docs/API_VERSIONS.md).
 
+### Write access (opt-in)
+
+calmcp starts read-only and stays that way unless an operator sets `CALM_WRITE_ENABLED=true`
+(or turns on **Write Access** in the Claude Desktop extension settings). With the switch on, one
+extra tool is registered:
+
+| Tool | Resources | Cloud ALM call |
+| --- | --- | --- |
+| `calm_create` | `document` | `POST /calm-documents/v1/Documents` |
+| | `xlib_application` | `POST /calm-crosslibraryapplications/v1/Applications` |
+| | `xlib_configuration` | `POST /calm-crosslibraryconfigurations/v1/Configurations` |
+| | `xlib_configuration_activity` | `POST /calm-crosslibraryconfigurations/v1/ConfigurationActivities` |
+| | `xlib_development` | `POST /calm-crosslibrarydevelopments/v1/Developments` |
+| | `xlib_interface` | `POST /calm-crosslibraryinterfaces/v1/Interfaces` |
+
+What it does and does not do:
+
+- **Create only.** There is no update and no delete, on purpose. A Cloud ALM document stores its
+  body as HTML with embedded images; a round-trip through an AI client would not preserve those,
+  so the one operation that cannot damage an existing record is the only one offered. Calling
+  `calm_create` twice makes two entries.
+- **Strict payloads.** Each resource's fields are transcribed from the `*-create` schemas in the
+  OpenAPI specs and validated before any request is sent. An unknown field is an error, not
+  something silently dropped. `calm_resources({ topic: "document" })` returns the field list.
+- **Deep create.** Links (`toURLReferences`) and assignments (`toLibraryAssignments`,
+  `toProcessHierarchyAssignments`, `toTaskAssignments`, …) can be included in the same `data`
+  object and are created together with the entity, exactly as the OData API allows.
+- **Scopes.** The OAuth2 client (or the BTP destination) needs `calm-api.documents.write` for
+  documents and `calm-api.lib.write` for library entries, in addition to the read scopes.
+- **Deployment-wide.** On the HTTP transport the switch applies to every authenticated caller of
+  that instance. Run a separate app for writers rather than enabling it on a shared viewer
+  deployment.
+
+Example:
+
+```json
+{
+  "resource": "document",
+  "data": {
+    "title": "Interface design: payment export",
+    "projectId": "11111111-1111-1111-1111-111111111111",
+    "documentTypeCode": "SD",
+    "content": "<h1>Purpose</h1><p>...</p>",
+    "toURLReferences": [{ "name": "Ticket", "url": "https://example.com/T-42" }]
+  }
+}
+```
+
 ## Configuration
 
 Configuration is read from environment variables (see [`.env.example`](.env.example)). Two local
@@ -147,6 +198,7 @@ auth modes, plus a BTP destination mode:
 | `CALM_DESTINATION_NAME` | Name of a bound BTP Destination (BTP mode; takes precedence). |
 | `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port and allowed CORS origins. |
 | `CALM_DEBUG`, `CALM_TIMEOUT_SECONDS` | Verbose tracing and request timeout. |
+| `CALM_WRITE_ENABLED` | `true` registers `calm_create` (create-only). Default `false`: read-only. See [Write access](#write-access-opt-in). |
 
 ## Install in Claude Desktop — one-click (`.mcpb`)
 
@@ -165,8 +217,9 @@ The simplest path for a single developer: install calmcp as a Claude Desktop ext
 
 **What the bundle is:** a pure-JS, cross-platform (macOS / Windows / Linux) build of the stdio
 server packaged with its dependencies — calmcp has no native modules, so one bundle runs
-everywhere. It is **read-only** like the rest of calmcp. For multi-user, HTTP, or BTP deployments,
-use the Docker image or deploy to Cloud Foundry instead (see below).
+everywhere. It is **read-only** unless you switch on **Write Access** in the extension settings
+(see [Write access](#write-access-opt-in)). For multi-user, HTTP, or BTP deployments, use the
+Docker image or deploy to Cloud Foundry instead (see below).
 
 ### Build the bundle locally
 

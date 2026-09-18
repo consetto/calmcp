@@ -1,6 +1,7 @@
 // MCP server assembly: builds the shared Cloud ALM client container and an `McpServer` with the
-// four read-only tools registered. The client container is created once (so token caches persist);
-// a fresh `McpServer` can be built per HTTP request while reusing those clients.
+// four read tools registered, plus `calm_create` when write access is enabled. The client
+// container is created once (so token caches persist); a fresh `McpServer` can be built per HTTP
+// request while reusing those clients.
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Logger } from 'pino';
@@ -15,7 +16,7 @@ const SERVER_NAME = 'calmcp';
 /** Server version advertised to MCP clients. */
 const SERVER_VERSION = '0.2.7';
 
-/** Instructions shown to MCP clients on connect. */
+/** Instructions shown to MCP clients on connect (read-only deployment). */
 const INSTRUCTIONS =
   'Read-only access to SAP Cloud ALM (tasks/defects, projects, features, documents, test ' +
   'management, process hierarchy, analytics, status events, landscape, cross-library). Start with ' +
@@ -25,6 +26,13 @@ const INSTRUCTIONS =
   'count_only:true for a total, or group_by:"<field>" for a breakdown. Both return a few hundred ' +
   'bytes instead of hundreds of KB. calm_analytics counts tenant-wide, calm_list counts live ' +
   'within a project.';
+
+/** Extra instructions when the operator enabled `calm_create`. */
+const WRITE_INSTRUCTIONS =
+  ' Write access is enabled for creating only: calm_create adds a new document or a new library ' +
+  'entry (cross-library application, configuration, configuration activity, development, ' +
+  'interface). Nothing is ever updated or deleted. Before creating, check with calm_list ' +
+  'whether an equivalent entry already exists, and confirm the target project with the user.';
 
 /**
  * Create the shared Cloud ALM client container for the current configuration.
@@ -42,16 +50,17 @@ export function createClients(config: Config, logger: Logger): CalmClients {
 }
 
 /**
- * Build an MCP server instance with the read-only tools registered.
+ * Build an MCP server instance with the tools registered.
  *
- * @param clients - The shared Cloud ALM client container.
+ * @param clients - The shared Cloud ALM client container (its `writeEnabled` flag decides whether
+ *   `calm_create` is offered).
  * @param logger - Application logger.
  * @returns A configured {@link McpServer}.
  */
 export function buildMcpServer(clients: CalmClients, logger: Logger): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: INSTRUCTIONS },
+    { instructions: clients.writeEnabled ? INSTRUCTIONS + WRITE_INSTRUCTIONS : INSTRUCTIONS },
   );
   registerTools(server, clients, logger);
   return server;

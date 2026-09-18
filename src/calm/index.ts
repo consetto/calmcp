@@ -1,10 +1,11 @@
 // SAP Cloud ALM client container.
 //
-// Holds one read-only HTTP client per Cloud ALM service and exposes three request primitives that
-// the MCP tool layer composes via the resource registry:
-//   - `listOData`  — GET an OData entity set with system query options.
-//   - `getOData`   — GET a single OData entity by key, optionally expanding navigations.
-//   - `getRest`    — GET a REST endpoint with a prebuilt query string.
+// Holds one HTTP client per Cloud ALM service and exposes four request primitives that the MCP
+// tool layer composes via the resource registry:
+//   - `listOData`   — GET an OData entity set with system query options.
+//   - `getOData`    — GET a single OData entity by key, optionally expanding navigations.
+//   - `getRest`     — GET a REST endpoint with a prebuilt query string.
+//   - `createOData` — POST a new OData entity (only when write access is enabled).
 //
 // Keeping the per-resource knowledge in the registry (see `tools/registry.ts`) keeps these
 // primitives small and avoids duplicating one method per entity set.
@@ -12,23 +13,32 @@
 import type { Logger } from 'pino';
 import type { AuthProvider } from '../auth/index.js';
 import { type Config, SERVICE_PATHS, type ServiceName } from '../config.js';
+import { ConfigError } from '../errors.js';
 import { CalmHttpClient } from './httpClient.js';
 import { buildODataQueryString, type ODataCollection, type ODataQueryOptions } from './odata.js';
 
 /**
- * Container of per-service HTTP clients plus generic read primitives.
+ * Container of per-service HTTP clients plus generic read (and opt-in create) primitives.
  */
 export class CalmClients {
   /** One HTTP client per Cloud ALM service, keyed by service name. */
   private readonly clients: Record<ServiceName, CalmHttpClient>;
 
   /**
+   * Whether creating entities is allowed (`CALM_WRITE_ENABLED`). Read by the tool layer to decide
+   * whether to register `calm_create`, and enforced again in {@link createOData} so no code path
+   * can write while the operator left calmcp read-only.
+   */
+  readonly writeEnabled: boolean;
+
+  /**
    * @param auth - The auth provider shared by every service client.
-   * @param config - Validated configuration (for timeout).
+   * @param config - Validated configuration (for timeout and the write switch).
    * @param logger - Application logger.
    */
   constructor(auth: AuthProvider, config: Config, logger: Logger) {
     const options = { timeoutMs: config.timeoutMs(), logger };
+    this.writeEnabled = config.writeEnabled;
     // Build a client for every known service. `Object.keys` over a const map needs a cast.
     const services = Object.keys(SERVICE_PATHS) as ServiceName[];
     this.clients = {} as Record<ServiceName, CalmHttpClient>;
@@ -83,5 +93,24 @@ export class CalmClients {
    */
   async getRest(service: ServiceName, path: string, query = ''): Promise<unknown> {
     return this.clients[service].get(path, query);
+  }
+
+  /**
+   * POST a new OData entity.
+   *
+   * This is the only write primitive. It creates; it never touches an existing entity, so a
+   * document's stored HTML (with its embedded images) can never be overwritten through calmcp.
+   *
+   * @param service - The owning service.
+   * @param entitySet - The entity set name (e.g. "Documents").
+   * @param body - The create payload, already validated by the tool layer.
+   * @returns The created entity as parsed JSON.
+   * @throws {ConfigError} When write access is disabled.
+   */
+  async createOData(service: ServiceName, entitySet: string, body: unknown): Promise<unknown> {
+    if (!this.writeEnabled) {
+      throw ConfigError.writeDisabled();
+    }
+    return this.clients[service].post(`/${entitySet}`, body);
   }
 }

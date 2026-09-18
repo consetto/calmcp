@@ -1,7 +1,7 @@
 {
   "xsappname": "calmcp",
   "tenant-mode": "dedicated",
-  "description": "Read-only MCP server for SAP Cloud ALM",
+  "description": "MCP server for SAP Cloud ALM (read-only by default)",
   "scopes": [
     {
       "name": "$XSAPPNAME.Viewer",

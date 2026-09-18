@@ -37,7 +37,9 @@ async function main(): Promise<void> {
   const program = new Command();
   program
     .name('calmcp')
-    .description('Read-only Model Context Protocol server for SAP Cloud ALM')
+    .description(
+      'Model Context Protocol server for SAP Cloud ALM (read-only unless CALM_WRITE_ENABLED=true)',
+    )
     .option('--http', 'run the Streamable HTTP transport (default: stdio)')
     .option('-p, --port <port>', 'HTTP port (HTTP transport only)')
     .parse();
