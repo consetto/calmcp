@@ -1,6 +1,6 @@
 _schema-version: '3.3'
 ID: calmcp
-version: 0.2.7
+version: 0.9.0
 description: MCP server for SAP Cloud ALM (read-only by default; CALM_WRITE_ENABLED opts into creating documents and library entries)
 
 parameters:

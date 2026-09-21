@@ -14,7 +14,7 @@ import { configureResults } from './tools/result.js';
 /** Server name advertised to MCP clients. */
 const SERVER_NAME = 'calmcp';
 /** Server version advertised to MCP clients. */
-const SERVER_VERSION = '0.2.7';
+const SERVER_VERSION = '0.9.0';
 
 /** Instructions shown to MCP clients on connect (read-only deployment). */
 const INSTRUCTIONS =
