@@ -309,10 +309,6 @@ cf deploy mta_archives/calmcp_<version>.mtar   # <version> is the one in package
 This creates and binds `calmcp-xsuaa` (XSUAA), `calmcp-destination` (Destination) and
 `calmcp-logs` (Application Logs), and runs the HTTP transport with a `/health` check.
 
-Bump the version before deploying a new build — see [Releasing](#releasing). Redeploying different
-code under the version already running leaves `cf deploy` reporting the same number for both, so
-there is no way to tell afterwards which build a space is on.
-
 ### Using `cf push`
 
 Create the services, build, then push (see [`manifest.yml`](manifest.yml)):
@@ -420,23 +416,6 @@ Pushes to `main` and every pull request run `npm ci`, the version check, lint, u
 build on Node 22 and 24 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). `npm ci` installs
 strictly from the lockfile, so a stale local `node_modules` can never be mistaken for a real
 failure again.
-
-## Releasing
-
-`package.json` is the single source of truth for the version. Four other files carry a copy —
-`mcpb-manifest.json`, `mta.yaml`, `src/server.ts` (advertised to MCP clients) and the `.mtar`
-filename — so bump them together, never by hand:
-
-```bash
-npm version patch     # or minor / major
-```
-
-The `version` lifecycle script runs [`scripts/sync-version.mjs`](scripts/sync-version.mjs), which
-rewrites the copies and stages them; npm then makes the commit and the tag. `npm run version:check`
-verifies the files agree and runs in CI, so drift fails the build rather than reaching a deploy.
-
-**Bump before every deploy to a shared space.** The MTA version is what `cf deploy` reports and what
-names the archive; reusing it for different code makes deploys indistinguishable after the fact.
 
 ## License
 
