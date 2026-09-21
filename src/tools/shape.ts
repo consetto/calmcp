@@ -42,7 +42,8 @@ export function parseFields(fields: string): string[] {
 /**
  * Locate the record array inside a Cloud ALM response.
  *
- * REST endpoints return a bare array; OData endpoints return a `{ value: [...] }` envelope.
+ * REST endpoints return a bare array; OData endpoints return a `{ value: [...] }` envelope; the
+ * SCIM endpoints of the Landscape service return a ListResponse with the records under `Resources`.
  *
  * @param data - The parsed response body.
  * @returns The records plus a function rebuilding the original shape around new records.
@@ -59,6 +60,13 @@ export function locateRecords(data: unknown): {
     return {
       records: data.value.filter(isRecord),
       rebuild: (records) => ({ ...envelope, value: records }),
+    };
+  }
+  if (isRecord(data) && Array.isArray(data.Resources)) {
+    const envelope = data;
+    return {
+      records: data.Resources.filter(isRecord),
+      rebuild: (records) => ({ ...envelope, Resources: records }),
     };
   }
   if (isRecord(data)) {

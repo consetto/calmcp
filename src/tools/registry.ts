@@ -270,6 +270,116 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     description: 'Assignments between configurations and configuration activities',
   },
 
+  // Classification code lists added by the September 2025 specs (Applications 1.0.4, Configurations
+  // 1.0.2, Developments 1.0.4, Interfaces 1.0.3). Each main entity now carries the matching
+  // `<entity>PriorityCode`, `<entity>ReadinessCode`, ... property; these resolve the codes to labels.
+  xlib_application_priorities: {
+    kind: 'odata',
+    service: 'xlibApplications',
+    entitySet: 'ApplicationPriorities',
+    description: 'Cross-library application priority code list (applicationPriorityCode)',
+  },
+  xlib_application_readiness: {
+    kind: 'odata',
+    service: 'xlibApplications',
+    entitySet: 'ApplicationReadiness',
+    description: 'Cross-library application readiness code list (applicationReadinessCode)',
+  },
+  xlib_application_usage_statuses: {
+    kind: 'odata',
+    service: 'xlibApplications',
+    entitySet: 'ApplicationUsageStatus',
+    description: 'Cross-library application usage status code list (applicationUsageStatusCode)',
+  },
+  xlib_application_clean_core_levels: {
+    kind: 'odata',
+    service: 'xlibApplications',
+    entitySet: 'ApplicationCleanCoreLevel',
+    description:
+      'Cross-library application clean core level code list (applicationCleanCoreLevelCode)',
+  },
+  xlib_application_upgrade_impacts: {
+    kind: 'odata',
+    service: 'xlibApplications',
+    entitySet: 'ApplicationUpgradeImpact',
+    description:
+      'Cross-library application upgrade impact code list (applicationUpgradeImpactCode)',
+  },
+  xlib_configuration_priorities: {
+    kind: 'odata',
+    service: 'xlibConfigurations',
+    entitySet: 'ConfigurationPriorities',
+    description: 'Cross-library configuration priority code list (configurationPriorityCode)',
+  },
+  xlib_configuration_readiness: {
+    kind: 'odata',
+    service: 'xlibConfigurations',
+    entitySet: 'ConfigurationReadiness',
+    description: 'Cross-library configuration readiness code list (configurationReadinessCode)',
+  },
+  xlib_development_priorities: {
+    kind: 'odata',
+    service: 'xlibDevelopments',
+    entitySet: 'DevelopmentPriorities',
+    description: 'Cross-library development priority code list (developmentPriorityCode)',
+  },
+  xlib_development_readiness: {
+    kind: 'odata',
+    service: 'xlibDevelopments',
+    entitySet: 'DevelopmentReadiness',
+    description: 'Cross-library development readiness code list (developmentReadinessCode)',
+  },
+  xlib_development_usage_statuses: {
+    kind: 'odata',
+    service: 'xlibDevelopments',
+    entitySet: 'DevelopmentUsageStatus',
+    description: 'Cross-library development usage status code list (developmentUsageStatusCode)',
+  },
+  xlib_development_clean_core_levels: {
+    kind: 'odata',
+    service: 'xlibDevelopments',
+    entitySet: 'DevelopmentCleanCoreLevel',
+    description:
+      'Cross-library development clean core level code list (developmentCleanCoreLevelCode)',
+  },
+  xlib_development_upgrade_impacts: {
+    kind: 'odata',
+    service: 'xlibDevelopments',
+    entitySet: 'DevelopmentUpgradeImpact',
+    description:
+      'Cross-library development upgrade impact code list (developmentUpgradeImpactCode)',
+  },
+  xlib_interface_priorities: {
+    kind: 'odata',
+    service: 'xlibInterfaces',
+    entitySet: 'InterfacePriorities',
+    description: 'Cross-library interface priority code list (interfacePriorityCode)',
+  },
+  xlib_interface_readiness: {
+    kind: 'odata',
+    service: 'xlibInterfaces',
+    entitySet: 'InterfaceReadiness',
+    description: 'Cross-library interface readiness code list (interfaceReadinessCode)',
+  },
+  xlib_interface_usage_statuses: {
+    kind: 'odata',
+    service: 'xlibInterfaces',
+    entitySet: 'InterfaceUsageStatus',
+    description: 'Cross-library interface usage status code list (interfaceUsageStatusCode)',
+  },
+  xlib_interface_clean_core_levels: {
+    kind: 'odata',
+    service: 'xlibInterfaces',
+    entitySet: 'InterfaceCleanCoreLevel',
+    description: 'Cross-library interface clean core level code list (interfaceCleanCoreLevelCode)',
+  },
+  xlib_interface_upgrade_impacts: {
+    kind: 'odata',
+    service: 'xlibInterfaces',
+    entitySet: 'InterfaceUpgradeImpact',
+    description: 'Cross-library interface upgrade impact code list (interfaceUpgradeImpactCode)',
+  },
+
   // --- Process Scopes (REST, OData-style system options) ---
   scopes: {
     kind: 'rest',
@@ -574,6 +684,27 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     build: (p) => ({
       path: '/landscapeObjects',
       query: buildQueryString({ ...(p.filters ?? {}), limit: p.limit, offset: p.offset }),
+    }),
+  },
+  // Access control lists arrived in the Landscape spec of September 2025 (SCIM 2.0, RFC 7643/7644).
+  // The response is a SCIM ListResponse (`Resources`, `totalResults`), which `locateRecords` in
+  // `tools/shape.ts` unwraps. Paging is SCIM's 1-based `startIndex`/`count`, so the pager's
+  // `offset`/`limit` window is translated here. Reading them needs the
+  // `calm-api.landscape.access-control.admin` scope on the technical user.
+  landscape_access_control_lists: {
+    kind: 'rest',
+    service: 'landscape',
+    required: [],
+    description:
+      'Landscape access control lists (SCIM groups) with their members and grant levels. REST ' +
+      'filters via `filters` (displayName, id).',
+    build: (p) => ({
+      path: '/scim/v2/Groups',
+      query: buildQueryString({
+        ...(p.filters ?? {}),
+        startIndex: p.offset === undefined ? undefined : p.offset + 1,
+        count: p.limit,
+      }),
     }),
   },
 

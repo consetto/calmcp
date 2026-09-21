@@ -63,7 +63,7 @@
     "calm_region": {
       "type": "string",
       "title": "Cloud ALM Region",
-      "description": "Tenant region: eu10, eu20, us10, ap10, jp10, eu10-004, ca10, eu11 or cn20.",
+      "description": "Tenant region: eu10, eu20, us10, us20, ap10, jp10, eu10-004, ca10, eu11 or cn20.",
       "default": "eu10",
       "required": true
     },

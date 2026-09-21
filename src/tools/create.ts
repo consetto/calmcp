@@ -188,6 +188,71 @@ const xlibBase = {
     .describe('Other library elements to link'),
 };
 
+/**
+ * Classification codes shared by all four cross-library entities since the September 2025 specs.
+ * Each entity prefixes them with its own name (`applicationPriorityCode`, ...); the matching
+ * `calm_list` code lists (`xlib_<entity>_priorities`, ...) return the labels.
+ */
+const PRIORITY_CODES = ['1', '2', '3', '4'] as const;
+const READINESS_CODES = [
+  'IMPLEMENTED',
+  'PARTLY_IMPLEMENTED',
+  'NOT_IMPLEMENTED',
+  'PLANNED',
+] as const;
+const USAGE_STATUS_CODES = ['UNUSED', 'USED', 'USED_IMPACTED'] as const;
+const CLEAN_CORE_LEVEL_CODES = ['A', 'B', 'C', 'D', 'X'] as const;
+const UPGRADE_IMPACT_CODES = [
+  'UNAVAILABLE',
+  'DEPRECATED',
+  'AVAILABLE_W_SUCCESSOR',
+  'ERROR',
+  'WARNING',
+  'INFORMATION',
+  'DEV_UNCLASSIFIED',
+  'FUNC_UNAVAILABLE',
+  'SERIALIZATION_ISSUE',
+  'BLOCKED',
+  'UPGRADE_TOOLSET',
+  'REMEDIATED',
+  'INT_UNCLASSIFIED',
+] as const;
+
+/** Priority and readiness: carried by every cross-library entity. */
+function classification(entity: string) {
+  return {
+    [`${entity}PriorityCode`]: z
+      .enum(PRIORITY_CODES)
+      .optional()
+      .describe(`Priority 1 (highest) to 4; calm_list xlib_${entity}_priorities lists the labels`),
+    [`${entity}ReadinessCode`]: z
+      .enum(READINESS_CODES)
+      .optional()
+      .describe(`Implementation readiness; calm_list xlib_${entity}_readiness lists the labels`),
+  };
+}
+
+/** Usage, clean core and upgrade impact: applications, developments and interfaces only. */
+function upgradeClassification(entity: string) {
+  return {
+    [`${entity}UsageStatusCode`]: z
+      .enum(USAGE_STATUS_CODES)
+      .optional()
+      .describe(`Usage status; calm_list xlib_${entity}_usage_statuses lists the labels`),
+    [`${entity}UsageNumber`]: z.number().int().optional().describe('Measured number of usages'),
+    [`${entity}CleanCoreLevelCode`]: z
+      .enum(CLEAN_CORE_LEVEL_CODES)
+      .optional()
+      .describe(
+        `Clean core level A-D or X; calm_list xlib_${entity}_clean_core_levels lists the labels`,
+      ),
+    [`${entity}UpgradeImpactCode`]: z
+      .enum(UPGRADE_IMPACT_CODES)
+      .optional()
+      .describe(`Upgrade impact; calm_list xlib_${entity}_upgrade_impacts lists the labels`),
+  };
+}
+
 /** System group / solution component pair carried by applications, configurations, developments. */
 const systemScope = {
   systemGroupId: uuid.optional().describe('UUID of the system group (calm_list system_groups)'),
@@ -208,6 +273,13 @@ export const xlibApplicationCreateSchema = z
       .optional()
       .describe('Fiori actions only: "<semanticObject>-<action>"'),
     ...systemScope,
+    ...classification('application'),
+    ...upgradeClassification('application'),
+    applicationSuccessor: z
+      .string()
+      .max(2048)
+      .optional()
+      .describe('Successor application, for an application that is deprecated or unavailable'),
   })
   .strict();
 
@@ -227,6 +299,7 @@ export const xlibConfigurationCreateSchema = z
       .optional()
       .describe('Configuration type (default AUTHORIZATION)'),
     ...systemScope,
+    ...classification('configuration'),
   })
   .strict();
 
@@ -281,7 +354,10 @@ export const xlibDevelopmentCreateSchema = z
       .optional()
       .describe('Development type (default DEV_CUSTOM_FIORI_APPLICATION)'),
     developmentId: z.string().max(255).optional().describe('Technical development object id'),
+    packageName: z.string().max(255).optional().describe('ABAP package of the development object'),
     ...systemScope,
+    ...classification('development'),
+    ...upgradeClassification('development'),
   })
   .strict();
 
@@ -318,6 +394,8 @@ export const xlibInterfaceCreateSchema = z
       .optional()
       .describe('UUID of the receiving solution component'),
     middlewareSystemGroupId: uuid.optional().describe('UUID of the middleware system group'),
+    ...classification('interface'),
+    ...upgradeClassification('interface'),
   })
   .strict();
 

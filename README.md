@@ -124,8 +124,9 @@ rather than presenting a floor as the answer.
 
 Tasks, Projects (incl. programs and program teams), Features, Documents, Process Hierarchy,
 Process Scopes, Custom Processes, Test Management (manual + automated), Test Plans *(BETA)*,
-Analytics, BSM/Status Events, Landscape, and Cross-Library (Applications, Configurations,
-Developments, Interfaces).
+Analytics, BSM/Status Events, Landscape (objects and SCIM access control lists), and Cross-Library
+(Applications, Configurations, Developments, Interfaces, with their priority, readiness, usage,
+clean core level and upgrade impact code lists).
 
 In Cloud ALM the Tasks service is not just to-dos: **requirements, user stories, defects,
 sub-tasks, roadmap and project tasks, quality gates, checklist items and risks are all tasks**,

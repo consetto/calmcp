@@ -35,6 +35,33 @@ describe('LIST_RESOURCES', () => {
     }
   });
 
+  it('resolves the cross-library classification codes added in September 2025', () => {
+    const lists = LIST_RESOURCE_NAMES.filter((n) => /^xlib_.*_(priorities|readiness)$/.test(n));
+    expect(lists).toEqual([
+      'xlib_application_priorities',
+      'xlib_application_readiness',
+      'xlib_configuration_priorities',
+      'xlib_configuration_readiness',
+      'xlib_development_priorities',
+      'xlib_development_readiness',
+      'xlib_interface_priorities',
+      'xlib_interface_readiness',
+    ]);
+    // Configurations carry priority and readiness only; the other three also carry usage, clean
+    // core level and upgrade impact.
+    for (const entity of ['application', 'development', 'interface']) {
+      for (const list of ['usage_statuses', 'clean_core_levels', 'upgrade_impacts']) {
+        expect(LIST_RESOURCE_NAMES).toContain(`xlib_${entity}_${list}`);
+      }
+    }
+    expect(LIST_RESOURCE_NAMES).not.toContain('xlib_configuration_usage_statuses');
+    expect(LIST_RESOURCES.xlib_interface_upgrade_impacts).toMatchObject({
+      kind: 'odata',
+      service: 'xlibInterfaces',
+      entitySet: 'InterfaceUpgradeImpact',
+    });
+  });
+
   it('every REST build produces a service-relative path (and valid query)', () => {
     for (const name of LIST_RESOURCE_NAMES) {
       const def = LIST_RESOURCES[name];
@@ -67,6 +94,11 @@ describe('LIST_RESOURCES', () => {
     expect(build('landscape_objects')).toEqual({
       path: '/landscapeObjects',
       query: '?objectType=TechnicalSystem&limit=50&offset=10',
+    });
+    // SCIM pages with a 1-based startIndex and count, so the pager's offset/limit are translated.
+    expect(build('landscape_access_control_lists')).toEqual({
+      path: '/scim/v2/Groups',
+      query: '?objectType=TechnicalSystem&startIndex=11&count=50',
     });
     expect(build('program_teams')).toEqual({ path: '/programs/prog1/teams', query: '' });
     expect(build('program_team_roles')).toEqual({ path: '/programTeams/team1/roles', query: '' });

@@ -57,6 +57,17 @@ describe('Config.fromEnv validation', () => {
     expect(() => Config.fromEnv({ ...base, CALM_SANDBOX: 'false' })).toThrow(/tenant/);
   });
 
+  it('accepts us20, added to every service spec in September 2025', () => {
+    const config = Config.fromEnv({
+      CALM_SANDBOX: 'false',
+      CALM_TENANT: 'acme',
+      CALM_REGION: 'us20',
+      CALM_CLIENT_ID: 'id',
+      CALM_CLIENT_SECRET: 'secret',
+    });
+    expect(config.region).toBe('us20');
+  });
+
   it('rejects an unknown region', () => {
     expect(() =>
       Config.fromEnv({

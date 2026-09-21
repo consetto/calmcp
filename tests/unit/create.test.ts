@@ -172,6 +172,56 @@ describe('handleCalmCreate', () => {
     });
   });
 
+  it('sends the classification codes added to the library entries in September 2025', async () => {
+    let sent: unknown;
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: '/api/calm-crosslibrarydevelopments/v1/Developments',
+        method: 'POST',
+        body: (body) => {
+          sent = JSON.parse(body);
+          return true;
+        },
+      })
+      .reply(201, { uuid: 'd-1' });
+
+    const data = {
+      title: 'ZCL_PAYMENT_EXPORT',
+      packageName: 'ZFI',
+      developmentPriorityCode: '2',
+      developmentReadinessCode: 'PLANNED',
+      developmentUsageStatusCode: 'USED_IMPACTED',
+      developmentUsageNumber: 42,
+      developmentCleanCoreLevelCode: 'C',
+      developmentUpgradeImpactCode: 'DEV_UNCLASSIFIED',
+    };
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'xlib_development',
+      data,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual(data);
+  });
+
+  it('rejects a classification code outside the spec enum, and one an entity does not carry', async () => {
+    const clients = makeClients({ writeEnabled: true });
+    const bad = await handleCalmCreate(clients, {
+      resource: 'xlib_application',
+      data: { title: 'x', applicationCleanCoreLevelCode: 'E' },
+    });
+    expect(bad.isError).toBe(true);
+    expect(bad.content[0]?.text).toContain('applicationCleanCoreLevelCode');
+
+    // Configurations carry priority and readiness only.
+    const unknown = await handleCalmCreate(clients, {
+      resource: 'xlib_configuration',
+      data: { title: 'x', configurationUsageStatusCode: 'USED' },
+    });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.content[0]?.text).toContain('configurationUsageStatusCode');
+  });
+
   it('routes each library resource to its own service', async () => {
     const paths: Record<string, string> = {
       xlib_configuration: '/api/calm-crosslibraryconfigurations/v1/Configurations',

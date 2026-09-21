@@ -23,6 +23,7 @@ const VALID_REGIONS = [
   'eu10',
   'eu20',
   'us10',
+  'us20',
   'ap10',
   'jp10',
   'eu10-004',

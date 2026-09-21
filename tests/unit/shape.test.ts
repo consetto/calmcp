@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  locateRecords,
   parseFields,
   pickTimebox,
   projectFields,
@@ -10,6 +11,30 @@ import {
 describe('parseFields', () => {
   it('trims names and drops empty entries', () => {
     expect(parseFields(' displayId , title ,, ')).toEqual(['displayId', 'title']);
+  });
+});
+
+describe('locateRecords', () => {
+  it('unwraps a SCIM ListResponse and rebuilds it around new records', () => {
+    const body = {
+      schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
+      totalResults: 2,
+      Resources: [
+        { id: 'g1', displayName: 'ACL_Admins' },
+        { id: 'g2', displayName: 'ACL_Ops' },
+      ],
+    };
+    const located = locateRecords(body);
+    expect(located?.records).toEqual(body.Resources);
+    expect(located?.rebuild([{ id: 'g1' }])).toEqual({
+      schemas: body.schemas,
+      totalResults: 2,
+      Resources: [{ id: 'g1' }],
+    });
+  });
+
+  it('still treats a single entity as one record', () => {
+    expect(locateRecords({ id: 'x' })?.records).toEqual([{ id: 'x' }]);
   });
 });
 
