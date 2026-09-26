@@ -14,10 +14,20 @@ import type { Logger } from 'pino';
 import { fetch, type Response } from 'undici';
 import type { AuthProvider } from '../auth/index.js';
 import { SERVICE_PATHS, type ServiceName } from '../config.js';
+import { currentSignal } from '../context.js';
 import { ApiError, summarizeBody } from '../errors.js';
 
 /** Maximum characters of a response body to include in debug logs. */
 const MAX_BODY_LOG_CHARS = 500;
+
+/**
+ * Longest wait before the one retry of a throttled GET. A service asking for longer is reported
+ * as RATE_LIMITED instead: the MCP client would time out while calmcp sat waiting.
+ */
+const MAX_RETRY_WAIT_SECONDS = 5;
+
+/** Statuses that mean "try again shortly" rather than "this request is wrong". */
+const RETRYABLE_STATUSES = new Set([429, 503]);
 
 /** Options shared by every HTTP client instance. */
 export interface HttpClientOptions {
@@ -79,21 +89,48 @@ export class CalmHttpClient {
     return this.request<T>('POST', endpoint, '', body);
   }
 
-  /** Perform one request with auth resolved, mapping transport failures to `ApiError`. */
+  /**
+   * Perform one request with auth resolved, mapping transport failures to `ApiError`.
+   *
+   * A GET answered with 429/503 is retried once, after the service's `Retry-After` (at most
+   * {@link MAX_RETRY_WAIT_SECONDS}). A POST never is: the create may have happened, and a second
+   * attempt would make a duplicate entry.
+   */
   private async request<T>(
     method: 'GET' | 'POST',
     endpoint: string,
     query: string,
     body?: unknown,
   ): Promise<T> {
-    const { baseUrl, headers } = await this.auth.authorize();
-    const url = `${baseUrl}${SERVICE_PATHS[this.service]}${endpoint}${query}`;
+    const cancel = currentSignal();
+    for (let attempt = 0; ; attempt += 1) {
+      const { baseUrl, headers } = await this.auth.authorize();
+      const url = `${baseUrl}${SERVICE_PATHS[this.service]}${endpoint}${query}`;
+      this.options.logger.debug({ url }, `${method} request`);
 
-    this.options.logger.debug({ url }, `${method} request`);
+      const response = await this.send(url, method, headers, body, cancel);
+      const wait = retryWait(response);
+      if (method === 'GET' && attempt === 0 && wait !== undefined) {
+        this.options.logger.debug({ url, status: response.status, wait }, 'retrying throttled GET');
+        await response.body?.cancel();
+        await sleep(wait * 1000, cancel);
+        continue;
+      }
+      return this.handleResponse<T>(response, url);
+    }
+  }
 
-    let response: Response;
+  /** Issue the fetch, turning a request that never got a response into an `ApiError` (status 0). */
+  private async send(
+    url: string,
+    method: 'GET' | 'POST',
+    headers: Record<string, string>,
+    body: unknown,
+    cancel: AbortSignal | undefined,
+  ): Promise<Response> {
+    const timeout = AbortSignal.timeout(this.options.timeoutMs);
     try {
-      response = await fetch(url, {
+      return await fetch(url, {
         method,
         headers: {
           ...headers,
@@ -101,14 +138,12 @@ export class CalmHttpClient {
           ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal: AbortSignal.timeout(this.options.timeoutMs),
+        signal: cancel ? AbortSignal.any([timeout, cancel]) : timeout,
       });
     } catch (error) {
-      // Network failure / timeout — never produced a response. Surface as an ApiError (status 0).
-      throw new ApiError(`HTTP request error: ${(error as Error).message}`, 0);
+      const transport = cancel?.aborted ? 'cancelled' : timeout.aborted ? 'timeout' : 'network';
+      throw new ApiError(`HTTP request error: ${(error as Error).message}`, 0, { transport });
     }
-
-    return this.handleResponse<T>(response, url);
   }
 
   /** Parse a successful body, or convert a failure into the most specific `ApiError`. */
@@ -141,8 +176,43 @@ export class CalmHttpClient {
       { status: response.status, body: summarizeBody(body, MAX_BODY_LOG_CHARS) },
       'error response',
     );
-    throw parseErrorResponse(response.status, body);
+    throw parseErrorResponse(response.status, body, retryAfterSeconds(response));
   }
+}
+
+/** Seconds a response asks the caller to wait (`Retry-After` as seconds or an HTTP date). */
+function retryAfterSeconds(response: Response): number | undefined {
+  const header = response.headers.get('retry-after');
+  if (!header) return undefined;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds);
+  const date = Date.parse(header);
+  return Number.isNaN(date) ? undefined : Math.max(0, (date - Date.now()) / 1000);
+}
+
+/** The wait before retrying a throttled response, or undefined when it should not be retried. */
+function retryWait(response: Response): number | undefined {
+  if (!RETRYABLE_STATUSES.has(response.status)) return undefined;
+  const wait = retryAfterSeconds(response) ?? 1;
+  return wait <= MAX_RETRY_WAIT_SECONDS ? wait : undefined;
+}
+
+/** Wait `ms`, ending early (with a cancellation error) when the call is aborted. */
+function sleep(ms: number, cancel: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cancelled = () => {
+      clearTimeout(timer);
+      reject(
+        new ApiError('Request cancelled while waiting to retry', 0, { transport: 'cancelled' }),
+      );
+    };
+    const timer = setTimeout(() => {
+      cancel?.removeEventListener('abort', cancelled);
+      resolve();
+    }, ms);
+    if (cancel?.aborted) cancelled();
+    else cancel?.addEventListener('abort', cancelled, { once: true });
+  });
 }
 
 /**
@@ -150,16 +220,17 @@ export class CalmHttpClient {
  *
  * @param status - HTTP status code.
  * @param body - Raw response body text.
+ * @param retryAfter - Seconds the service asked to wait, when it said.
  * @returns An `ApiError` carrying the status and any OData code/message.
  */
-export function parseErrorResponse(status: number, body: string): ApiError {
+export function parseErrorResponse(status: number, body: string, retryAfter?: number): ApiError {
   try {
     const parsed = JSON.parse(body) as ODataErrorBody;
     if (parsed.error?.code && parsed.error?.message) {
-      return ApiError.odata(status, parsed.error.code, parsed.error.message);
+      return ApiError.odata(status, parsed.error.code, parsed.error.message, retryAfter);
     }
   } catch {
     // Not JSON / not an OData error envelope — fall through to a plain HTTP error.
   }
-  return ApiError.http(status, body);
+  return ApiError.http(status, body, retryAfter);
 }

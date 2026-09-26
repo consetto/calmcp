@@ -7,9 +7,8 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
-import { errorMessage } from '../errors.js';
 import { CREATE_RESOURCES } from './create.js';
-import { errorResult, jsonResult } from './result.js';
+import { errorResult, errorResultFrom, jsonResult } from './result.js';
 import type { calmCreateShape } from './schemas.js';
 
 /** Arguments accepted by the `calm_create` tool. */
@@ -55,6 +54,6 @@ export async function handleCalmCreate(
   try {
     return jsonResult(await clients.createOData(def.service, def.entitySet, parsed.data));
   } catch (error) {
-    return errorResult(errorMessage(error));
+    return errorResultFrom(error);
   }
 }

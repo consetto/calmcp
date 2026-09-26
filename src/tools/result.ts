@@ -8,7 +8,8 @@
 // the answer looks authoritative and is wrong.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { collectFieldNames, locateRecords } from './shape.js';
+import { describeError, type ErrorCode, type ErrorInfo } from '../errors.js';
+import { collectFieldNames, locateRecords, ShapeError } from './shape.js';
 
 /** Fallback budget used until {@link configureResults} runs (matches the `Config` default). */
 const FALLBACK_MAX_RESPONSE_BYTES = 100_000;
@@ -134,11 +135,29 @@ function oversizeSummary(data: unknown, bytes: number, hint: string): OversizeSu
 }
 
 /**
- * Wrap a message as an error tool result.
+ * Wrap a message as an error tool result. The text is a JSON object with a machine-readable
+ * `error` code and `retryable` flag next to the message, so a client can decide between retrying,
+ * fixing the call and asking the user without parsing prose.
  *
  * @param message - The human-readable error message.
+ * @param code - The error code; a message without one is a problem with the call's arguments.
  * @returns A {@link CallToolResult} flagged with `isError`.
  */
-export function errorResult(message: string): CallToolResult {
-  return { content: [{ type: 'text', text: message }], isError: true };
+export function errorResult(message: string, code: ErrorCode = 'INVALID_ARGUMENT'): CallToolResult {
+  return structuredError({ error: code, retryable: false, message });
+}
+
+/**
+ * Wrap a caught error as an error tool result, classified by {@link describeError}.
+ *
+ * @param error - The caught value.
+ * @returns A {@link CallToolResult} flagged with `isError`.
+ */
+export function errorResultFrom(error: unknown): CallToolResult {
+  if (error instanceof ShapeError) return errorResult(error.message);
+  return structuredError(describeError(error));
+}
+
+function structuredError(info: ErrorInfo): CallToolResult {
+  return { content: [{ type: 'text', text: JSON.stringify(info, null, 2) }], isError: true };
 }

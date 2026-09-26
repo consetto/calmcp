@@ -6,6 +6,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { Logger } from 'pino';
 import type { CalmClients } from '../calm/index.js';
+import { runWithContext } from '../context.js';
 import { logToolCall, logToolResult } from '../logging.js';
 import { type CalmAnalyticsArgs, handleCalmAnalytics } from './calmAnalytics.js';
 import { type CalmCreateArgs, handleCalmCreate } from './calmCreate.js';
@@ -40,11 +41,13 @@ export function registerTools(
   writeAllowed = clients.writeEnabled,
 ): void {
   // Wrap a handler with call/result tracing so every tool gets consistent debug logging.
+  // Each call also runs with its abort signal in context, so Cloud ALM requests stop when the client
+  // cancels the call.
   const traced =
     <A>(tool: string, handler: (a: A) => CallToolResult | Promise<CallToolResult>) =>
-    async (args: A): Promise<CallToolResult> => {
+    async (args: A, extra: { signal: AbortSignal }): Promise<CallToolResult> => {
       logToolCall(logger, tool, args);
-      const result = await handler(args);
+      const result = await runWithContext({ signal: extra.signal }, () => handler(args));
       logToolResult(logger, tool, result);
       return result;
     };

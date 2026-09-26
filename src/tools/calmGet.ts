@@ -5,9 +5,8 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { odataString } from '../calm/odata.js';
-import { errorMessage } from '../errors.js';
 import { GET_RESOURCES } from './registry.js';
-import { errorResult, jsonResult } from './result.js';
+import { errorResult, errorResultFrom, jsonResult } from './result.js';
 import type { calmGetShape } from './schemas.js';
 import { projectFields } from './shape.js';
 
@@ -64,7 +63,7 @@ export async function handleCalmGet(
       });
       const first = collection.value[0] as { uuid?: string } | undefined;
       if (!first) {
-        return errorResult(`No ${args.resource} found with display id '${args.id}'`);
+        return errorResult(`No ${args.resource} found with display id '${args.id}'`, 'NOT_FOUND');
       }
       // If an expand was requested, re-fetch by uuid to include the navigations.
       if (args.expand && first.uuid) {
@@ -75,6 +74,6 @@ export async function handleCalmGet(
 
     return respond(await clients.getOData(def.service, def.entitySet, args.id, args.expand));
   } catch (error) {
-    return errorResult(errorMessage(error));
+    return errorResultFrom(error);
   }
 }

@@ -120,6 +120,21 @@ Every counting result reports `method`, the effective `filter`, and `complete`. 
 the 20 000-record page cap comes back with `complete: false` and says the real total is higher,
 rather than presenting a floor as the answer.
 
+### Errors
+
+A failed call returns an error result whose text is a JSON object, so a client can branch on it
+without parsing prose:
+
+```json
+{ "error": "FORBIDDEN", "retryable": false, "status": 403, "message": "HTTP error 403: ...",
+  "hint": "The Cloud ALM user behind calmcp lacks the API scope for this resource." }
+```
+
+Codes: `INVALID_ARGUMENT` (fix the call), `NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`,
+`CONFLICT`, `RATE_LIMITED`, `UPSTREAM_ERROR`, `TIMEOUT`, `NETWORK`, `CANCELLED`, `AUTH`, `CONFIG`,
+`INTERNAL`. A read answered with 429 or 503 is retried once when Cloud ALM asks for a wait of at
+most 5 seconds; a create is never retried. A call the client cancels stops issuing requests.
+
 ### Covered services
 
 Tasks, Projects (incl. programs and program teams), Features, Documents, Process Hierarchy,

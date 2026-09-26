@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { ApiError, AuthError } from '../../src/errors.js';
 import {
   configureResults,
   errorResult,
+  errorResultFrom,
   jsonResult,
   responseBudget,
 } from '../../src/tools/result.js';
+import { ShapeError } from '../../src/tools/shape.js';
 
 const DEFAULT_BUDGET = responseBudget();
 
@@ -106,9 +109,34 @@ describe('configureResults', () => {
 });
 
 describe('errorResult', () => {
-  it('flags the result and passes the message through', () => {
+  it('flags the result and reports an argument problem with a code', () => {
     const result = errorResult('boom');
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toBe('boom');
+    expect(JSON.parse(textOf(result))).toEqual({
+      error: 'INVALID_ARGUMENT',
+      retryable: false,
+      message: 'boom',
+    });
+  });
+});
+
+describe('errorResultFrom', () => {
+  const codeOf = (error: unknown) =>
+    JSON.parse(textOf(errorResultFrom(error))) as { error: string; retryable: boolean };
+
+  it.each([
+    [new ApiError('x', 404), 'NOT_FOUND', false],
+    [new ApiError('x', 403), 'FORBIDDEN', false],
+    [new ApiError('x', 429), 'RATE_LIMITED', true],
+    [new ApiError('x', 503), 'UPSTREAM_ERROR', true],
+    [new ApiError('x', 400), 'BAD_REQUEST', false],
+    [new ApiError('x', 0), 'NETWORK', true],
+    [new ApiError('x', 0, { transport: 'timeout' }), 'TIMEOUT', true],
+    [new ApiError('x', 0, { transport: 'cancelled' }), 'CANCELLED', false],
+    [new AuthError('x'), 'AUTH', false],
+    [new ShapeError('x'), 'INVALID_ARGUMENT', false],
+    [new Error('x'), 'INTERNAL', false],
+  ])('classifies %o as %s', (error, code, retryable) => {
+    expect(codeOf(error)).toMatchObject({ error: code, retryable });
   });
 });

@@ -14,13 +14,11 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
-import { errorMessage } from '../errors.js';
 import { COUNT_PERIOD, COUNT_RESOLUTION, mergeAnalyticsFilter } from './analyticsFilter.js';
 import { ANALYTICS_PROVIDER_FIELDS } from './constants.js';
 import { countAnalytics } from './counting.js';
-import { errorResult, jsonResult } from './result.js';
+import { errorResultFrom, jsonResult } from './result.js';
 import type { calmAnalyticsShape } from './schemas.js';
-import { ShapeError } from './shape.js';
 
 /** Caveat attached to every analytics count, so a snapshot is never quoted as a live number. */
 const SNAPSHOT_NOTE =
@@ -86,7 +84,6 @@ export async function handleCalmAnalytics(
     });
     return jsonResult(data);
   } catch (error) {
-    if (error instanceof ShapeError) return errorResult(error.message);
-    return errorResult(errorMessage(error));
+    return errorResultFrom(error);
   }
 }

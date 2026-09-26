@@ -13,7 +13,6 @@
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { CalmClients } from '../calm/index.js';
-import { errorMessage } from '../errors.js';
 import { countOData, countRest } from './counting.js';
 import { fetchAllRest, MAX_PAGES_RETURN, PAGE_SIZE } from './paging.js';
 import {
@@ -24,7 +23,7 @@ import {
   type RestListResource,
   readParams,
 } from './registry.js';
-import { errorResult, jsonResult } from './result.js';
+import { errorResult, errorResultFrom, jsonResult } from './result.js';
 import {
   locateRecords,
   pickTimebox,
@@ -204,7 +203,7 @@ export async function handleCalmList(
     const data = await fetchList(clients, def, args);
     return jsonResult(withEmptyNote(args.fields ? projectFields(data, args.fields) : data, args));
   } catch (error) {
-    return errorResult(errorMessage(error));
+    return errorResultFrom(error);
   }
 }
 
