@@ -429,7 +429,8 @@ instead: see [Connecting calmcp to Microsoft Copilot Studio](docs/copilot-studio
 
 ```bash
 npm test                 # unit (mocked HTTP via undici MockAgent)
-npm run test:integration # live sandbox/destination — skipped without credentials
+npm run test:integration # live backend from .env; skipped without credentials
+                         # CALM_TEST_PROJECT_ID=<uuid> adds the project-scoped checks
 npm run build && npm run test:e2e   # real MCP calls over stdio and HTTP
 ```
 

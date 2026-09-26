@@ -138,8 +138,13 @@ export async function fetchAllOData(
   return { records: all, complete: false, pages: maxPages };
 }
 
-/** Whether an OData response announces a further page. */
-function hasNextLink(body: unknown): boolean {
+/**
+ * Whether an OData response announces a further page.
+ *
+ * @param body - A parsed response body.
+ * @returns True when it carries `@odata.nextLink` or `@nextLink`.
+ */
+export function hasNextLink(body: unknown): boolean {
   if (typeof body !== 'object' || body === null) return false;
   const envelope = body as { '@odata.nextLink'?: unknown; '@nextLink'?: unknown };
   return Boolean(envelope['@odata.nextLink'] ?? envelope['@nextLink']);

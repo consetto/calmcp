@@ -14,7 +14,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { CalmClients } from '../calm/index.js';
 import { countOData, countRest } from './counting.js';
-import { fetchAllRest, MAX_PAGES_RETURN, PAGE_SIZE } from './paging.js';
+import { fetchAllRest, hasNextLink, MAX_PAGES_RETURN, PAGE_SIZE } from './paging.js';
 import {
   ignoredParams,
   LIST_RESOURCES,
@@ -136,6 +136,31 @@ function querySubject(args: CalmListArgs): Record<string, string> {
 }
 
 /**
+ * Add a `nextPage` hint naming the exact parameters for the following page, when this page is
+ * full or the service announced more. Without it a caller has to work out the next offset itself,
+ * and a wrong guess silently skips or repeats records.
+ *
+ * @param shaped - The response after field projection.
+ * @param raw - The response as the service sent it (for its `@nextLink`).
+ * @param args - Validated tool arguments.
+ * @returns The response, with the hint when another page is likely.
+ */
+function withNextPage(shaped: unknown, raw: unknown, args: CalmListArgs): unknown {
+  const located = locateRecords(shaped);
+  const count = located?.records.length ?? 0;
+  if (!located || count === 0) return shaped;
+  // Callers page with limit/offset (REST) or top/skip (OData and the process services).
+  const byLimit = args.limit !== undefined;
+  const size = byLimit ? args.limit : args.top;
+  const start = (byLimit ? args.offset : args.skip) ?? 0;
+  if (!(hasNextLink(raw) || count === size)) return shaped;
+  const nextPage = byLimit ? { offset: start + count } : { skip: start + count };
+  return Array.isArray(shaped)
+    ? { records: shaped, nextPage }
+    : { ...(shaped as object), nextPage };
+}
+
+/**
  * Replace an empty collection by a note naming what was queried. A bare `[]` does not tell a
  * caller whether nothing exists at all or only nothing under this parent and these filters.
  */
@@ -201,7 +226,8 @@ export async function handleCalmList(
       return jsonResult(await countList(clients, def, args));
     }
     const data = await fetchList(clients, def, args);
-    return jsonResult(withEmptyNote(args.fields ? projectFields(data, args.fields) : data, args));
+    const shaped = args.fields ? projectFields(data, args.fields) : data;
+    return jsonResult(withEmptyNote(withNextPage(shaped, data, args), args));
   } catch (error) {
     return errorResultFrom(error);
   }

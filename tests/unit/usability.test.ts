@@ -131,6 +131,45 @@ describe('network-backed usability', () => {
     expect(body.note).toContain('overlap');
   });
 
+  it('names the next OData page when this one is full', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-features/v1/Features?$top=2&$skip=4' })
+      .reply(200, { value: [{ uuid: 'a' }, { uuid: 'b' }] });
+    const body = parse(
+      await handleCalmList(makeClients(), { resource: 'features', top: 2, skip: 4 }),
+    ) as { value: unknown[]; nextPage: unknown };
+    expect(body.value).toHaveLength(2);
+    expect(body.nextPage).toEqual({ skip: 6 });
+  });
+
+  it('names the next REST page when this one is full', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&offset=4&limit=2' })
+      .reply(200, [{ id: 'a' }, { id: 'b' }]);
+    const body = parse(
+      await handleCalmList(makeClients(), {
+        resource: 'tasks',
+        project_id: 'p1',
+        limit: 2,
+        offset: 4,
+      }),
+    );
+    expect(body).toEqual({ records: [{ id: 'a' }, { id: 'b' }], nextPage: { offset: 6 } });
+  });
+
+  it('leaves a short last page as the service returned it', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&limit=5' })
+      .reply(200, [{ id: 'a' }]);
+    const body = parse(
+      await handleCalmList(makeClients(), { resource: 'tasks', project_id: 'p1', limit: 5 }),
+    );
+    expect(body).toEqual([{ id: 'a' }]);
+  });
+
   it('names what was queried when a relation list is empty', async () => {
     agent
       .get(ORIGIN)
