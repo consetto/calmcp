@@ -2,20 +2,17 @@
 // key; features additionally accept a display id (e.g. "6-123"), resolved via a `displayId` filter.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { odataString } from '../calm/odata.js';
 import { errorMessage } from '../errors.js';
 import { GET_RESOURCES } from './registry.js';
 import { errorResult, jsonResult } from './result.js';
+import type { calmGetShape } from './schemas.js';
 import { projectFields } from './shape.js';
 
 /** Arguments accepted by the `calm_get` tool. */
-export interface CalmGetArgs {
-  resource: string;
-  id: string;
-  expand?: string;
-  fields?: string;
-}
+export type CalmGetArgs = z.infer<z.ZodObject<typeof calmGetShape>>;
 
 /** Retry advice when one entity is over the response budget. */
 const GET_OVERSIZE_HINT =

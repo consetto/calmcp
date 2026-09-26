@@ -30,9 +30,8 @@ describe('buildODataQueryString', () => {
     expect(buildODataQueryString({ top: 10, skip: 20 })).toBe('?$top=10&$skip=20');
   });
 
-  it('emits count and search', () => {
+  it('emits count', () => {
     expect(buildODataQueryString({ count: true })).toBe('?$count=true');
-    expect(buildODataQueryString({ search: 'defect' })).toBe('?$search=defect');
   });
 
   it('emits $top=0, which is how a count-only request avoids transferring records', () => {

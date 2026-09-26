@@ -194,103 +194,111 @@ export async function handleCalmList(
       `Unknown resource '${args.resource}'. Use calm_resources to list valid ones.`,
     );
   }
+  const problem = validateListArgs(def, args);
+  if (problem) return errorResult(problem);
 
+  try {
+    if (args.count_only === true || args.group_by !== undefined) {
+      return jsonResult(await countList(clients, def, args));
+    }
+    const data = await fetchList(clients, def, args);
+    return jsonResult(withEmptyNote(args.fields ? projectFields(data, args.fields) : data, args));
+  } catch (error) {
+    return errorResult(errorMessage(error));
+  }
+}
+
+/**
+ * Reject argument combinations that would be dropped or answer a different question.
+ *
+ * @param def - The resource definition.
+ * @param args - Validated tool arguments.
+ * @returns The error message, or undefined when the call may proceed.
+ */
+function validateListArgs(def: ListResource, args: CalmListArgs): string | undefined {
   if (args.timebox_id !== undefined && args.timebox_name !== undefined) {
-    return errorResult('Pass either timebox_id or timebox_name, not both.');
+    return 'Pass either timebox_id or timebox_name, not both.';
   }
   const byTimebox = args.timebox_id !== undefined || args.timebox_name !== undefined;
   if (byTimebox && args.resource !== 'tasks') {
-    return errorResult("timebox_id/timebox_name apply to resource 'tasks' only.");
+    return "timebox_id/timebox_name apply to resource 'tasks' only.";
   }
 
   // A parameter the resource does not read would be dropped on the way out, and the answer would
   // come back unfiltered while looking filtered. Reject it and name what the resource does read.
   const ignored = ignoredParams(def, args);
   if (ignored.length > 0) {
-    return errorResult(unsupportedParamsMessage(args.resource, def, ignored));
+    return unsupportedParamsMessage(args.resource, def, ignored);
   }
 
   const counting = args.count_only === true || args.group_by !== undefined;
   if (counting && args.fields !== undefined) {
-    return errorResult(
-      "'fields' projects records, but count_only/group_by return no records. Drop one of them.",
-    );
+    return "'fields' projects records, but count_only/group_by return no records. Drop one of them.";
   }
   if (counting && byTimebox) {
-    return errorResult(
+    return (
       'timebox_id/timebox_name cannot be combined with count_only/group_by. Count the project ' +
-        "first, or add group_by:'timeboxId' to get the per-sprint breakdown in one call.",
+      "first, or add group_by:'timeboxId' to get the per-sprint breakdown in one call."
     );
   }
   // `count` rides along with the records via `$count`, which only an OData gateway offers. Saying
   // so beats ignoring it: a silently dropped option is how a caller ends up trusting a number that
   // was never returned.
   if (args.count === true && def.kind !== 'odata') {
-    return errorResult(
+    return (
       `Resource '${args.resource}' is a REST endpoint with no server-side count. ` +
-        `Use count_only:true instead, which counts by paging.`,
+      'Use count_only:true instead, which counts by paging.'
     );
   }
 
-  try {
-    let data: unknown;
-
-    if (def.kind === 'odata') {
-      if (counting) {
-        return jsonResult(
-          await countOData(
-            clients,
-            def.service,
-            def.entitySet,
-            { filter: args.filter, orderby: args.orderby },
-            {
-              subject: querySubject(args),
-              groupBy: args.group_by,
-              groupLimit: args.group_limit,
-            },
-          ),
-        );
-      }
-
-      data = await clients.listOData(def.service, def.entitySet, {
-        filter: args.filter,
-        select: args.select,
-        expand: args.expand,
-        orderby: args.orderby,
-        top: args.top,
-        skip: args.skip,
-        count: args.count,
-      });
-    } else {
-      // REST resource: enforce required contextual parameters before issuing the request.
-      const missing = def.required.filter((name) => !args[name as keyof ListParams]);
-      if (missing.length > 0) {
-        return errorResult(
-          `Missing required parameter(s) for resource '${args.resource}': ${missing.join(', ')}`,
-        );
-      }
-
-      if (counting) {
-        return jsonResult(
-          await countRest(clients, def, args, {
-            subject: querySubject(args),
-            groupBy: args.group_by,
-            groupLimit: args.group_limit,
-          }),
-        );
-      }
-
-      if (byTimebox) {
-        data = await listTasksInTimebox(clients, def, args);
-      } else {
-        const { path, query } = def.build(args);
-        data = await clients.getRest(def.service, path, query);
-      }
+  if (def.kind === 'rest') {
+    const missing = def.required.filter((name) => !args[name as keyof ListParams]);
+    if (missing.length > 0) {
+      return `Missing required parameter(s) for resource '${args.resource}': ${missing.join(', ')}`;
     }
-
-    return jsonResult(withEmptyNote(args.fields ? projectFields(data, args.fields) : data, args));
-  } catch (error) {
-    if (error instanceof ShapeError) return errorResult(error.message);
-    return errorResult(errorMessage(error));
   }
+  return undefined;
+}
+
+/** Answer a count_only/group_by call without returning records. */
+function countList(clients: CalmClients, def: ListResource, args: CalmListArgs) {
+  const request = {
+    subject: querySubject(args),
+    groupBy: args.group_by,
+    groupLimit: args.group_limit,
+  };
+  if (def.kind === 'odata') {
+    return countOData(
+      clients,
+      def.service,
+      def.entitySet,
+      { filter: args.filter, orderby: args.orderby },
+      request,
+    );
+  }
+  return countRest(clients, def, args, request);
+}
+
+/** Fetch the records of one page (or of one timebox) as the service returns them. */
+async function fetchList(
+  clients: CalmClients,
+  def: ListResource,
+  args: CalmListArgs,
+): Promise<unknown> {
+  if (def.kind === 'odata') {
+    return clients.listOData(def.service, def.entitySet, {
+      filter: args.filter,
+      select: args.select,
+      expand: args.expand,
+      orderby: args.orderby,
+      top: args.top,
+      skip: args.skip,
+      count: args.count,
+    });
+  }
+  if (args.timebox_id !== undefined || args.timebox_name !== undefined) {
+    return listTasksInTimebox(clients, def, args);
+  }
+  const { path, query } = def.build(args);
+  return clients.getRest(def.service, path, query);
 }

@@ -4,6 +4,7 @@
 // guessing. Purely static; no API calls.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { z } from 'zod';
 import {
   ANALYTICS_PROVIDER_FIELDS,
   ANALYTICS_PROVIDERS,
@@ -13,7 +14,7 @@ import {
   TASK_SUB_STATUSES,
   TASK_TYPES,
 } from './constants.js';
-import { CREATE_RESOURCES, type CreateResource, describeObject } from './create.js';
+import { CREATE_RESOURCES, type CreateResource } from './create.js';
 import {
   GET_RESOURCES,
   LIST_RESOURCE_NAMES,
@@ -23,11 +24,11 @@ import {
   readParams,
 } from './registry.js';
 import { jsonResult } from './result.js';
+import type { calmResourcesShape } from './schemas.js';
+import { describeObject } from './zodDoc.js';
 
 /** Arguments accepted by the `calm_resources` tool. */
-export interface CalmResourcesArgs {
-  topic?: string;
-}
+export type CalmResourcesArgs = z.infer<z.ZodObject<typeof calmResourcesShape>>;
 
 /** Deployment facts the catalog depends on. */
 export interface CalmResourcesOptions {

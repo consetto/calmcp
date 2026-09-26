@@ -22,6 +22,7 @@ import {
   bucketOf,
   createGroupTally,
   DEFAULT_GROUP_LIMIT,
+  foldGroups,
   type Group,
   NO_VALUE,
 } from './aggregate.js';
@@ -293,8 +294,7 @@ export async function countAnalytics(
       unit: 'entities',
       pagesFetched: pages,
       groupBy: keys,
-      groups: groups.slice(0, request.groupLimit ?? DEFAULT_GROUP_LIMIT),
-      ...foldedGroups(groups, request.groupLimit ?? DEFAULT_GROUP_LIMIT),
+      ...foldGroups(groups, request.groupLimit ?? DEFAULT_GROUP_LIMIT),
       ...noteFor({ total: records.length, complete, method: 'analytics-measure' }, request),
     };
   }
@@ -357,19 +357,6 @@ function toMeasuredGroups(records: Record_[], keys: string[], measure: string): 
 /** Stable sort key for a group, for tie-breaking. */
 function labelKey(group: Group): string {
   return group.value ?? Object.values(group.values ?? {}).join(' ');
-}
-
-/** Report the tail beyond `groupLimit` rather than dropping it. */
-function foldedGroups(
-  groups: Group[],
-  limit: number,
-): { groupsOmitted?: number; otherCount?: number } {
-  if (groups.length <= limit) return {};
-  const folded = groups.slice(limit);
-  return {
-    groupsOmitted: folded.length,
-    otherCount: folded.reduce((sum, group) => sum + group.count, 0),
-  };
 }
 
 /**

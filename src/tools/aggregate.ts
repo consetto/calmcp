@@ -113,25 +113,39 @@ export function createGroupTally(
       const sorted = [...counts.entries()].sort(
         ([aKey, aCount], [bKey, bCount]) => bCount - aCount || aKey.localeCompare(bKey),
       );
-      const kept = sorted.slice(0, groupLimit);
-      const folded = sorted.slice(groupLimit);
-
       const tally: GroupTally = {
         groupBy: keys,
         total,
-        groups: kept.map(([composite, count]) =>
-          toGroup(keys, composite.split(KEY_SEPARATOR), count),
+        ...foldGroups(
+          sorted.map(([composite, count]) => toGroup(keys, composite.split(KEY_SEPARATOR), count)),
+          groupLimit,
         ),
       };
-      if (folded.length > 0) {
-        tally.groupsOmitted = folded.length;
-        tally.otherCount = folded.reduce((sum, [, count]) => sum + count, 0);
-      }
       if (multiValued.size > 0) {
         tally.multiValued = keys.filter((key) => multiValued.has(key));
       }
       return tally;
     },
+  };
+}
+
+/**
+ * Keep the first `limit` groups and report the tail as a count rather than dropping it.
+ *
+ * @param groups - Groups already in their final order.
+ * @param limit - Maximum groups to keep.
+ * @returns The kept groups, plus `groupsOmitted`/`otherCount` when a tail was folded.
+ */
+export function foldGroups(
+  groups: Group[],
+  limit: number,
+): Pick<GroupTally, 'groups' | 'groupsOmitted' | 'otherCount'> {
+  if (groups.length <= limit) return { groups };
+  const folded = groups.slice(limit);
+  return {
+    groups: groups.slice(0, limit),
+    groupsOmitted: folded.length,
+    otherCount: folded.reduce((sum, group) => sum + group.count, 0),
   };
 }
 

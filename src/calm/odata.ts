@@ -17,8 +17,6 @@ export interface ODataQueryOptions {
   skip?: number;
   /** `$count` — include the total count when true. */
   count?: boolean;
-  /** `$search` — free-text search term. */
-  search?: string;
 }
 
 /**
@@ -94,7 +92,6 @@ export function buildODataQueryString(options: ODataQueryOptions): string {
   if (options.top !== undefined) params.push(`$top=${options.top}`);
   if (options.skip !== undefined) params.push(`$skip=${options.skip}`);
   if (options.count) params.push('$count=true');
-  if (options.search) params.push(`$search=${encodeURIComponent(options.search)}`);
 
   return params.length > 0 ? `?${params.join('&')}` : '';
 }

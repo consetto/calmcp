@@ -5,16 +5,15 @@
 // HTML (with its embedded images) cannot be damaged by anything this file does.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { errorMessage } from '../errors.js';
 import { CREATE_RESOURCES } from './create.js';
 import { errorResult, jsonResult } from './result.js';
+import type { calmCreateShape } from './schemas.js';
 
 /** Arguments accepted by the `calm_create` tool. */
-export interface CalmCreateArgs {
-  resource: string;
-  data: Record<string, unknown>;
-}
+export type CalmCreateArgs = z.infer<z.ZodObject<typeof calmCreateShape>>;
 
 /**
  * Handle a `calm_create` call.
