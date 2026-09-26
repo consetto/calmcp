@@ -284,18 +284,17 @@ describe('handleCalmAnalytics', () => {
     await agent.close();
   });
 
-  it('queries the Defects provider ordered by priority (recipe)', async () => {
+  it('queries the Defects provider with a filter and never sends $orderby', async () => {
     agent
       .get(ORIGIN)
       .intercept({
-        path: "/api/calm-analytics/v1/odata/v4/analytics/Defects?$filter=status%20eq%20'CIPDFCTOPEN'&$orderby=priority%20desc",
+        path: "/api/calm-analytics/v1/odata/v4/analytics/Defects?$filter=status%20eq%20'CIPDFCTOPEN'",
       })
       .reply(200, { value: [{ id: 'd1' }] });
 
     const result = await handleCalmAnalytics(makeClients(), {
       provider: 'Defects',
       filter: "status eq 'CIPDFCTOPEN'",
-      orderby: 'priority desc',
     });
     expect((parse(result) as { value: unknown[] }).value).toHaveLength(1);
   });

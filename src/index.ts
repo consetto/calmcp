@@ -7,7 +7,7 @@ import { loadXsuaaCredentials, resolveAppUrl, type XsuaaCredentials } from '@arc
 import { Command } from 'commander';
 import { Config } from './config.js';
 import { createLogger } from './logging.js';
-import { buildMcpServer, createClients } from './server.js';
+import { buildMcpServer, createClients, VIEWER_SCOPE, WRITER_SCOPE } from './server.js';
 import { createHttpApp } from './transport/http.js';
 import { startStdio } from './transport/stdio.js';
 
@@ -22,15 +22,39 @@ interface CliOptions {
   port?: string;
 }
 
-/** Parse the CORS origins env var into a value the `cors` middleware accepts. */
-function parseCorsOrigins(value: string | undefined): string | string[] {
-  if (!value || value.trim() === '*') {
+/**
+ * Parse the CORS origins env var into a value the `cors` middleware accepts. Unset means no CORS
+ * headers: MCP clients call the endpoint server-side, so only browser-based clients need an entry.
+ */
+function parseCorsOrigins(value: string | undefined): string | string[] | false {
+  if (!value?.trim()) {
+    return false;
+  }
+  if (value.trim() === '*') {
     return '*';
   }
   return value
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+}
+
+/**
+ * Load the XSUAA credentials when an xsuaa service is bound. A bound but unreadable binding is a
+ * startup error rather than a silent fall-back to weaker (or no) authentication.
+ */
+function loadXsuaaIfBound(): XsuaaCredentials | undefined {
+  const raw = process.env.VCAP_SERVICES;
+  if (!raw) {
+    return undefined;
+  }
+  let bound = false;
+  try {
+    bound = Object.hasOwn(JSON.parse(raw) as object, 'xsuaa');
+  } catch {
+    throw new Error('VCAP_SERVICES is not valid JSON');
+  }
+  return bound ? loadXsuaaCredentials() : undefined;
 }
 
 async function main(): Promise<void> {
@@ -54,33 +78,34 @@ async function main(): Promise<void> {
 
   if (useHttp) {
     const port = Number(options.port ?? process.env.PORT ?? DEFAULT_PORT);
+    const onCloudFoundry = Boolean(process.env.VCAP_APPLICATION);
     // Protect /mcp with a static API key (CALM_HTTP_API_KEY) and/or XSUAA + MCP-native OAuth when an
-    // XSUAA service is bound (BTP). With neither configured (local dev) the endpoint is left open;
-    // createHttpApp logs a warning in that case.
-    //
-    // loadXsuaaCredentials throws when no complete xsuaa binding is present, so guard it: an unbound
-    // app falls back to API-key-only (or open) instead of crashing at startup.
-    let xsuaaCredentials: XsuaaCredentials | undefined;
-    if (process.env.VCAP_SERVICES) {
-      try {
-        xsuaaCredentials = loadXsuaaCredentials();
-      } catch (err) {
-        logger.warn(
-          { err: (err as Error).message },
-          'XSUAA service not bound or incomplete — HTTP XSUAA auth disabled',
-        );
-      }
-    }
+    // XSUAA service is bound (BTP). Without either, startup fails unless the operator explicitly opts
+    // into an open endpoint for local development, which is then bound to loopback only. On Cloud
+    // Foundry the opt-in is ignored: a lost xsuaa binding must never expose Cloud ALM publicly.
+    const allowOpen = !onCloudFoundry && process.env.CALM_HTTP_ALLOW_UNAUTHENTICATED === 'true';
+    const xsuaaCredentials = loadXsuaaIfBound();
     const httpApiKey = process.env.CALM_HTTP_API_KEY?.trim() || undefined;
+    const open = !xsuaaCredentials && !httpApiKey;
+    if (open && !allowOpen) {
+      throw new Error(
+        'HTTP transport needs authentication: bind an XSUAA service or set CALM_HTTP_API_KEY. ' +
+          'For local development only, CALM_HTTP_ALLOW_UNAUTHENTICATED=true serves /mcp on ' +
+          '127.0.0.1 without auth.',
+      );
+    }
     const app = createHttpApp({
-      buildServer: () => buildMcpServer(clients, logger),
+      buildServer: (authInfo) => buildMcpServer(clients, logger, authInfo),
       corsOrigins: parseCorsOrigins(process.env.CALM_CORS_ORIGINS),
       rateLimitPerMinute: DEFAULT_RATE_LIMIT,
       logger,
+      requireAuth: !allowOpen,
+      localOnly: open,
+      trustProxy: onCloudFoundry,
       auth: {
         // Entry form (not a bare string) so the key carries the Viewer scope and passes
-        // requiredScopes when XSUAA is also bound.
-        apiKeys: httpApiKey ? [{ key: httpApiKey, scopes: ['Viewer'] }] : undefined,
+        // requiredScopes when XSUAA is also bound. Never Writer: the key is shared and static.
+        apiKeys: httpApiKey ? [{ key: httpApiKey, scopes: [VIEWER_SCOPE] }] : undefined,
         xsuaa: xsuaaCredentials
           ? {
               credentials: xsuaaCredentials,
@@ -88,8 +113,8 @@ async function main(): Promise<void> {
               clientIdPrefix: 'calmcp-',
               dcrKdfLabel: 'calmcp-dcr/v1',
               stateKdfLabel: 'calmcp-oauth-state/v1',
-              scopesSupported: ['Viewer'],
-              requiredScopes: ['Viewer'],
+              scopesSupported: [VIEWER_SCOPE, WRITER_SCOPE],
+              requiredScopes: [VIEWER_SCOPE],
               resourceName: 'calmcp (SAP Cloud ALM MCP Server)',
               dcrSigningSecret:
                 process.env.CALM_DCR_SIGNING_SECRET?.trim() || xsuaaCredentials.clientsecret,
@@ -97,9 +122,13 @@ async function main(): Promise<void> {
           : undefined,
       },
     });
-    app.listen(port, () => {
-      logger.info({ port }, 'calmcp HTTP transport listening');
-    });
+    const onListening = () =>
+      logger.info({ port, loopbackOnly: open }, 'calmcp HTTP transport listening');
+    if (open) {
+      app.listen(port, '127.0.0.1', onListening);
+    } else {
+      app.listen(port, onListening);
+    }
   } else {
     const server = buildMcpServer(clients, logger);
     await startStdio(server, logger);

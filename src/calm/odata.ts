@@ -17,8 +17,6 @@ export interface ODataQueryOptions {
   skip?: number;
   /** `$count` — include the total count when true. */
   count?: boolean;
-  /** `$search` — free-text search term. */
-  search?: string;
 }
 
 /**
@@ -65,6 +63,17 @@ export function readODataCount(data: unknown): number | undefined {
 }
 
 /**
+ * Quote a value as an OData string literal, doubling embedded single quotes so the value can
+ * never end the literal and extend the expression.
+ *
+ * @param value - The raw value.
+ * @returns The literal including its surrounding quotes, e.g. `'O''Brien'`.
+ */
+export function odataString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
  * Build an OData query string (including the leading `?`) from system query options.
  *
  * Values are percent-encoded so the resulting URL is always valid; structural keys like
@@ -83,7 +92,6 @@ export function buildODataQueryString(options: ODataQueryOptions): string {
   if (options.top !== undefined) params.push(`$top=${options.top}`);
   if (options.skip !== undefined) params.push(`$skip=${options.skip}`);
   if (options.count) params.push('$count=true');
-  if (options.search) params.push(`$search=${encodeURIComponent(options.search)}`);
 
   return params.length > 0 ? `?${params.join('&')}` : '';
 }

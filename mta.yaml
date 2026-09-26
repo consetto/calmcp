@@ -49,11 +49,13 @@ modules:
     properties:
       # The MCP server authenticates to Cloud ALM via the bound destination.
       CALM_DESTINATION_NAME: SAP_CALM
-      CALM_CORS_ORIGINS: '*'
+      # No CORS headers by default: MCP clients call /mcp server-side. List exact origins (comma
+      # separated) only for browser-based clients.
+      CALM_CORS_ORIGINS: ''
       CALM_DEBUG: 'false'
-      # Read-only by default. 'true' registers calm_create, which only creates new documents and
-      # library entries (never updates or deletes). Every authenticated caller of this deployment
-      # then gets it, so enable it on a dedicated app rather than a shared viewer instance.
+      # Read-only by default. 'true' offers calm_create, which only creates new documents and
+      # library entries (never updates or deletes), to callers holding the Writer scope (role
+      # collection CALMCP_Editor). Viewers and the API key never get it.
       CALM_WRITE_ENABLED: 'false'
     requires:
       - name: calmcp-xsuaa

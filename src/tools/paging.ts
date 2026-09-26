@@ -98,6 +98,11 @@ export async function fetchAllRest(
 /**
  * Page through an OData entity set with `$top`/`$skip`.
  *
+ * A service may cap its pages below {@link PAGE_SIZE} (server-driven paging). It then signals the
+ * rest with `@odata.nextLink`/`@nextLink`, so a short page ends the walk only when no next link
+ * is present, and `$skip` advances by the rows actually received. The link itself is never
+ * followed: it is an absolute URL from the response, and calmcp only requests URLs it built.
+ *
  * @param clients - The Cloud ALM client container.
  * @param service - The owning service.
  * @param entitySet - The entity set name.
@@ -114,19 +119,35 @@ export async function fetchAllOData(
 ): Promise<PagedFetch> {
   const maxPages = options.maxPages ?? MAX_PAGES_RETURN;
   const all: Record_[] = [];
+  let skip = 0;
 
   for (let page = 0; page < maxPages; page += 1) {
     const body = await clients.listOData(service, entitySet, {
       ...query,
       top: PAGE_SIZE,
-      skip: page * PAGE_SIZE,
+      skip,
     });
     const rows = locateRecords(body)?.records ?? [];
     collect(rows, all, options.onPage);
-    if (rows.length < PAGE_SIZE) return { records: all, complete: true, pages: page + 1 };
+    skip += rows.length;
+    if (rows.length === 0 || (rows.length < PAGE_SIZE && !hasNextLink(body))) {
+      return { records: all, complete: true, pages: page + 1 };
+    }
   }
 
   return { records: all, complete: false, pages: maxPages };
+}
+
+/**
+ * Whether an OData response announces a further page.
+ *
+ * @param body - A parsed response body.
+ * @returns True when it carries `@odata.nextLink` or `@nextLink`.
+ */
+export function hasNextLink(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) return false;
+  const envelope = body as { '@odata.nextLink'?: unknown; '@nextLink'?: unknown };
+  return Boolean(envelope['@odata.nextLink'] ?? envelope['@nextLink']);
 }
 
 /** Hand a page to the callback, or accumulate it when there is none. */

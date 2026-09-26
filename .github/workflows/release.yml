@@ -1,0 +1,79 @@
+# Attach the Claude Desktop bundle (.mcpb) to the GitHub release of every version tag.
+#
+# v0.9.0 shipped without the bundle, so the one-click install pointed at nothing. This job makes the
+# upload part of tagging: it tests, builds the bundle, starts it the way Claude Desktop does, and
+# attaches it. Release notes stay hand-written: when no release exists for the tag yet, a DRAFT is
+# created for them, and an existing release only gets its asset replaced.
+#
+# Run it again for an older tag from the Actions tab ("Run workflow", tag e.g. v0.9.0).
+
+name: Release bundle
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and attach, e.g. v0.9.0'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  mcpb:
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to create the draft release and upload the asset; nothing else in this job writes.
+      contents: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      # The smoke test comes from the workflow's own commit, so re-running an older tag that
+      # predates the script still works. It resolves its SDK import from the tag's node_modules.
+      - uses: actions/checkout@v4
+        with:
+          path: ci-tools
+          sparse-checkout: scripts/smoke-mcpb.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Check the tag matches the package version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v${version}" != "${TAG}" ]; then
+            echo "::error::tag ${TAG} does not match package.json version ${version}"
+            exit 1
+          fi
+          npm run version:check
+
+      - name: Test
+        run: npm test
+
+      - name: Build bundle
+        run: npm run build:mcpb
+
+      - name: Smoke-test bundle
+        run: node ci-tools/scripts/smoke-mcpb.mjs "calmcp-${TAG#v}.mcpb"
+
+      - name: Attach to release
+        run: |
+          if ! gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release create "${TAG}" --draft --verify-tag --title "${TAG#v}" \
+              --notes "Release notes to follow."
+          fi
+          gh release upload "${TAG}" "calmcp-${TAG#v}.mcpb" --clobber

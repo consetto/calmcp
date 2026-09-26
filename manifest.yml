@@ -14,7 +14,7 @@ applications:
     health-check-http-endpoint: /health
     env:
       CALM_DESTINATION_NAME: SAP_CALM
-      CALM_CORS_ORIGINS: '*'
+      CALM_CORS_ORIGINS: ''
       CALM_DEBUG: 'false'
       OPTIMIZE_MEMORY: 'true'
     services:

@@ -13,9 +13,8 @@
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { CalmClients } from '../calm/index.js';
-import { errorMessage } from '../errors.js';
 import { countOData, countRest } from './counting.js';
-import { fetchAllRest, MAX_PAGES_RETURN, PAGE_SIZE } from './paging.js';
+import { fetchAllRest, hasNextLink, MAX_PAGES_RETURN, PAGE_SIZE } from './paging.js';
 import {
   ignoredParams,
   LIST_RESOURCES,
@@ -24,8 +23,9 @@ import {
   type RestListResource,
   readParams,
 } from './registry.js';
-import { errorResult, jsonResult } from './result.js';
+import { errorResult, errorResultFrom, jsonResult } from './result.js';
 import {
+  locateRecords,
   pickTimebox,
   projectFields,
   type Record_,
@@ -106,12 +106,12 @@ async function listTasksInTimebox(
 }
 
 /**
- * Describe what a counting result covered, for the result's `subject`.
+ * Describe what a query covered, for the `subject` of a count or an empty result.
  *
  * @param args - Validated tool arguments.
- * @returns The resource plus whichever scoping parameters were supplied.
+ * @returns The resource plus whichever scoping and filtering parameters were supplied.
  */
-function countSubject(args: CalmListArgs): Record<string, string> {
+function querySubject(args: CalmListArgs): Record<string, string> {
   const subject: Record<string, string> = { resource: args.resource };
   const scoping = [
     'project_id',
@@ -120,12 +120,60 @@ function countSubject(args: CalmListArgs): Record<string, string> {
     'team_id',
     'task_type',
     'status',
+    'sub_status',
+    'assignee_id',
+    'solution_process_id',
+    'timebox_id',
+    'timebox_name',
+    'filter',
   ] as const;
   for (const name of scoping) {
     const value = args[name];
     if (typeof value === 'string') subject[name] = value;
   }
+  if (args.tags && args.tags.length > 0) subject.tags = args.tags.join(',');
   return subject;
+}
+
+/**
+ * Add a `nextPage` hint naming the exact parameters for the following page, when this page is
+ * full or the service announced more. Without it a caller has to work out the next offset itself,
+ * and a wrong guess silently skips or repeats records.
+ *
+ * @param shaped - The response after field projection.
+ * @param raw - The response as the service sent it (for its `@nextLink`).
+ * @param args - Validated tool arguments.
+ * @returns The response, with the hint when another page is likely.
+ */
+function withNextPage(shaped: unknown, raw: unknown, args: CalmListArgs): unknown {
+  const located = locateRecords(shaped);
+  const count = located?.records.length ?? 0;
+  if (!located || count === 0) return shaped;
+  // Callers page with limit/offset (REST) or top/skip (OData and the process services).
+  const byLimit = args.limit !== undefined;
+  const size = byLimit ? args.limit : args.top;
+  const start = (byLimit ? args.offset : args.skip) ?? 0;
+  if (!(hasNextLink(raw) || count === size)) return shaped;
+  const nextPage = byLimit ? { offset: start + count } : { skip: start + count };
+  return Array.isArray(shaped)
+    ? { records: shaped, nextPage }
+    : { ...(shaped as object), nextPage };
+}
+
+/**
+ * Replace an empty collection by a note naming what was queried. A bare `[]` does not tell a
+ * caller whether nothing exists at all or only nothing under this parent and these filters.
+ */
+function withEmptyNote(data: unknown, args: CalmListArgs): unknown {
+  const located = locateRecords(data);
+  if (!located || located.records.length > 0) return data;
+  return {
+    records: [],
+    subject: querySubject(args),
+    note:
+      'No records matched. This covers only the resource, parent ids and filters in subject; ' +
+      'it says nothing about other resources or relation types.',
+  };
 }
 
 /**
@@ -170,103 +218,112 @@ export async function handleCalmList(
       `Unknown resource '${args.resource}'. Use calm_resources to list valid ones.`,
     );
   }
+  const problem = validateListArgs(def, args);
+  if (problem) return errorResult(problem);
 
+  try {
+    if (args.count_only === true || args.group_by !== undefined) {
+      return jsonResult(await countList(clients, def, args));
+    }
+    const data = await fetchList(clients, def, args);
+    const shaped = args.fields ? projectFields(data, args.fields) : data;
+    return jsonResult(withEmptyNote(withNextPage(shaped, data, args), args));
+  } catch (error) {
+    return errorResultFrom(error);
+  }
+}
+
+/**
+ * Reject argument combinations that would be dropped or answer a different question.
+ *
+ * @param def - The resource definition.
+ * @param args - Validated tool arguments.
+ * @returns The error message, or undefined when the call may proceed.
+ */
+function validateListArgs(def: ListResource, args: CalmListArgs): string | undefined {
   if (args.timebox_id !== undefined && args.timebox_name !== undefined) {
-    return errorResult('Pass either timebox_id or timebox_name, not both.');
+    return 'Pass either timebox_id or timebox_name, not both.';
   }
   const byTimebox = args.timebox_id !== undefined || args.timebox_name !== undefined;
   if (byTimebox && args.resource !== 'tasks') {
-    return errorResult("timebox_id/timebox_name apply to resource 'tasks' only.");
+    return "timebox_id/timebox_name apply to resource 'tasks' only.";
   }
 
   // A parameter the resource does not read would be dropped on the way out, and the answer would
   // come back unfiltered while looking filtered. Reject it and name what the resource does read.
   const ignored = ignoredParams(def, args);
   if (ignored.length > 0) {
-    return errorResult(unsupportedParamsMessage(args.resource, def, ignored));
+    return unsupportedParamsMessage(args.resource, def, ignored);
   }
 
   const counting = args.count_only === true || args.group_by !== undefined;
   if (counting && args.fields !== undefined) {
-    return errorResult(
-      "'fields' projects records, but count_only/group_by return no records. Drop one of them.",
-    );
+    return "'fields' projects records, but count_only/group_by return no records. Drop one of them.";
   }
   if (counting && byTimebox) {
-    return errorResult(
+    return (
       'timebox_id/timebox_name cannot be combined with count_only/group_by. Count the project ' +
-        "first, or add group_by:'timeboxId' to get the per-sprint breakdown in one call.",
+      "first, or add group_by:'timeboxId' to get the per-sprint breakdown in one call."
     );
   }
   // `count` rides along with the records via `$count`, which only an OData gateway offers. Saying
   // so beats ignoring it: a silently dropped option is how a caller ends up trusting a number that
   // was never returned.
   if (args.count === true && def.kind !== 'odata') {
-    return errorResult(
+    return (
       `Resource '${args.resource}' is a REST endpoint with no server-side count. ` +
-        `Use count_only:true instead, which counts by paging.`,
+      'Use count_only:true instead, which counts by paging.'
     );
   }
 
-  try {
-    let data: unknown;
-
-    if (def.kind === 'odata') {
-      if (counting) {
-        return jsonResult(
-          await countOData(
-            clients,
-            def.service,
-            def.entitySet,
-            { filter: args.filter, orderby: args.orderby },
-            {
-              subject: countSubject(args),
-              groupBy: args.group_by,
-              groupLimit: args.group_limit,
-            },
-          ),
-        );
-      }
-
-      data = await clients.listOData(def.service, def.entitySet, {
-        filter: args.filter,
-        select: args.select,
-        expand: args.expand,
-        orderby: args.orderby,
-        top: args.top,
-        skip: args.skip,
-        count: args.count,
-      });
-    } else {
-      // REST resource: enforce required contextual parameters before issuing the request.
-      const missing = def.required.filter((name) => !args[name as keyof ListParams]);
-      if (missing.length > 0) {
-        return errorResult(
-          `Missing required parameter(s) for resource '${args.resource}': ${missing.join(', ')}`,
-        );
-      }
-
-      if (counting) {
-        return jsonResult(
-          await countRest(clients, def, args, {
-            subject: countSubject(args),
-            groupBy: args.group_by,
-            groupLimit: args.group_limit,
-          }),
-        );
-      }
-
-      if (byTimebox) {
-        data = await listTasksInTimebox(clients, def, args);
-      } else {
-        const { path, query } = def.build(args);
-        data = await clients.getRest(def.service, path, query);
-      }
+  if (def.kind === 'rest') {
+    const missing = def.required.filter((name) => !args[name as keyof ListParams]);
+    if (missing.length > 0) {
+      return `Missing required parameter(s) for resource '${args.resource}': ${missing.join(', ')}`;
     }
-
-    return jsonResult(args.fields ? projectFields(data, args.fields) : data);
-  } catch (error) {
-    if (error instanceof ShapeError) return errorResult(error.message);
-    return errorResult(errorMessage(error));
   }
+  return undefined;
+}
+
+/** Answer a count_only/group_by call without returning records. */
+function countList(clients: CalmClients, def: ListResource, args: CalmListArgs) {
+  const request = {
+    subject: querySubject(args),
+    groupBy: args.group_by,
+    groupLimit: args.group_limit,
+  };
+  if (def.kind === 'odata') {
+    return countOData(
+      clients,
+      def.service,
+      def.entitySet,
+      { filter: args.filter, orderby: args.orderby },
+      request,
+    );
+  }
+  return countRest(clients, def, args, request);
+}
+
+/** Fetch the records of one page (or of one timebox) as the service returns them. */
+async function fetchList(
+  clients: CalmClients,
+  def: ListResource,
+  args: CalmListArgs,
+): Promise<unknown> {
+  if (def.kind === 'odata') {
+    return clients.listOData(def.service, def.entitySet, {
+      filter: args.filter,
+      select: args.select,
+      expand: args.expand,
+      orderby: args.orderby,
+      top: args.top,
+      skip: args.skip,
+      count: args.count,
+    });
+  }
+  if (args.timebox_id !== undefined || args.timebox_name !== undefined) {
+    return listTasksInTimebox(clients, def, args);
+  }
+  const { path, query } = def.build(args);
+  return clients.getRest(def.service, path, query);
 }

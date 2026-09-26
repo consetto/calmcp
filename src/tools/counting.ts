@@ -18,7 +18,14 @@
 import type { CalmClients } from '../calm/index.js';
 import { readODataCount } from '../calm/odata.js';
 import type { ServiceName } from '../config.js';
-import { createGroupTally, DEFAULT_GROUP_LIMIT, type Group, NO_VALUE } from './aggregate.js';
+import {
+  bucketOf,
+  createGroupTally,
+  DEFAULT_GROUP_LIMIT,
+  foldGroups,
+  type Group,
+  NO_VALUE,
+} from './aggregate.js';
 import { fetchAllOData, fetchAllRest, MAX_PAGES_COUNT, type PagingOptions } from './paging.js';
 import type { ListParams, RestListResource } from './registry.js';
 import { parseFields, type Record_ } from './shape.js';
@@ -56,6 +63,8 @@ export interface CountResult {
   groups?: Group[];
   groupsOmitted?: number;
   otherCount?: number;
+  /** Group-by keys holding arrays: each record counts once per value, so groups overlap. */
+  multiValued?: string[];
   note?: string;
 }
 
@@ -184,6 +193,7 @@ type PagedTally = Pick<
   | 'groups'
   | 'groupsOmitted'
   | 'otherCount'
+  | 'multiValued'
 >;
 
 /**
@@ -224,6 +234,7 @@ async function pagedTally(
     groups: tally.groups,
     ...(tally.groupsOmitted !== undefined ? { groupsOmitted: tally.groupsOmitted } : {}),
     ...(tally.otherCount !== undefined ? { otherCount: tally.otherCount } : {}),
+    ...(tally.multiValued ? { multiValued: tally.multiValued } : {}),
   };
 }
 
@@ -283,9 +294,8 @@ export async function countAnalytics(
       unit: 'entities',
       pagesFetched: pages,
       groupBy: keys,
-      groups: groups.slice(0, request.groupLimit ?? DEFAULT_GROUP_LIMIT),
-      ...foldedGroups(groups, request.groupLimit ?? DEFAULT_GROUP_LIMIT),
-      ...noteFor({ total: 0, complete, method: 'analytics-measure' }, request),
+      ...foldGroups(groups, request.groupLimit ?? DEFAULT_GROUP_LIMIT),
+      ...noteFor({ total: records.length, complete, method: 'analytics-measure' }, request),
     };
   }
 
@@ -331,7 +341,7 @@ export async function countAnalytics(
 function toMeasuredGroups(records: Record_[], keys: string[], measure: string): Group[] {
   const groups = records.map((record) => {
     const count = Number(record[measure] ?? 0);
-    const labels = keys.map((key) => labelOf(record[key]));
+    const labels = keys.map((key) => bucketOf(record[key]));
     const group: Group =
       keys.length === 1
         ? { value: labels[0] ?? NO_VALUE, count: Number.isFinite(count) ? count : 0 }
@@ -347,26 +357,6 @@ function toMeasuredGroups(records: Record_[], keys: string[], measure: string): 
 /** Stable sort key for a group, for tie-breaking. */
 function labelKey(group: Group): string {
   return group.value ?? Object.values(group.values ?? {}).join(' ');
-}
-
-/** Render a dimension value the same way the client-side tally does. */
-function labelOf(value: unknown): string {
-  if (value === null || value === undefined) return NO_VALUE;
-  const text = String(value);
-  return text.trim() === '' ? NO_VALUE : text;
-}
-
-/** Report the tail beyond `groupLimit` rather than dropping it. */
-function foldedGroups(
-  groups: Group[],
-  limit: number,
-): { groupsOmitted?: number; otherCount?: number } {
-  if (groups.length <= limit) return {};
-  const folded = groups.slice(limit);
-  return {
-    groupsOmitted: folded.length,
-    otherCount: folded.reduce((sum, group) => sum + group.count, 0),
-  };
 }
 
 /**
@@ -418,6 +408,12 @@ async function filterWarning(
 function noteFor(tally: PagedTally, request: CountRequest): { note?: string } {
   const parts: string[] = [];
   if (request.note) parts.push(request.note);
+  if (tally.multiValued) {
+    parts.push(
+      `${tally.multiValued.join(', ')} holds several values per record; each record is counted ` +
+        'once per value, so the groups overlap and can add up to more than total.',
+    );
+  }
   if (!tally.complete) {
     parts.push(
       `Stopped at the ${tally.total}-record page cap, so the real total is higher. ` +

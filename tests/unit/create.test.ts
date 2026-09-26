@@ -7,8 +7,9 @@ import { createLogger } from '../../src/logging.js';
 import { buildMcpServer } from '../../src/server.js';
 import { handleCalmCreate } from '../../src/tools/calmCreate.js';
 import { handleCalmResources } from '../../src/tools/calmResources.js';
-import { CREATE_RESOURCE_NAMES, CREATE_RESOURCES, describeObject } from '../../src/tools/create.js';
+import { CREATE_RESOURCE_NAMES, CREATE_RESOURCES } from '../../src/tools/create.js';
 import { GET_RESOURCES } from '../../src/tools/registry.js';
+import { describeObject } from '../../src/tools/zodDoc.js';
 import { makeClients, ORIGIN, parse } from './helpers.js';
 
 const PROJECT = '11111111-1111-1111-1111-111111111111';

@@ -12,34 +12,20 @@
 // pinned rather than left to the service defaults.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
-import { errorMessage } from '../errors.js';
 import { COUNT_PERIOD, COUNT_RESOLUTION, mergeAnalyticsFilter } from './analyticsFilter.js';
 import { ANALYTICS_PROVIDER_FIELDS } from './constants.js';
 import { countAnalytics } from './counting.js';
-import { errorResult, jsonResult } from './result.js';
-import { ShapeError } from './shape.js';
+import { errorResultFrom, jsonResult } from './result.js';
+import type { calmAnalyticsShape } from './schemas.js';
 
 /** Caveat attached to every analytics count, so a snapshot is never quoted as a live number. */
 const SNAPSHOT_NOTE =
   'Analytics is a daily snapshot, so it may differ from a live read of the same records.';
 
 /** Arguments accepted by the `calm_analytics` tool. */
-export interface CalmAnalyticsArgs {
-  provider: string;
-  filter?: string;
-  select?: string;
-  /** Accepted for compatibility and forwarded, but the Analytics service ignores it. */
-  orderby?: string;
-  top?: number;
-  skip?: number;
-  count?: boolean;
-  count_only?: boolean;
-  group_by?: string;
-  group_limit?: number;
-  period?: string;
-  resolution?: string;
-}
+export type CalmAnalyticsArgs = z.infer<z.ZodObject<typeof calmAnalyticsShape>>;
 
 /**
  * Handle a `calm_analytics` call.
@@ -92,14 +78,12 @@ export async function handleCalmAnalytics(
     const data = await clients.listOData('analytics', args.provider, {
       filter,
       select: args.select,
-      orderby: args.orderby,
       top: args.top,
       skip: args.skip,
       count: args.count,
     });
     return jsonResult(data);
   } catch (error) {
-    if (error instanceof ShapeError) return errorResult(error.message);
-    return errorResult(errorMessage(error));
+    return errorResultFrom(error);
   }
 }

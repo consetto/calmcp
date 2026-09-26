@@ -19,11 +19,22 @@ import type { ServiceName } from '../config.js';
 
 const uuid = z.string().uuid();
 
+/**
+ * A link target. Only http(s): a `javascript:` or `data:` URL would be stored in Cloud ALM and
+ * rendered as a clickable link in its UI.
+ */
+function httpUrl(max: number) {
+  return z
+    .string()
+    .max(max)
+    .regex(/^https?:\/\/\S+$/i, 'must be an http:// or https:// URL');
+}
+
 /** A link (display name + URL) attached to the new entity. Same shape in every service. */
 const urlReference = z
   .object({
     name: z.string().min(1).max(255).describe('Display name of the link'),
-    url: z.string().min(1).max(1000).describe('Target URL, starting with http:// or https://'),
+    url: httpUrl(1000).describe('Target URL, starting with http:// or https://'),
   })
   .strict();
 
@@ -36,7 +47,7 @@ const externalReference = z
       .max(255)
       .describe('Identifier in the external system, e.g. its UUID'),
     name: z.string().min(1).max(255).describe('Name of the external system'),
-    url: z.string().max(1000).optional().describe('URL pointing into the external system'),
+    url: httpUrl(1000).optional().describe('URL pointing into the external system'),
   })
   .strict();
 
@@ -68,6 +79,7 @@ export const documentCreateSchema = z
     projectId: uuid.describe('UUID of the project the document belongs to'),
     content: z
       .string()
+      .max(500_000)
       .optional()
       .describe('HTML rich-text body of the document. Plain text is accepted too'),
     scopeId: uuid.optional().describe('UUID of a process scope to assign the document to'),
@@ -174,8 +186,8 @@ const libraryAssignment = z
 /** Properties every cross-library main entity shares. */
 const xlibBase = {
   title: z.string().min(1).max(300).describe('Name of the library entry'),
-  description: z.string().optional().describe('Free-text description'),
-  url: z.string().max(2048).optional().describe('URL to the object, e.g. its documentation'),
+  description: z.string().max(100_000).optional().describe('Free-text description'),
+  url: httpUrl(2048).optional().describe('URL to the object, e.g. its documentation'),
   ownerId: z.string().max(255).optional().describe('Email address of the owner'),
   toURLReferences: z.array(urlReference).optional().describe('Links to attach'),
   toExternalReferences: z
@@ -458,74 +470,3 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
 
 /** Public `resource` values accepted by `calm_create`. */
 export const CREATE_RESOURCE_NAMES = Object.keys(CREATE_RESOURCES);
-
-// ---------------------------------------------------------------------------------------------
-// Field documentation, derived from the schemas so calm_resources cannot drift from validation
-// ---------------------------------------------------------------------------------------------
-
-/** One documented payload field. */
-export interface FieldDoc {
-  name: string;
-  type: string;
-  required: boolean;
-  values?: (string | number)[];
-  description?: string;
-  /** For arrays of objects: the fields of each element. */
-  fields?: FieldDoc[];
-}
-
-/** Strip optional/nullable/default wrappers, remembering that the field may be omitted. */
-function unwrap(schema: z.ZodTypeAny): { inner: z.ZodTypeAny; optional: boolean } {
-  let inner = schema;
-  let optional = false;
-  for (;;) {
-    if (inner instanceof z.ZodOptional || inner instanceof z.ZodNullable) {
-      inner = inner.unwrap();
-      optional = true;
-    } else if (inner instanceof z.ZodDefault) {
-      inner = inner._def.innerType;
-      optional = true;
-    } else {
-      return { inner, optional };
-    }
-  }
-}
-
-/** Describe the type of one (unwrapped) schema node. */
-function describeType(schema: z.ZodTypeAny): Pick<FieldDoc, 'type' | 'values' | 'fields'> {
-  if (schema instanceof z.ZodString) return { type: 'string' };
-  if (schema instanceof z.ZodNumber) return { type: 'number' };
-  if (schema instanceof z.ZodBoolean) return { type: 'boolean' };
-  if (schema instanceof z.ZodEnum) return { type: 'string', values: [...schema.options] };
-  if (schema instanceof z.ZodUnion) {
-    const values = (schema.options as z.ZodTypeAny[])
-      .filter((o): o is z.ZodLiteral<string | number> => o instanceof z.ZodLiteral)
-      .map((o) => o.value);
-    return { type: typeof values[0] === 'number' ? 'number' : 'string', values };
-  }
-  if (schema instanceof z.ZodArray) {
-    const element = describeType(schema.element);
-    return { type: `array of ${element.type}`, values: element.values, fields: element.fields };
-  }
-  if (schema instanceof z.ZodObject) return { type: 'object', fields: describeObject(schema) };
-  return { type: 'unknown' };
-}
-
-/**
- * Document every field of a payload schema.
- *
- * @param schema - A `z.object` schema.
- * @returns One entry per property, required ones first.
- */
-export function describeObject(schema: z.ZodObject<z.ZodRawShape>): FieldDoc[] {
-  const docs = Object.entries(schema.shape).map(([name, property]) => {
-    const { inner, optional } = unwrap(property);
-    const description = property.description ?? inner.description;
-    const doc: FieldDoc = { name, required: !optional, ...describeType(inner) };
-    if (doc.values === undefined) delete doc.values;
-    if (doc.fields === undefined) delete doc.fields;
-    if (description) doc.description = description;
-    return doc;
-  });
-  return [...docs.filter((d) => d.required), ...docs.filter((d) => !d.required)];
-}

@@ -8,7 +8,8 @@
 // the answer looks authoritative and is wrong.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { collectFieldNames, locateRecords } from './shape.js';
+import { describeError, type ErrorCode, type ErrorInfo } from '../errors.js';
+import { collectFieldNames, locateRecords, ShapeError } from './shape.js';
 
 /** Fallback budget used until {@link configureResults} runs (matches the `Config` default). */
 const FALLBACK_MAX_RESPONSE_BYTES = 100_000;
@@ -39,6 +40,13 @@ export function responseBudget(): number {
   return maxResponseBytes;
 }
 
+/** Retry advice for an oversized collection (calm_list, calm_analytics). */
+const LIST_OVERSIZE_HINT =
+  'For a total, re-run the SAME query with count_only:true. For a breakdown, add ' +
+  'group_by:"status" (or any other field). To keep the records, add ' +
+  'fields:"displayId,title,status" and a smaller top/limit. Never count by listing: that is ' +
+  'what produced this response.';
+
 /**
  * Wrap a value as a successful tool result (pretty-printed JSON text).
  *
@@ -48,16 +56,20 @@ export function responseBudget(): number {
  * again for the same outcome.
  *
  * @param data - The data to return to the client.
+ * @param oversizeHint - How to ask again when the payload is withheld; the default suits a
+ *   collection, a single-entity tool passes its own.
  * @returns A successful {@link CallToolResult}.
  */
-export function jsonResult(data: unknown): CallToolResult {
+export function jsonResult(data: unknown, oversizeHint = LIST_OVERSIZE_HINT): CallToolResult {
   const text = JSON.stringify(data, null, 2);
   const bytes = Buffer.byteLength(text, 'utf8');
   if (bytes <= maxResponseBytes) {
     return { content: [{ type: 'text', text }] };
   }
   return {
-    content: [{ type: 'text', text: JSON.stringify(oversizeSummary(data, bytes), null, 2) }],
+    content: [
+      { type: 'text', text: JSON.stringify(oversizeSummary(data, bytes, oversizeHint), null, 2) },
+    ],
   };
 }
 
@@ -91,9 +103,10 @@ const MAX_LISTED_FIELDS = 80;
  *
  * @param data - The payload that was withheld.
  * @param bytes - Its serialized size.
+ * @param hint - How to ask again.
  * @returns The summary object.
  */
-function oversizeSummary(data: unknown, bytes: number): OversizeSummary {
+function oversizeSummary(data: unknown, bytes: number, hint: string): OversizeSummary {
   const located = locateRecords(data);
   const records = located?.records ?? [];
   const fields = collectFieldNames(records);
@@ -110,11 +123,7 @@ function oversizeSummary(data: unknown, bytes: number): OversizeSummary {
     bytes,
     budgetBytes: maxResponseBytes,
     recordsAreATotal: false,
-    hint:
-      'For a total, re-run the SAME query with count_only:true. For a breakdown, add ' +
-      'group_by:"status" (or any other field). To keep the records, add ' +
-      'fields:"displayId,title,status" and a smaller top/limit. Never count by listing: that is ' +
-      'what produced this response.',
+    hint,
   };
 
   if (records.length > 0) {
@@ -126,11 +135,29 @@ function oversizeSummary(data: unknown, bytes: number): OversizeSummary {
 }
 
 /**
- * Wrap a message as an error tool result.
+ * Wrap a message as an error tool result. The text is a JSON object with a machine-readable
+ * `error` code and `retryable` flag next to the message, so a client can decide between retrying,
+ * fixing the call and asking the user without parsing prose.
  *
  * @param message - The human-readable error message.
+ * @param code - The error code; a message without one is a problem with the call's arguments.
  * @returns A {@link CallToolResult} flagged with `isError`.
  */
-export function errorResult(message: string): CallToolResult {
-  return { content: [{ type: 'text', text: message }], isError: true };
+export function errorResult(message: string, code: ErrorCode = 'INVALID_ARGUMENT'): CallToolResult {
+  return structuredError({ error: code, retryable: false, message });
+}
+
+/**
+ * Wrap a caught error as an error tool result, classified by {@link describeError}.
+ *
+ * @param error - The caught value.
+ * @returns A {@link CallToolResult} flagged with `isError`.
+ */
+export function errorResultFrom(error: unknown): CallToolResult {
+  if (error instanceof ShapeError) return errorResult(error.message);
+  return structuredError(describeError(error));
+}
+
+function structuredError(info: ErrorInfo): CallToolResult {
+  return { content: [{ type: 'text', text: JSON.stringify(info, null, 2) }], isError: true };
 }

@@ -5,6 +5,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['tests/integration/**/*.test.ts'],
+    // Load .env so the gates in tests/integration/gates.ts see local credentials.
+    setupFiles: ['dotenv/config'],
     environment: 'node',
     globals: true,
     testTimeout: 30_000,

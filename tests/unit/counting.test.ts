@@ -167,7 +167,7 @@ describe('counting via calm_analytics', () => {
       .intercept({
         path:
           `${ANALYTICS}/Tasks?$filter=` +
-          `${encodeURIComponent("typeID eq 'CALMUS' and period eq 'C1D' and resolution eq 'D'")}` +
+          `${encodeURIComponent("(typeID eq 'CALMUS') and period eq 'C1D' and resolution eq 'D'")}` +
           '&$select=taskGUID&$top=0&$count=true',
       })
       .reply(200, { '@count': 428, value: [] });
@@ -186,7 +186,7 @@ describe('counting via calm_analytics', () => {
       }),
     ) as CountBody;
     expect(body.total).toBe(428);
-    expect(body.filter).toBe("typeID eq 'CALMUS' and period eq 'C1D' and resolution eq 'D'");
+    expect(body.filter).toBe("(typeID eq 'CALMUS') and period eq 'C1D' and resolution eq 'D'");
     expect(body.note).toContain('daily snapshot');
     expect(body.filterVerified).toBeUndefined();
   });
@@ -197,7 +197,7 @@ describe('counting via calm_analytics', () => {
       .intercept({
         path:
           `${ANALYTICS}/Tasks?$filter=` +
-          `${encodeURIComponent("type eq 'User Story' and period eq 'C1D' and resolution eq 'D'")}` +
+          `${encodeURIComponent("(type eq 'User Story') and period eq 'C1D' and resolution eq 'D'")}` +
           '&$select=taskGUID&$top=0&$count=true',
       })
       .reply(200, { '@count': 2710, value: [] });

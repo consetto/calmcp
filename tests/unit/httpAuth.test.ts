@@ -124,3 +124,75 @@ describe('createHttpApp with API-key auth', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('createHttpApp fail-closed and loopback options', () => {
+  it('refuses to start when auth is required but no method is configured', () => {
+    expect(() =>
+      createHttpApp({
+        buildServer: () => undefined as unknown as McpServer,
+        corsOrigins: false,
+        rateLimitPerMinute: 100,
+        logger,
+        requireAuth: true,
+      }),
+    ).toThrow(/no authentication method/);
+  });
+
+  it('rejects a non-loopback Host header on a local open endpoint (DNS rebinding)', async () => {
+    const app = createHttpApp({
+      buildServer: () => undefined as unknown as McpServer,
+      corsOrigins: false,
+      rateLimitPerMinute: 100,
+      logger,
+      localOnly: true,
+    });
+    const res = await request(app)
+      .post('/mcp')
+      .set('Host', 'attacker.example')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('calm_create is offered only to callers with the Writer scope', () => {
+  const config = Config.fromEnv({
+    CALM_SANDBOX: 'true',
+    CALM_API_KEY: 'x',
+    CALM_WRITE_ENABLED: 'true',
+  } as NodeJS.ProcessEnv);
+  const clients = createClients(config, logger);
+  const app = createHttpApp({
+    buildServer: (authInfo) => buildMcpServer(clients, logger, authInfo),
+    corsOrigins: false,
+    rateLimitPerMinute: 100,
+    logger,
+    auth: {
+      apiKeys: [
+        { key: 'viewer-key', scopes: ['Viewer'] },
+        { key: 'writer-key', scopes: ['Viewer', 'Writer'] },
+      ],
+    },
+  });
+
+  /** List the tool names the given key sees. */
+  async function toolNames(key: string): Promise<string[]> {
+    const res = await request(app)
+      .post('/mcp')
+      .set('Authorization', `Bearer ${key}`)
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    const line = res.text.split('\n').find((l) => l.startsWith('data:')) ?? 'data: null';
+    const body = JSON.parse(line.slice('data:'.length)) as {
+      result: { tools: { name: string }[] };
+    };
+    return body.result.tools.map((t) => t.name);
+  }
+
+  it('hides calm_create from a Viewer', async () => {
+    expect(await toolNames('viewer-key')).not.toContain('calm_create');
+  });
+
+  it('offers calm_create to a Writer', async () => {
+    expect(await toolNames('writer-key')).toContain('calm_create');
+  });
+});
