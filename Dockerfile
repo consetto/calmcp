@@ -16,7 +16,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 
-# Streamable HTTP transport for container/remote deployment.
+# Streamable HTTP transport for container/remote deployment. Startup fails without authentication:
+# set CALM_HTTP_API_KEY (or bind XSUAA on BTP).
 ENV PORT=8080
 EXPOSE 8080
 USER node

@@ -166,9 +166,10 @@ What it does and does not do:
   object and are created together with the entity, exactly as the OData API allows.
 - **Scopes.** The OAuth2 client (or the BTP destination) needs `calm-api.documents.write` for
   documents and `calm-api.lib.write` for library entries, in addition to the read scopes.
-- **Deployment-wide.** On the HTTP transport the switch applies to every authenticated caller of
-  that instance. Run a separate app for writers rather than enabling it on a shared viewer
-  deployment.
+- **Writer scope on HTTP.** On the HTTP transport the switch alone is not enough: `calm_create` is
+  offered only to callers whose XSUAA token carries the `Writer` scope (role collection
+  `CALMCP_Editor`). Viewers of the same deployment and API-key callers never see the tool. Cloud
+  ALM still records the destination's technical user as the creator.
 
 Example:
 
@@ -197,7 +198,7 @@ auth modes, plus a BTP destination mode:
 | `CALM_TENANT`, `CALM_REGION` | Tenant subdomain and region (e.g. `eu10`) for OAuth2 mode. |
 | `CALM_CLIENT_ID`, `CALM_CLIENT_SECRET` | OAuth2 client-credentials from the service binding. |
 | `CALM_DESTINATION_NAME` | Name of a bound BTP Destination (BTP mode; takes precedence). |
-| `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port and allowed CORS origins. |
+| `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port and allowed CORS origins (comma-separated; unset sends no CORS headers). |
 | `CALM_DEBUG`, `CALM_TIMEOUT_SECONDS` | Verbose tracing and request timeout. |
 | `CALM_WRITE_ENABLED` | `true` registers `calm_create` (create-only). Default `false`: read-only. See [Write access](#write-access-opt-in). |
 
@@ -322,8 +323,9 @@ npm run build
 cf push
 ```
 
-After deploy, assign the `CALMCP_Viewer` role collection to authorized users and create the
-**destination** as described below.
+After deploy, assign the `CALMCP_Viewer` role collection to authorized users (or `CALMCP_Editor`
+for users who may use `calm_create` when writes are enabled) and create the **destination** as
+described below.
 
 ### Configure the destination
 
@@ -378,8 +380,10 @@ Microsoft Copilot Studio). Set `CALM_HTTP_API_KEY` and the caller sends `Authori
 This authenticates the caller, not a user. Both methods coexist on the one endpoint. See
 [Connecting calmcp to Microsoft Copilot Studio](docs/copilot-studio.md).
 
-**Locally, with neither configured, `/mcp` is left open** for development and a warning is logged. Do
-not expose an unauthenticated instance publicly.
+**With neither configured, the HTTP transport refuses to start.** For local development only,
+`CALM_HTTP_ALLOW_UNAUTHENTICATED=true` serves an open `/mcp` bound to `127.0.0.1` that accepts only
+loopback `Host` headers. The switch is ignored on Cloud Foundry, and a bound but unreadable XSUAA
+service is a startup error, so a broken binding never exposes Cloud ALM data publicly.
 
 Relevant environment variables (HTTP transport):
 
@@ -387,6 +391,7 @@ Relevant environment variables (HTTP transport):
 | --- | --- |
 | `CALM_PUBLIC_URL` | Public base URL used in OAuth metadata and the callback. Defaults to the first route in `VCAP_APPLICATION`, so it's normally not needed. |
 | `CALM_DCR_SIGNING_SECRET` | Secret for HMAC-signing dynamic client registrations. Set it (e.g. `cf set-env calmcp-srv CALM_DCR_SIGNING_SECRET "$(openssl rand -base64 48)"`) so registered clients survive a `cf deploy` (which rotates the XSUAA `clientsecret`). Defaults to the XSUAA `clientsecret`. |
+| `CALM_HTTP_ALLOW_UNAUTHENTICATED` | `true` allows an open `/mcp` on `127.0.0.1` when no auth is configured. Local development only; ignored on Cloud Foundry. |
 | `CALM_HTTP_API_KEY` | Shared secret for the alternative API-key path. Generate with `openssl rand -base64 48`. Leave empty to rely on XSUAA only. See the [Copilot Studio guide](docs/copilot-studio.md). |
 
 ### Consuming the deployed server from an AI tool

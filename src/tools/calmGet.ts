@@ -3,16 +3,24 @@
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { CalmClients } from '../calm/index.js';
+import { odataString } from '../calm/odata.js';
 import { errorMessage } from '../errors.js';
 import { GET_RESOURCES } from './registry.js';
 import { errorResult, jsonResult } from './result.js';
+import { projectFields } from './shape.js';
 
 /** Arguments accepted by the `calm_get` tool. */
 export interface CalmGetArgs {
   resource: string;
   id: string;
   expand?: string;
+  fields?: string;
 }
+
+/** Retry advice when one entity is over the response budget. */
+const GET_OVERSIZE_HINT =
+  'Re-run calm_get with fields:"<comma-separated names>" picked from availableFields, e.g. the ' +
+  'header fields first and a long description only if it is really needed. Drop expand if set.';
 
 /** RFC 4122 UUID matcher — distinguishes a key from a feature display id. */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,15 +50,19 @@ export async function handleCalmGet(
     );
   }
 
+  // A single task carries ~70 fields and HTML descriptions; `fields` keeps just the ones needed.
+  const respond = (entity: unknown) =>
+    jsonResult(args.fields ? projectFields(entity, args.fields) : entity, GET_OVERSIZE_HINT);
+
   try {
     if (def.kind === 'rest') {
-      return jsonResult(await clients.getRest(def.service, def.build(args.id)));
+      return respond(await clients.getRest(def.service, def.build(args.id)));
     }
 
     // OData entity: resolve a feature display id to its uuid when the id is not a UUID.
     if (def.allowDisplayId && !UUID_PATTERN.test(args.id)) {
       const collection = await clients.listOData(def.service, def.entitySet, {
-        filter: `displayId eq '${args.id}'`,
+        filter: `displayId eq ${odataString(args.id)}`,
         top: 1,
       });
       const first = collection.value[0] as { uuid?: string } | undefined;
@@ -59,14 +71,12 @@ export async function handleCalmGet(
       }
       // If an expand was requested, re-fetch by uuid to include the navigations.
       if (args.expand && first.uuid) {
-        return jsonResult(
-          await clients.getOData(def.service, def.entitySet, first.uuid, args.expand),
-        );
+        return respond(await clients.getOData(def.service, def.entitySet, first.uuid, args.expand));
       }
-      return jsonResult(first);
+      return respond(first);
     }
 
-    return jsonResult(await clients.getOData(def.service, def.entitySet, args.id, args.expand));
+    return respond(await clients.getOData(def.service, def.entitySet, args.id, args.expand));
   } catch (error) {
     return errorResult(errorMessage(error));
   }

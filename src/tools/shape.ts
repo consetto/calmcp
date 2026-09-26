@@ -94,6 +94,90 @@ export function collectFieldNames(records: Record_[]): string[] {
 }
 
 /**
+ * Names a caller commonly guesses for a field Cloud ALM spells differently. Only ever offered as a
+ * suggestion, never applied silently: a silent rewrite would hide the caller's mistake.
+ */
+const FIELD_ALIASES: Record<string, string[]> = {
+  priority: ['priorityId'],
+  approvalstatus: ['approvalState'],
+  lastchanged: ['lastChangedTimestamp', 'modifiedAt'],
+  lastchangedat: ['lastChangedTimestamp', 'modifiedAt'],
+  modified: ['modifiedAt', 'lastChangedTimestamp'],
+  created: ['createdAt', 'creationTimestamp'],
+  sprint: ['timeboxId', 'timeboxName'],
+  timebox: ['timeboxId', 'timeboxName'],
+  type: ['typeID', 'type'],
+  assignee: ['assigneeId', 'assigneeName'],
+};
+
+/**
+ * The error text for field names that do not exist, with a "did you mean" hint for each name that
+ * has a close match among the available ones.
+ *
+ * @param parameter - The tool parameter the names came from (`fields`, `group_by`).
+ * @param unknown - The names that were not found.
+ * @param available - The field names that do exist.
+ * @returns The message.
+ */
+export function unknownFieldsMessage(
+  parameter: string,
+  unknown: string[],
+  available: string[],
+): string {
+  const hints = unknown
+    .map((name) => {
+      const match = suggestField(name, available);
+      return match ? `'${name}' → did you mean '${match}'?` : undefined;
+    })
+    .filter(Boolean);
+  return (
+    `Unknown field(s) in '${parameter}': ${unknown.join(', ')}. ` +
+    (hints.length > 0 ? `${hints.join(' ')} ` : '') +
+    `Available fields: ${available.join(', ')}`
+  );
+}
+
+/** The closest available field to a mistyped name, or undefined when nothing is close. */
+function suggestField(name: string, available: string[]): string | undefined {
+  const lower = name.toLowerCase();
+  const alias = FIELD_ALIASES[lower]?.find((candidate) => available.includes(candidate));
+  if (alias) return alias;
+  const caseOnly = available.find((field) => field.toLowerCase() === lower);
+  if (caseOnly) return caseOnly;
+  // `priority` → `priorityId`, `status` → `statusCode`: the guess is a prefix of the real name.
+  const prefixed = available.filter((field) => field.toLowerCase().startsWith(lower));
+  if (prefixed.length === 1) return prefixed[0];
+  let best: string | undefined;
+  let bestDistance = 3;
+  for (const field of available) {
+    const distance = editDistance(lower, field.toLowerCase());
+    if (distance < bestDistance) {
+      best = field;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** Levenshtein distance between two strings. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        (previous[j] ?? 0) + 1,
+        (current[j - 1] ?? 0) + 1,
+        (previous[j - 1] ?? 0) + cost,
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length] ?? 0;
+}
+
+/**
  * Narrow every record in a response to the requested fields.
  *
  * Keeps the surrounding shape intact: a bare array stays an array, an OData envelope keeps its
@@ -118,10 +202,7 @@ export function projectFields(data: unknown, fields: string): unknown {
   const available = collectFieldNames(records);
   const unknown = names.filter((name) => !available.includes(name));
   if (unknown.length > 0) {
-    throw new ShapeError(
-      `Unknown field(s) in 'fields': ${unknown.join(', ')}. ` +
-        `Available fields: ${available.join(', ')}`,
-    );
+    throw new ShapeError(unknownFieldsMessage('fields', unknown, available));
   }
 
   return rebuild(

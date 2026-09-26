@@ -65,6 +65,17 @@ export function readODataCount(data: unknown): number | undefined {
 }
 
 /**
+ * Quote a value as an OData string literal, doubling embedded single quotes so the value can
+ * never end the literal and extend the expression.
+ *
+ * @param value - The raw value.
+ * @returns The literal including its surrounding quotes, e.g. `'O''Brien'`.
+ */
+export function odataString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
  * Build an OData query string (including the leading `?`) from system query options.
  *
  * Values are percent-encoded so the resulting URL is always valid; structural keys like

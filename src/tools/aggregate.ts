@@ -9,11 +9,15 @@
 // discard each page as it goes and never hold them all. {@link groupRecords} is the one-shot form
 // over records already in hand.
 //
+// A multi-valued field (an array, such as a task's `tags`) is exploded: a record counts once in
+// the bucket of each of its values, not once under the whole combination. The groups of such a
+// tally can therefore add up to more than `total`, which the result flags via `multiValued`.
+//
 // Strict in the same way as `shape.ts`: an unknown group-by field is an error listing the real
 // field names, never an empty tally. A tally that silently grouped nothing would read to an LLM
 // caller as "there are none", which is a confidently wrong answer.
 
-import { collectFieldNames, type Record_, ShapeError } from './shape.js';
+import { collectFieldNames, type Record_, ShapeError, unknownFieldsMessage } from './shape.js';
 
 /** Bucket label for records whose group-by field is null, undefined or empty. */
 export const NO_VALUE = '(none)';
@@ -45,6 +49,8 @@ export interface GroupTally {
   groupsOmitted?: number;
   /** Combined count of the folded groups, present only when some were folded away. */
   otherCount?: number;
+  /** Keys whose values were arrays; their groups overlap, so they can sum to more than `total`. */
+  multiValued?: string[];
 }
 
 /** An incremental tally: feed it pages, then read the result. */
@@ -78,6 +84,7 @@ export function createGroupTally(
   }
 
   const counts = new Map<string, number>();
+  const multiValued = new Set<string>();
   let total = 0;
   let validated = false;
 
@@ -89,8 +96,15 @@ export function createGroupTally(
         validated = true;
       }
       for (const record of records) {
-        const composite = keys.map((key) => bucketOf(record[key])).join(KEY_SEPARATOR);
-        counts.set(composite, (counts.get(composite) ?? 0) + 1);
+        const perKey = keys.map((key) => {
+          const value = record[key];
+          if (Array.isArray(value)) multiValued.add(key);
+          return bucketsOf(value);
+        });
+        for (const combination of cartesian(perKey)) {
+          const composite = combination.join(KEY_SEPARATOR);
+          counts.set(composite, (counts.get(composite) ?? 0) + 1);
+        }
       }
       total += records.length;
     },
@@ -112,6 +126,9 @@ export function createGroupTally(
       if (folded.length > 0) {
         tally.groupsOmitted = folded.length;
         tally.otherCount = folded.reduce((sum, [, count]) => sum + count, 0);
+      }
+      if (multiValued.size > 0) {
+        tally.multiValued = keys.filter((key) => multiValued.has(key));
       }
       return tally;
     },
@@ -145,18 +162,44 @@ function assertKnownKeys(records: Record_[], keys: string[]): void {
   const available = collectFieldNames(records);
   const unknown = keys.filter((key) => !available.includes(key));
   if (unknown.length > 0) {
-    throw new ShapeError(
-      `Unknown field(s) in 'group_by': ${unknown.join(', ')}. ` +
-        `Available fields: ${available.join(', ')}`,
-    );
+    throw new ShapeError(unknownFieldsMessage('group_by', unknown, available));
   }
 }
 
-/** Render one field value as its bucket label. */
-function bucketOf(value: unknown): string {
+/**
+ * Render one scalar field value as its bucket label.
+ *
+ * @param value - The field value.
+ * @returns The label, or {@link NO_VALUE} for null, undefined or blank.
+ */
+export function bucketOf(value: unknown): string {
   if (value === null || value === undefined) return NO_VALUE;
-  const text = String(value);
+  const text = typeof value === 'object' ? elementLabel(value) : String(value);
   return text.trim() === '' ? NO_VALUE : text;
+}
+
+/** The distinct bucket labels of a value: one per array element, or the scalar's single label. */
+function bucketsOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return [bucketOf(value)];
+  const labels = [...new Set(value.map(bucketOf))];
+  return labels.length > 0 ? labels : [NO_VALUE];
+}
+
+/** Label an object element (e.g. a tag given as `{ name }`) by its most readable property. */
+function elementLabel(value: object): string {
+  const record = value as Record_;
+  for (const key of ['name', 'title', 'value', 'id']) {
+    if (typeof record[key] === 'string') return record[key];
+  }
+  return JSON.stringify(value);
+}
+
+/** Every combination picking one label per key. */
+function cartesian(lists: string[][]): string[][] {
+  return lists.reduce<string[][]>(
+    (combos, labels) => combos.flatMap((combo) => labels.map((label) => [...combo, label])),
+    [[]],
+  );
 }
 
 /** Build a {@link Group}, flat for one key and keyed by field name for several. */

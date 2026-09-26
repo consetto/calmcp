@@ -19,11 +19,22 @@ import type { ServiceName } from '../config.js';
 
 const uuid = z.string().uuid();
 
+/**
+ * A link target. Only http(s): a `javascript:` or `data:` URL would be stored in Cloud ALM and
+ * rendered as a clickable link in its UI.
+ */
+function httpUrl(max: number) {
+  return z
+    .string()
+    .max(max)
+    .regex(/^https?:\/\/\S+$/i, 'must be an http:// or https:// URL');
+}
+
 /** A link (display name + URL) attached to the new entity. Same shape in every service. */
 const urlReference = z
   .object({
     name: z.string().min(1).max(255).describe('Display name of the link'),
-    url: z.string().min(1).max(1000).describe('Target URL, starting with http:// or https://'),
+    url: httpUrl(1000).describe('Target URL, starting with http:// or https://'),
   })
   .strict();
 
@@ -36,7 +47,7 @@ const externalReference = z
       .max(255)
       .describe('Identifier in the external system, e.g. its UUID'),
     name: z.string().min(1).max(255).describe('Name of the external system'),
-    url: z.string().max(1000).optional().describe('URL pointing into the external system'),
+    url: httpUrl(1000).optional().describe('URL pointing into the external system'),
   })
   .strict();
 
@@ -68,6 +79,7 @@ export const documentCreateSchema = z
     projectId: uuid.describe('UUID of the project the document belongs to'),
     content: z
       .string()
+      .max(500_000)
       .optional()
       .describe('HTML rich-text body of the document. Plain text is accepted too'),
     scopeId: uuid.optional().describe('UUID of a process scope to assign the document to'),
@@ -174,8 +186,8 @@ const libraryAssignment = z
 /** Properties every cross-library main entity shares. */
 const xlibBase = {
   title: z.string().min(1).max(300).describe('Name of the library entry'),
-  description: z.string().optional().describe('Free-text description'),
-  url: z.string().max(2048).optional().describe('URL to the object, e.g. its documentation'),
+  description: z.string().max(100_000).optional().describe('Free-text description'),
+  url: httpUrl(2048).optional().describe('URL to the object, e.g. its documentation'),
   ownerId: z.string().max(255).optional().describe('Email address of the owner'),
   toURLReferences: z.array(urlReference).optional().describe('Links to attach'),
   toExternalReferences: z

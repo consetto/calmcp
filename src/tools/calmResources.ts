@@ -114,13 +114,24 @@ function describeProvider(name: string) {
     scope: 'tenant-wide; no project_id needed',
     freshness: 'daily snapshot, so counts may differ from a live calm_list read',
     countExample: `calm_analytics({ provider: '${name}', count_only: true })`,
-    breakdownExample: `calm_analytics({ provider: '${name}', group_by: 'status' })`,
+    breakdownExample: `calm_analytics({ provider: '${name}', group_by: '${statusField(name)}' })`,
     ...(fields ?? {
       fieldsUnknown:
         'Field list not transcribed from the spec for this provider. Use group_by:"<field>" to ' +
         'discover the values a field takes, and check the response keys for the field names.',
     }),
   };
+}
+
+/**
+ * The field a status breakdown groups by for a provider. Not always `status`: Defects calls it
+ * `defectStatus`, and an example naming a missing field sends the caller into an error.
+ */
+function statusField(provider: string): string {
+  const fields = ANALYTICS_PROVIDER_FIELDS[provider];
+  if (!fields) return 'status';
+  const known = [...fields.filterable, ...fields.dimensions];
+  return known.find((field) => /status$/i.test(field) && field !== 'statusText') ?? 'status';
 }
 
 /** Build the full discovery catalog. */
@@ -172,13 +183,18 @@ export function handleCalmResources(
 
   if (topic) {
     // Narrow to a single resource or analytics provider when a known name is given.
-    if (LIST_RESOURCES[topic]) {
+    // Own-property lookups only: a free-text topic such as "constructor" must not reach the
+    // object prototype.
+    if (Object.hasOwn(LIST_RESOURCES, topic)) {
       return jsonResult(describeListResource(topic, LIST_RESOURCES[topic] as ListResource));
     }
     // `document` and the xlib names are both a calm_get and a calm_create resource: describe the
     // read side as before and add the create payload when the tool is actually offered.
-    const get = GET_RESOURCES[topic];
-    const create = options.writeEnabled ? CREATE_RESOURCES[topic] : undefined;
+    const get = Object.hasOwn(GET_RESOURCES, topic) ? GET_RESOURCES[topic] : undefined;
+    const create =
+      options.writeEnabled && Object.hasOwn(CREATE_RESOURCES, topic)
+        ? CREATE_RESOURCES[topic]
+        : undefined;
     if (get || create) {
       return jsonResult({
         resource: topic,

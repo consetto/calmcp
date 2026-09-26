@@ -39,6 +39,13 @@ export function responseBudget(): number {
   return maxResponseBytes;
 }
 
+/** Retry advice for an oversized collection (calm_list, calm_analytics). */
+const LIST_OVERSIZE_HINT =
+  'For a total, re-run the SAME query with count_only:true. For a breakdown, add ' +
+  'group_by:"status" (or any other field). To keep the records, add ' +
+  'fields:"displayId,title,status" and a smaller top/limit. Never count by listing: that is ' +
+  'what produced this response.';
+
 /**
  * Wrap a value as a successful tool result (pretty-printed JSON text).
  *
@@ -48,16 +55,20 @@ export function responseBudget(): number {
  * again for the same outcome.
  *
  * @param data - The data to return to the client.
+ * @param oversizeHint - How to ask again when the payload is withheld; the default suits a
+ *   collection, a single-entity tool passes its own.
  * @returns A successful {@link CallToolResult}.
  */
-export function jsonResult(data: unknown): CallToolResult {
+export function jsonResult(data: unknown, oversizeHint = LIST_OVERSIZE_HINT): CallToolResult {
   const text = JSON.stringify(data, null, 2);
   const bytes = Buffer.byteLength(text, 'utf8');
   if (bytes <= maxResponseBytes) {
     return { content: [{ type: 'text', text }] };
   }
   return {
-    content: [{ type: 'text', text: JSON.stringify(oversizeSummary(data, bytes), null, 2) }],
+    content: [
+      { type: 'text', text: JSON.stringify(oversizeSummary(data, bytes, oversizeHint), null, 2) },
+    ],
   };
 }
 
@@ -91,9 +102,10 @@ const MAX_LISTED_FIELDS = 80;
  *
  * @param data - The payload that was withheld.
  * @param bytes - Its serialized size.
+ * @param hint - How to ask again.
  * @returns The summary object.
  */
-function oversizeSummary(data: unknown, bytes: number): OversizeSummary {
+function oversizeSummary(data: unknown, bytes: number, hint: string): OversizeSummary {
   const located = locateRecords(data);
   const records = located?.records ?? [];
   const fields = collectFieldNames(records);
@@ -110,11 +122,7 @@ function oversizeSummary(data: unknown, bytes: number): OversizeSummary {
     bytes,
     budgetBytes: maxResponseBytes,
     recordsAreATotal: false,
-    hint:
-      'For a total, re-run the SAME query with count_only:true. For a breakdown, add ' +
-      'group_by:"status" (or any other field). To keep the records, add ' +
-      'fields:"displayId,title,status" and a smaller top/limit. Never count by listing: that is ' +
-      'what produced this response.',
+    hint,
   };
 
   if (records.length > 0) {

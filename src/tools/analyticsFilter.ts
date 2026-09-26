@@ -12,6 +12,8 @@
 // back turns a wrong assumption into something visible in the response instead of a plausible
 // number with no provenance.
 
+import { odataString } from '../calm/odata.js';
+
 /** Time window used for counting: the current day, i.e. one bucket. */
 export const COUNT_PERIOD = 'C1D';
 
@@ -50,11 +52,13 @@ export function mergeAnalyticsFilter(
   for (const [name, value] of Object.entries(controls)) {
     if (!value) continue;
     if (base && mentionsControl(base, name)) continue;
-    clauses.push(`${name} eq '${value}'`);
+    clauses.push(`${name} eq ${odataString(value)}`);
   }
 
   if (clauses.length === 0) return base || undefined;
-  return base ? `${base} and ${clauses.join(' and ')}` : clauses.join(' and ');
+  // Parenthesise the caller's expression: `a or b and period eq 'C1D'` would otherwise bind the
+  // control to `b` only.
+  return base ? `(${base}) and ${clauses.join(' and ')}` : clauses.join(' and ');
 }
 
 /**

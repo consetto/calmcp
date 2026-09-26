@@ -6,6 +6,10 @@
     {
       "name": "$XSAPPNAME.Viewer",
       "description": "Read access to SAP Cloud ALM via calmcp"
+    },
+    {
+      "name": "$XSAPPNAME.Writer",
+      "description": "Create documents and library entries via calm_create (needs CALM_WRITE_ENABLED=true)"
     }
   ],
   "role-templates": [
@@ -13,6 +17,11 @@
       "name": "Viewer",
       "description": "Read-only access to SAP Cloud ALM data",
       "scope-references": ["$XSAPPNAME.Viewer"]
+    },
+    {
+      "name": "Editor",
+      "description": "Read access plus calm_create (only when the deployment enables writes)",
+      "scope-references": ["$XSAPPNAME.Viewer", "$XSAPPNAME.Writer"]
     }
   ],
   "role-collections": [
@@ -20,6 +29,11 @@
       "name": "CALMCP_Viewer",
       "description": "calmcp read-only viewer",
       "role-template-references": ["$XSAPPNAME.Viewer"]
+    },
+    {
+      "name": "CALMCP_Editor",
+      "description": "calmcp viewer that may also create documents and library entries",
+      "role-template-references": ["$XSAPPNAME.Editor"]
     }
   ],
   "oauth2-configuration": {

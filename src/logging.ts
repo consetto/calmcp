@@ -20,6 +20,19 @@ export function createLogger(debug: boolean): Logger {
     {
       level: debug ? 'debug' : 'info',
       base: { service: 'calmcp' },
+      // Defence in depth: nothing logs headers today, but a future `{ headers }` must not leak
+      // bearer tokens or API keys.
+      redact: {
+        paths: [
+          'headers.authorization',
+          'headers.Authorization',
+          'headers.APIKey',
+          '*.headers.authorization',
+          '*.headers.Authorization',
+          '*.headers.APIKey',
+        ],
+        censor: '[redacted]',
+      },
     },
     // Pin to stderr (fd 2) so stdout stays reserved for the MCP protocol on the stdio transport.
     pino.destination(2),

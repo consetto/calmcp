@@ -11,6 +11,14 @@ function toEnumValues(values: string[]): [string, ...string[]] {
   return values as [string, ...string[]];
 }
 
+/**
+ * An id that calmcp places in a URL path segment. `encodeURIComponent` leaves dots alone, so "."
+ * or ".." would climb out of the segment (e.g. `/tasks/..` resolving to the service root).
+ */
+function pathId() {
+  return z.string().regex(/^(?!\.\.?$).+$/, 'must be a non-empty id other than "." or ".."');
+}
+
 // Shared OData system query options, reused by `calm_list` (OData resources) and `calm_analytics`.
 // `orderby` is deliberately NOT in here: the Analytics service ignores it silently (verified on a
 // tenant), so advertising it there would promise sorting that never happens. It is added to
@@ -78,10 +86,10 @@ export const calmListShape = {
         'calm_resources entry lists orderby; any other resource rejects it',
     ),
   expand: z.string().optional().describe('OData $expand — comma-separated navigation properties'),
-  project_id: z.string().optional().describe('Project id (required for tasks/deliverables/etc.)'),
-  program_id: z.string().optional().describe('Program id (required for program_teams)'),
-  task_id: z.string().optional().describe('Task id (required for task sub-resources)'),
-  team_id: z.string().optional().describe('Team id (required for team_roles/program_team_roles)'),
+  project_id: pathId().optional().describe('Project id (required for tasks/deliverables/etc.)'),
+  program_id: pathId().optional().describe('Program id (required for program_teams)'),
+  task_id: pathId().optional().describe('Task id (required for task sub-resources)'),
+  team_id: pathId().optional().describe('Team id (required for team_roles/program_team_roles)'),
   task_type: z
     .enum(toEnumValues(TASK_TYPE_CODES))
     .optional()
@@ -150,11 +158,18 @@ export const calmGetShape = {
   resource: z
     .enum(toEnumValues(GET_RESOURCE_NAMES))
     .describe('Which single entity to fetch (see calm_resources)'),
-  id: z.string().describe('Entity id (uuid, REST id, or feature display id like "6-123")'),
+  id: pathId().describe('Entity id (uuid, REST id, or feature display id like "6-123")'),
   expand: z
     .string()
     .optional()
     .describe('OData $expand for OData entities; REST entities reject it'),
+  fields: z
+    .string()
+    .optional()
+    .describe(
+      'Comma-separated fields to keep, e.g. "displayId,title,status". Use it for large ' +
+        'entities such as tasks; an unknown name is rejected with the available ones',
+    ),
 };
 
 /** Input shape for `calm_analytics`. */

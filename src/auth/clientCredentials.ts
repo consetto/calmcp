@@ -5,7 +5,7 @@ import type { Logger } from 'pino';
 // undici's fetch, not the global one — see the note in `calm/httpClient.ts`.
 import { fetch, type Response } from 'undici';
 import type { Config } from '../config.js';
-import { AuthError } from '../errors.js';
+import { AuthError, summarizeBody } from '../errors.js';
 import type { AuthContext, AuthProvider } from './index.js';
 
 /** An OAuth2 token response from the SAP authorization server. */
@@ -94,7 +94,9 @@ export class ClientCredentialsAuthProvider implements AuthProvider {
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      throw new AuthError(`Token request failed with status ${response.status}: ${body}`);
+      throw new AuthError(
+        `Token request failed with status ${response.status}: ${tokenErrorDetail(body)}`,
+      );
     }
 
     const data = (await response.json()) as TokenResponse;
@@ -105,4 +107,22 @@ export class ClientCredentialsAuthProvider implements AuthProvider {
     this.logger.debug({ expiresAt }, 'OAuth2 token acquired');
     return data.access_token;
   }
+}
+
+/**
+ * The useful part of a token endpoint error: the OAuth `error`/`error_description` pair when the
+ * body is JSON, otherwise a short plain-text summary.
+ */
+function tokenErrorDetail(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown; error_description?: unknown };
+    if (typeof parsed.error === 'string') {
+      return typeof parsed.error_description === 'string'
+        ? `${parsed.error}: ${summarizeBody(parsed.error_description)}`
+        : parsed.error;
+    }
+  } catch {
+    // Not JSON; fall through to the plain-text summary.
+  }
+  return summarizeBody(body);
 }

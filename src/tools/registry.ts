@@ -435,7 +435,11 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     kind: 'rest',
     service: 'processAuthoring',
     required: [],
-    description: 'Authored solution processes',
+    description:
+      'Authored solution processes, tenant-wide (not scoped to a project; archived ones included). ' +
+      'Lifecycle is `state` (active/archived), not `status`: a process can be status "ACTIVE" ' +
+      'and state "archived". For usable processes keep state "active"; group_by:"state" counts ' +
+      'both. Solution processes carry no tags.',
     build: (p) => ({
       path: '/solutionProcesses',
       query: buildQueryString({ ...systemPaging(p), $orderby: p.orderby }),

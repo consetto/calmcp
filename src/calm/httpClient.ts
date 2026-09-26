@@ -14,7 +14,7 @@ import type { Logger } from 'pino';
 import { fetch, type Response } from 'undici';
 import type { AuthProvider } from '../auth/index.js';
 import { SERVICE_PATHS, type ServiceName } from '../config.js';
-import { ApiError } from '../errors.js';
+import { ApiError, summarizeBody } from '../errors.js';
 
 /** Maximum characters of a response body to include in debug logs. */
 const MAX_BODY_LOG_CHARS = 500;
@@ -137,7 +137,10 @@ export class CalmHttpClient {
       }
     }
 
-    this.options.logger.debug({ status: response.status, body }, 'error response');
+    this.options.logger.debug(
+      { status: response.status, body: summarizeBody(body, MAX_BODY_LOG_CHARS) },
+      'error response',
+    );
     throw parseErrorResponse(response.status, body);
   }
 }

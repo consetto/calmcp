@@ -26,6 +26,7 @@ import {
 } from './registry.js';
 import { errorResult, jsonResult } from './result.js';
 import {
+  locateRecords,
   pickTimebox,
   projectFields,
   type Record_,
@@ -106,12 +107,12 @@ async function listTasksInTimebox(
 }
 
 /**
- * Describe what a counting result covered, for the result's `subject`.
+ * Describe what a query covered, for the `subject` of a count or an empty result.
  *
  * @param args - Validated tool arguments.
- * @returns The resource plus whichever scoping parameters were supplied.
+ * @returns The resource plus whichever scoping and filtering parameters were supplied.
  */
-function countSubject(args: CalmListArgs): Record<string, string> {
+function querySubject(args: CalmListArgs): Record<string, string> {
   const subject: Record<string, string> = { resource: args.resource };
   const scoping = [
     'project_id',
@@ -120,12 +121,35 @@ function countSubject(args: CalmListArgs): Record<string, string> {
     'team_id',
     'task_type',
     'status',
+    'sub_status',
+    'assignee_id',
+    'solution_process_id',
+    'timebox_id',
+    'timebox_name',
+    'filter',
   ] as const;
   for (const name of scoping) {
     const value = args[name];
     if (typeof value === 'string') subject[name] = value;
   }
+  if (args.tags && args.tags.length > 0) subject.tags = args.tags.join(',');
   return subject;
+}
+
+/**
+ * Replace an empty collection by a note naming what was queried. A bare `[]` does not tell a
+ * caller whether nothing exists at all or only nothing under this parent and these filters.
+ */
+function withEmptyNote(data: unknown, args: CalmListArgs): unknown {
+  const located = locateRecords(data);
+  if (!located || located.records.length > 0) return data;
+  return {
+    records: [],
+    subject: querySubject(args),
+    note:
+      'No records matched. This covers only the resource, parent ids and filters in subject; ' +
+      'it says nothing about other resources or relation types.',
+  };
 }
 
 /**
@@ -220,7 +244,7 @@ export async function handleCalmList(
             def.entitySet,
             { filter: args.filter, orderby: args.orderby },
             {
-              subject: countSubject(args),
+              subject: querySubject(args),
               groupBy: args.group_by,
               groupLimit: args.group_limit,
             },
@@ -249,7 +273,7 @@ export async function handleCalmList(
       if (counting) {
         return jsonResult(
           await countRest(clients, def, args, {
-            subject: countSubject(args),
+            subject: querySubject(args),
             groupBy: args.group_by,
             groupLimit: args.group_limit,
           }),
@@ -264,7 +288,7 @@ export async function handleCalmList(
       }
     }
 
-    return jsonResult(args.fields ? projectFields(data, args.fields) : data);
+    return jsonResult(withEmptyNote(args.fields ? projectFields(data, args.fields) : data, args));
   } catch (error) {
     if (error instanceof ShapeError) return errorResult(error.message);
     return errorResult(errorMessage(error));

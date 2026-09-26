@@ -65,13 +65,32 @@ export class ApiError extends CalmError {
 
   /** A non-success HTTP response that was not a structured OData error. */
   static http(status: number, body: string): ApiError {
-    return new ApiError(`HTTP error ${status}: ${body}`, status);
+    return new ApiError(`HTTP error ${status}: ${summarizeBody(body)}`, status);
   }
 
   /** A structured OData v4 error body (`{ error: { code, message } }`). */
   static odata(status: number, code: string, message: string): ApiError {
-    return new ApiError(`OData error [${code}]: ${message}`, status);
+    return new ApiError(`OData error [${code}]: ${summarizeBody(message)}`, status);
   }
+}
+
+/** Characters of an upstream body kept in an error message. */
+const MAX_ERROR_BODY_CHARS = 500;
+
+/**
+ * Shorten an upstream response body for an error message. Gateways answer with whole HTML pages;
+ * those reach the model and the logs, so markup is stripped and the text capped.
+ *
+ * @param body - The raw body.
+ * @param max - Maximum characters to keep.
+ * @returns Plain text of at most `max` characters (plus a truncation marker).
+ */
+export function summarizeBody(body: string, max = MAX_ERROR_BODY_CHARS): string {
+  const text = /<[a-z!/][^>]*>/i.test(body)
+    ? body.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')
+    : body;
+  const compact = text.replace(/\s+/g, ' ').trim();
+  return compact.length > max ? `${compact.slice(0, max)}…(truncated)` : compact;
 }
 
 /**

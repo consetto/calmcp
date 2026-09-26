@@ -185,6 +185,11 @@ export class Config {
     if (!this.clientId) throw ConfigError.missingField('client_id');
     if (!this.clientSecret) throw ConfigError.missingField('client_secret');
 
+    // The tenant becomes part of the token and API hostnames; anything beyond a DNS label could
+    // redirect the client secret to another host.
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(this.tenant)) {
+      throw ConfigError.invalid(`Invalid tenant '${this.tenant}': expected the subdomain only`);
+    }
     if (!(VALID_REGIONS as readonly string[]).includes(this.region)) {
       throw ConfigError.invalid(
         `Invalid region '${this.region}'. Valid regions: ${VALID_REGIONS.join(', ')}`,
