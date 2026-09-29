@@ -64,22 +64,20 @@ export class ApiError extends CalmError {
   /** Seconds the service asked to wait before retrying (`Retry-After`), when it said. */
   readonly retryAfterSeconds?: number;
 
-  constructor(
-    message: string,
-    status: number,
-    details: { transport?: ApiError['transport']; retryAfterSeconds?: number } = {},
-  ) {
+  /** What to do next, when the request site knows better than the status alone. */
+  readonly hint?: string;
+
+  constructor(message: string, status: number, details: ApiErrorDetails = {}) {
     super(message);
     this.status = status;
     this.transport = details.transport;
     this.retryAfterSeconds = details.retryAfterSeconds;
+    this.hint = details.hint;
   }
 
   /** A non-success HTTP response that was not a structured OData error. */
-  static http(status: number, body: string, retryAfterSeconds?: number): ApiError {
-    return new ApiError(`HTTP error ${status}: ${summarizeBody(body)}`, status, {
-      retryAfterSeconds,
-    });
+  static http(status: number, body: string, details: ApiErrorDetails = {}): ApiError {
+    return new ApiError(`HTTP error ${status}: ${summarizeBody(body)}`, status, details);
   }
 
   /** A structured OData v4 error body (`{ error: { code, message } }`). */
@@ -87,12 +85,17 @@ export class ApiError extends CalmError {
     status: number,
     code: string,
     message: string,
-    retryAfterSeconds?: number,
+    details: ApiErrorDetails = {},
   ): ApiError {
-    return new ApiError(`OData error [${code}]: ${summarizeBody(message)}`, status, {
-      retryAfterSeconds,
-    });
+    return new ApiError(`OData error [${code}]: ${summarizeBody(message)}`, status, details);
   }
+}
+
+/** Optional facts an `ApiError` carries beyond its message and status. */
+export interface ApiErrorDetails {
+  transport?: ApiError['transport'];
+  retryAfterSeconds?: number;
+  hint?: string;
 }
 
 /** Characters of an upstream body kept in an error message. */
@@ -179,7 +182,7 @@ function describeApiError(error: ApiError, message: string): ErrorInfo {
       ...base,
       error: 'FORBIDDEN',
       retryable: false,
-      hint: 'The Cloud ALM user behind calmcp lacks the API scope for this resource.',
+      hint: error.hint ?? 'The Cloud ALM user behind calmcp lacks the API scope for this resource.',
     };
   }
   if (status === 404) {

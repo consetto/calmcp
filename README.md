@@ -127,13 +127,14 @@ without parsing prose:
 
 ```json
 { "error": "FORBIDDEN", "retryable": false, "status": 403, "message": "HTTP error 403: ...",
-  "hint": "The Cloud ALM user behind calmcp lacks the API scope for this resource." }
+  "hint": "The Cloud ALM API service instance behind calmcp probably lacks the scope calm-api.features.read. ..." }
 ```
 
 Codes: `INVALID_ARGUMENT` (fix the call), `NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`,
 `CONFLICT`, `RATE_LIMITED`, `UPSTREAM_ERROR`, `TIMEOUT`, `NETWORK`, `CANCELLED`, `AUTH`, `CONFIG`,
 `INTERNAL`. A read answered with 429 or 503 is retried once when Cloud ALM asks for a wait of at
 most 5 seconds; a create is never retried. A call the client cancels stops issuing requests.
+A `FORBIDDEN` hint names the scope the service needs (see [Cloud ALM API scopes](#cloud-alm-api-scopes)).
 SAP limits every Cloud ALM pull API to 500 requests per 5 seconds. calmcp pages one request at a
 time, so it stays far below that on its own, but the budget is shared with every other client of
 the tenant.
@@ -219,6 +220,41 @@ auth modes, plus a BTP destination mode:
 | `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port and allowed CORS origins (comma-separated; unset sends no CORS headers). |
 | `CALM_DEBUG`, `CALM_TIMEOUT_SECONDS` | Verbose tracing and request timeout. |
 | `CALM_WRITE_ENABLED` | `true` registers `calm_create` (create-only). Default `false`: read-only. See [Write access](#write-access-opt-in). |
+
+### Cloud ALM API scopes
+
+What calmcp can read is decided by the scopes of the SAP Cloud ALM API service instance behind the
+OAuth2 client or the BTP destination. They are `authorities` of that instance, set in the SAP BTP
+cockpit (update the instance), not of any person. calmcp uses this instance for every caller.
+
+| Scope | Needed for |
+| --- | --- |
+| `calm-api.tasks.read` | Tasks, including requirements, user stories and defects; `Tasks` analytics |
+| `calm-api.projects.read` | Projects, programs, teams, timeboxes; `Projects` analytics |
+| `calm-api.features.read` | Features; `Features` analytics |
+| `calm-api.documents.read` | Documents |
+| `calm-api.processhierarchy.read` | Process hierarchy |
+| `calm-api.processmanagement.read`, `calm-api.processauthoring.read` | Process scopes, custom processes |
+| `calm-api.testcases.read`, `calm-api.testplans.read` | Test cases, test plans |
+| `calm-api.lib.read` | Cross-library applications, configurations, developments, interfaces |
+| `calm-api.landscape.read` | Landscape |
+| `calm-api.bsm.read` | Status events |
+| `calm-api.analytics.read`, `calm-api.analytics.providers.read` | `calm_analytics`, plus each provider's own scope (e.g. `calm-api.defects.read`, `calm-api.requirements.read`, `calm-api.tests.read`) |
+
+Two groups of scopes are easy to leave out, and a missing one does not have to show up as an
+error:
+
+- **Private and protected projects** need `calm-api.projects.private.read` and
+  `calm-api.projects.protected.read` (Projects API and analytics). Without them, totals can come back
+  lower than the Cloud ALM UI shows.
+- **Personal data** needs a `*.personal.read` scope per analytics provider:
+  `calm-api.tasks.personal.read` (`processor`), `calm-api.defects.personal.read` and
+  `calm-api.requirements.personal.read` (`assignee`), `calm-api.features.personal.read`
+  (`responsible`). Without them, those fields are not readable.
+
+Grant only what the deployment should expose: every caller of calmcp sees what these scopes allow.
+The write scopes are listed under [Write access](#write-access-opt-in). The full scope list is in
+SAP's *API Guide for SAP Cloud ALM*, section "API Scopes".
 
 ## Install in Claude Desktop — one-click (`.mcpb`)
 
@@ -441,6 +477,17 @@ Pushes to `main` and every pull request run `npm ci`, the version check, lint, u
 build on Node 22 and 24 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). `npm ci` installs
 strictly from the lockfile, so a stale local `node_modules` can never be mistaken for a real
 failure again.
+
+Every pull request also gets a **tool surface** comment
+([`.github/workflows/tool-surface.yml`](.github/workflows/tool-surface.yml)): the server
+instructions and each tool's description, annotations and input schema as a model sees them,
+diffed against `main` sentence by sentence, with sizes. A PR that changes none of it gets no
+comment. To compare two builds locally:
+
+```bash
+node scripts/tool-surface.mjs snapshot dist/index.js after.json
+node scripts/tool-surface.mjs diff before.json after.json
+```
 
 ## License
 

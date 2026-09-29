@@ -140,6 +140,14 @@ describe('errorResultFrom', () => {
     expect(codeOf(error)).toMatchObject({ error: code, retryable });
   });
 
+  it('prefers the hint the request site attached to a 403', () => {
+    const error = new ApiError('x', 403, { hint: 'add calm-api.tasks.read' });
+    expect(JSON.parse(textOf(errorResultFrom(error)))).toMatchObject({
+      error: 'FORBIDDEN',
+      hint: 'add calm-api.tasks.read',
+    });
+  });
+
   it('states the throughput limit when a 429 names no wait', () => {
     const { hint } = JSON.parse(textOf(errorResultFrom(new ApiError('x', 429)))) as {
       hint: string;

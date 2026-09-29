@@ -15,7 +15,8 @@ import { fetch, type Response } from 'undici';
 import type { AuthProvider } from '../auth/index.js';
 import { SERVICE_PATHS, type ServiceName } from '../config.js';
 import { currentSignal } from '../context.js';
-import { ApiError, summarizeBody } from '../errors.js';
+import { ApiError, type ApiErrorDetails, summarizeBody } from '../errors.js';
+import { forbiddenHint } from './scopes.js';
 
 /** Maximum characters of a response body to include in debug logs. */
 const MAX_BODY_LOG_CHARS = 500;
@@ -116,7 +117,7 @@ export class CalmHttpClient {
         await sleep(wait * 1000, cancel);
         continue;
       }
-      return this.handleResponse<T>(response, url);
+      return this.handleResponse<T>(response, url, method);
     }
   }
 
@@ -147,7 +148,11 @@ export class CalmHttpClient {
   }
 
   /** Parse a successful body, or convert a failure into the most specific `ApiError`. */
-  private async handleResponse<T>(response: Response, url: string): Promise<T> {
+  private async handleResponse<T>(
+    response: Response,
+    url: string,
+    method: 'GET' | 'POST',
+  ): Promise<T> {
     const body = await response.text();
 
     if (response.ok) {
@@ -176,7 +181,10 @@ export class CalmHttpClient {
       { status: response.status, body: summarizeBody(body, MAX_BODY_LOG_CHARS) },
       'error response',
     );
-    throw parseErrorResponse(response.status, body, retryAfterSeconds(response));
+    throw parseErrorResponse(response.status, body, {
+      retryAfterSeconds: retryAfterSeconds(response),
+      hint: response.status === 403 ? forbiddenHint(this.service, method) : undefined,
+    });
   }
 }
 
@@ -220,17 +228,21 @@ function sleep(ms: number, cancel: AbortSignal | undefined): Promise<void> {
  *
  * @param status - HTTP status code.
  * @param body - Raw response body text.
- * @param retryAfter - Seconds the service asked to wait, when it said.
+ * @param details - Seconds the service asked to wait, and a hint, when known.
  * @returns An `ApiError` carrying the status and any OData code/message.
  */
-export function parseErrorResponse(status: number, body: string, retryAfter?: number): ApiError {
+export function parseErrorResponse(
+  status: number,
+  body: string,
+  details: ApiErrorDetails = {},
+): ApiError {
   try {
     const parsed = JSON.parse(body) as ODataErrorBody;
     if (parsed.error?.code && parsed.error?.message) {
-      return ApiError.odata(status, parsed.error.code, parsed.error.message, retryAfter);
+      return ApiError.odata(status, parsed.error.code, parsed.error.message, details);
     }
   } catch {
     // Not JSON / not an OData error envelope — fall through to a plain HTTP error.
   }
-  return ApiError.http(status, body, retryAfter);
+  return ApiError.http(status, body, details);
 }
