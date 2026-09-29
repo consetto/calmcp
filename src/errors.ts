@@ -200,9 +200,10 @@ function describeApiError(error: ApiError, message: string): ErrorInfo {
       ...base,
       error: 'RATE_LIMITED',
       retryable: true,
-      ...(error.retryAfterSeconds !== undefined
-        ? { hint: `Cloud ALM asked to wait ${Math.ceil(error.retryAfterSeconds)} s.` }
-        : {}),
+      hint:
+        error.retryAfterSeconds !== undefined
+          ? `Cloud ALM asked to wait ${Math.ceil(error.retryAfterSeconds)} s.`
+          : 'Cloud ALM allows at most 500 API requests per 5 seconds. Wait a few seconds.',
     };
   }
   if (status >= 500) return { ...base, error: 'UPSTREAM_ERROR', retryable: true };

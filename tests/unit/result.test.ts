@@ -147,4 +147,11 @@ describe('errorResultFrom', () => {
       hint: 'add calm-api.tasks.read',
     });
   });
+
+  it('states the throughput limit when a 429 names no wait', () => {
+    const { hint } = JSON.parse(textOf(errorResultFrom(new ApiError('x', 429)))) as {
+      hint: string;
+    };
+    expect(hint).toContain('500');
+  });
 });

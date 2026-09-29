@@ -135,6 +135,9 @@ Codes: `INVALID_ARGUMENT` (fix the call), `NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORI
 `INTERNAL`. A read answered with 429 or 503 is retried once when Cloud ALM asks for a wait of at
 most 5 seconds; a create is never retried. A call the client cancels stops issuing requests.
 A `FORBIDDEN` hint names the scope the service needs (see [Cloud ALM API scopes](#cloud-alm-api-scopes)).
+SAP limits every Cloud ALM pull API to 500 requests per 5 seconds. calmcp pages one request at a
+time, so it stays far below that on its own, but the budget is shared with every other client of
+the tenant.
 
 ### Covered services
 

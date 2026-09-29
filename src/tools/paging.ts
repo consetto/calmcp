@@ -11,6 +11,10 @@
 // discards each page as it goes, but it is still far below "unbounded" because a few dozen
 // sequential upstream requests will exhaust an agent host's request timeout long before memory
 // becomes a concern.
+//
+// Pages are fetched one after another. SAP's API guide caps every Cloud ALM pull API at 500 requests
+// per 5 seconds, which sequential paging cannot approach; fetching pages in parallel would have to
+// stay under that, since the budget is shared with every other client of the tenant.
 
 import type { CalmClients } from '../calm/index.js';
 import type { ODataListResource, RestListResource } from './registry.js';
