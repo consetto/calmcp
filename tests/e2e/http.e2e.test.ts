@@ -20,7 +20,7 @@ function makeApp() {
   const clients = createClients(config, logger);
   return createHttpApp({
     buildServer: () => buildMcpServer(clients, logger),
-    corsOrigins: '*',
+    corsOrigins: false,
     rateLimitPerMinute: 1000,
     logger,
   });

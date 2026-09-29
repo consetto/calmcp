@@ -12,7 +12,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { Config } from '../../src/config.js';
 import { buildMcpServer, createClients } from '../../src/server.js';
-import { createHttpApp } from '../../src/transport/http.js';
+import { createHttpApp, parseCorsOrigins } from '../../src/transport/http.js';
 
 const logger = pino({ level: 'silent' });
 
@@ -26,7 +26,7 @@ describe('createHttpApp with XSUAA auth', () => {
   };
   const app = createHttpApp({
     buildServer: () => undefined as unknown as McpServer, // never invoked on the 401 path
-    corsOrigins: '*',
+    corsOrigins: false,
     rateLimitPerMinute: 100,
     logger,
     auth: {
@@ -66,7 +66,7 @@ describe('createHttpApp without auth (local dev)', () => {
   it('does not mount OAuth discovery when no method is configured', async () => {
     const app = createHttpApp({
       buildServer: () => undefined as unknown as McpServer,
-      corsOrigins: '*',
+      corsOrigins: false,
       rateLimitPerMinute: 100,
       logger,
     });
@@ -80,7 +80,7 @@ describe('createHttpApp with API-key auth', () => {
   const clients = createClients(config, logger);
   const app = createHttpApp({
     buildServer: () => buildMcpServer(clients, logger),
-    corsOrigins: '*',
+    corsOrigins: false,
     rateLimitPerMinute: 100,
     logger,
     auth: { apiKeys: [{ key: 'super-secret-key', scopes: ['Viewer'] }] },
@@ -194,5 +194,54 @@ describe('calm_create is offered only to callers with the Writer scope', () => {
 
   it('offers calm_create to a Writer', async () => {
     expect(await toolNames('writer-key')).toContain('calm_create');
+  });
+});
+
+describe('CORS origins', () => {
+  it('sends no CORS headers when none are configured', () => {
+    expect(parseCorsOrigins(undefined)).toBe(false);
+    expect(parseCorsOrigins(' , ')).toBe(false);
+  });
+
+  it('accepts exact origins', () => {
+    expect(parseCorsOrigins('http://localhost:6274, https://client.example.com')).toEqual([
+      'http://localhost:6274',
+      'https://client.example.com',
+    ]);
+  });
+
+  it('refuses a wildcard, alone or in a list', () => {
+    expect(() => parseCorsOrigins('*')).toThrow(/wildcard/);
+    expect(() => parseCorsOrigins('https://a.example.com, *')).toThrow(/wildcard/);
+    expect(() => parseCorsOrigins('https://*.example.com')).toThrow(/wildcard/);
+  });
+
+  it('refuses an entry that is not an origin', () => {
+    expect(() => parseCorsOrigins('https://client.example.com/')).toThrow(/not an origin/);
+    expect(() => parseCorsOrigins('client.example.com')).toThrow(/not an origin/);
+  });
+
+  it('answers a listed origin and no other', async () => {
+    const app = createHttpApp({
+      buildServer: () => undefined as unknown as McpServer,
+      corsOrigins: ['https://client.example.com'],
+      rateLimitPerMinute: 100,
+      logger,
+    });
+    const allowed = await request(app).get('/health').set('Origin', 'https://client.example.com');
+    expect(allowed.headers['access-control-allow-origin']).toBe('https://client.example.com');
+    const other = await request(app).get('/health').set('Origin', 'https://evil.example.com');
+    expect(other.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('sends no CORS header by default, so a browser cannot read /mcp cross-origin', async () => {
+    const app = createHttpApp({
+      buildServer: () => undefined as unknown as McpServer,
+      corsOrigins: false,
+      rateLimitPerMinute: 100,
+      logger,
+    });
+    const res = await request(app).get('/health').set('Origin', 'https://evil.example.com');
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
 });

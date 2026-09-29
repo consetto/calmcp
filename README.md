@@ -217,7 +217,7 @@ auth modes, plus a BTP destination mode:
 | `CALM_TENANT`, `CALM_REGION` | Tenant subdomain and region (e.g. `eu10`) for OAuth2 mode. |
 | `CALM_CLIENT_ID`, `CALM_CLIENT_SECRET` | OAuth2 client-credentials from the service binding. |
 | `CALM_DESTINATION_NAME` | Name of a bound BTP Destination (BTP mode; takes precedence). |
-| `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port and allowed CORS origins (comma-separated; unset sends no CORS headers). |
+| `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port, and the exact origins of browser-based clients allowed by CORS (comma-separated, e.g. `http://localhost:6274`). Unset sends no CORS headers, which is right for MCP clients such as Claude Desktop. A wildcard (`*`) is refused at startup: on the local unauthenticated endpoint it would let any website read Cloud ALM data through the developer's browser. |
 | `CALM_DEBUG`, `CALM_TIMEOUT_SECONDS` | Verbose tracing and request timeout. |
 | `CALM_WRITE_ENABLED` | `true` registers `calm_create` (create-only). Default `false`: read-only. See [Write access](#write-access-opt-in). |
 
