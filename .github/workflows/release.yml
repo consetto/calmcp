@@ -24,6 +24,7 @@ permissions:
 jobs:
   mcpb:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       # Needed to create the draft release and upload the asset; nothing else in this job writes.
       contents: write

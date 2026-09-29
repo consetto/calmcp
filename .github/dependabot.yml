@@ -1,0 +1,22 @@
+# Weekly update PRs for npm packages and GitHub Actions, grouped so a week brings a few PRs rather
+# than one per package. Each runs through the same checks as any other pull request.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      production:
+        dependency-type: production
+      development:
+        dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
