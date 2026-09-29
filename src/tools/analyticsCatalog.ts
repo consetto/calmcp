@@ -59,6 +59,23 @@ export interface ProviderFields {
 }
 
 /**
+ * What a provider's personal-data field needs, per SAP's API guide. The scope belongs to the Cloud
+ * ALM API service instance behind calmcp, so the model can only report it, not fix it.
+ */
+function personalDataNote(field: string, scope: string): string {
+  return (
+    `\`${field}\` is personal data: it needs the scope ${scope} on the Cloud ALM API service ` +
+    `instance behind calmcp. If \`${field}\` comes back empty or unreadable, that scope is missing.`
+  );
+}
+
+/** What rows of private and protected projects need, per SAP's API guide. */
+const RESTRICTED_PROJECTS_NOTE =
+  'Rows of private and protected projects need the scopes calm-api.projects.private.read and ' +
+  'calm-api.projects.protected.read. A total lower than the Cloud ALM UI shows can mean they are ' +
+  'missing.';
+
+/**
  * Field catalogues for the analytics providers behind the common questions.
  *
  * Deliberately partial. A provider absent from this map has not been transcribed from the spec,
@@ -125,6 +142,8 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
         '`taskGUID` and reads the `counter` measure instead.',
       '`status` is honoured. `timeboxName` is not: group_by it instead, or use calm_list with ' +
         'timebox_name for a live per-sprint read.',
+      personalDataNote('processor', 'calm-api.tasks.personal.read'),
+      RESTRICTED_PROJECTS_NOTE,
     ],
   },
   Defects: {
@@ -166,6 +185,7 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
     notes: [
       'The status dimension is `defectStatus` here, not `status` (values CIPDFCTOPEN, ' +
         'CIPDFCTINP, CIPDFCTBLK, CIPDFCTDONE).',
+      personalDataNote('assignee', 'calm-api.defects.personal.read'),
     ],
   },
   Features: {
@@ -197,6 +217,7 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
       'week',
     ],
     measures: ['counter'],
+    notes: [personalDataNote('responsible', 'calm-api.features.personal.read')],
   },
   Requirements: {
     identity: 'GUID',
@@ -235,6 +256,7 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
     notes: [
       'Status values here are the requirement lifecycle codes (CREATED, IN_REALIZATION, ' +
         'APPROVED_FOR_DEPLOYMENT, CONFIRMED, TO_BE_APPROVED, BLOCKED, NOT_PLANNED).',
+      personalDataNote('assignee', 'calm-api.requirements.personal.read'),
     ],
   },
 };
