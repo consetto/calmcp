@@ -1,5 +1,9 @@
-# Weekly update PRs for npm packages and GitHub Actions, grouped so a week brings a few PRs rather
-# than one per package. Each runs through the same checks as any other pull request.
+# Weekly update PRs for npm packages and GitHub Actions. Each runs through the same checks as any
+# other pull request.
+#
+# npm minor and patch updates are grouped, so a week brings two PRs that normally pass together. A
+# major update gets a PR of its own: grouped with the rest, one breaking change (zod 3 to 4 was the
+# first) blocks every harmless update behind it.
 
 version: 2
 updates:
@@ -10,9 +14,17 @@ updates:
     groups:
       production:
         dependency-type: production
+        update-types: [minor, patch]
       development:
         dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # The types must match the oldest supported runtime (package.json engines: node >=22).
+      # Newer ones would let code use APIs that crash on Node 22 without a type error.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
+  # Action majors have so far been drop-in, and every workflow runs on the update PR itself.
   - package-ecosystem: github-actions
     directory: /
     schedule:
