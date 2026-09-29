@@ -439,6 +439,17 @@ build on Node 22 and 24 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))
 strictly from the lockfile, so a stale local `node_modules` can never be mistaken for a real
 failure again.
 
+Every pull request also gets a **tool surface** comment
+([`.github/workflows/tool-surface.yml`](.github/workflows/tool-surface.yml)): the server
+instructions and each tool's description, annotations and input schema as a model sees them,
+diffed against `main` sentence by sentence, with sizes. A PR that changes none of it gets no
+comment. To compare two builds locally:
+
+```bash
+node scripts/tool-surface.mjs snapshot dist/index.js after.json
+node scripts/tool-surface.mjs diff before.json after.json
+```
+
 ## License
 
 MIT

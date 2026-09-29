@@ -1,0 +1,83 @@
+# Comment on every pull request with what changes in the tool surface: the server instructions and
+# each tool's description, annotations and input schema, with sizes. That is what a model sees of
+# calmcp, and it is spread over string literals in several files, so a reviewer reading the code
+# diff can easily miss a changed sentence or a schema that grew by a kilobyte.
+#
+# The PR's own script snapshots both builds, so the report works even when main predates it.
+
+name: Tool surface
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tool-surface-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Only for the comment; PRs from forks get a read-only token and fall back to the job summary.
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            base/package-lock.json
+
+      - name: Build the pull request
+        run: npm ci && npm run build
+
+      - name: Build the base branch
+        working-directory: base
+        run: npm ci && npm run build
+
+      - name: Compare the tool surfaces
+        id: surface
+        run: |
+          node scripts/tool-surface.mjs snapshot base/dist/index.js "$RUNNER_TEMP/base.json"
+          node scripts/tool-surface.mjs snapshot dist/index.js "$RUNNER_TEMP/head.json"
+          node scripts/tool-surface.mjs diff "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" \
+            > "$RUNNER_TEMP/surface.md"
+          cat "$RUNNER_TEMP/surface.md" >> "$GITHUB_STEP_SUMMARY"
+          # A PR comment holds at most 65536 characters; beyond that, comment the sizes only.
+          if [ "$(wc -c < "$RUNNER_TEMP/surface.md")" -gt 60000 ]; then
+            node scripts/tool-surface.mjs diff "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" \
+              --brief > "$RUNNER_TEMP/surface.md"
+          fi
+
+      # One comment per PR, updated in place. A PR that never changed the surface gets none; one
+      # whose change was reverted gets its comment updated to say so.
+      - name: Comment on the pull request
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANGED: ${{ steps.surface.outputs.changed }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          existing="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- calmcp-tool-surface -->")) | .id' | head -n 1)"
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" \
+              -F body=@"$RUNNER_TEMP/surface.md" > /dev/null
+          elif [ "$CHANGED" = "true" ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+              -F body=@"$RUNNER_TEMP/surface.md" > /dev/null
+          fi
