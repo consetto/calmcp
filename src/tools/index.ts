@@ -5,6 +5,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { Logger } from 'pino';
+import { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { runWithContext } from '../context.js';
 import { logToolCall, logToolResult } from '../logging.js';
@@ -20,6 +21,15 @@ import {
   calmListShape,
   calmResourcesShape,
 } from './schemas.js';
+
+/**
+ * A tool's input schema as a strict object. Zod 4 no longer advertises `additionalProperties: false`
+ * for a plain object, and a parameter the model invented (`projectId` for `project_id`) would be
+ * dropped without a word. Strict says so in the schema and rejects the call, naming the key.
+ */
+function strictInput<T extends z.ZodRawShape>(shape: T) {
+  return z.object(shape).strict();
+}
 
 /** Hints for the tools that read Cloud ALM: clients may run them without asking. */
 const READ_ONLY: ToolAnnotations = { readOnlyHint: true, openWorldHint: true };
@@ -66,7 +76,7 @@ export function registerTools(
         'resource="tasks", task_type="CALMDEF". To answer "how many?" pass count_only=true, or ' +
         'group_by="status" for a breakdown — never list records to count them, as a few hundred ' +
         'tasks overflow most clients. See calm_resources for the full catalog.',
-      inputSchema: calmListShape,
+      inputSchema: strictInput(calmListShape),
     },
     traced('calm_list', (args: CalmListArgs) => handleCalmList(clients, args)),
   );
@@ -80,7 +90,7 @@ export function registerTools(
         'Fetch a single SAP Cloud ALM entity by id (a feature can also be fetched by display id ' +
         'like "6-123"). Choose a "resource" and pass its "id". See calm_resources for valid ones. ' +
         'A task has ~70 fields: pass fields="displayId,title,status,..." to keep the answer small.',
-      inputSchema: calmGetShape,
+      inputSchema: strictInput(calmGetShape),
     },
     traced('calm_get', (args: CalmGetArgs) => handleCalmGet(clients, args)),
   );
@@ -99,7 +109,7 @@ export function registerTools(
         'group_by="status" for a breakdown (Defects: "defectStatus"). Tasks covers user ' +
         'stories, defects and requirements; filter them by type CODE, e.g. ' +
         'filter="typeID eq \'CALMUS\'" (the type text is silently ignored).',
-      inputSchema: calmAnalyticsShape,
+      inputSchema: strictInput(calmAnalyticsShape),
     },
     traced('calm_analytics', (args: CalmAnalyticsArgs) => handleCalmAnalytics(clients, args)),
   );
@@ -116,7 +126,7 @@ export function registerTools(
         (writeAllowed
           ? ' Also lists what calm_create accepts, with the fields of each payload.'
           : ''),
-      inputSchema: calmResourcesShape,
+      inputSchema: strictInput(calmResourcesShape),
     },
     traced('calm_resources', (args: CalmResourcesArgs) =>
       handleCalmResources(args, { writeEnabled: writeAllowed }),
@@ -145,7 +155,7 @@ export function registerTools(
         'Pass "resource" and a "data" object; calm_resources({ topic: "<resource>" }) lists the ' +
         'fields. Links and assignments can be included in "data" and are created with the entity. ' +
         'Returns the created entity including its uuid and displayId.',
-      inputSchema: calmCreateShape,
+      inputSchema: strictInput(calmCreateShape),
     },
     traced('calm_create', (args: CalmCreateArgs) => handleCalmCreate(clients, args)),
   );

@@ -102,11 +102,23 @@ function proseDiff(before, after) {
 /** The properties of a tool's input schema, keyed by name. */
 const properties = (tool) => tool?.inputSchema?.properties ?? {};
 
+/**
+ * JSON with object keys sorted. Schema generators reorder keys between versions; a reordering is
+ * not a change to what a model can do, so every comparison goes through this.
+ */
+function canonical(value) {
+  return JSON.stringify(value, (_key, inner) =>
+    inner && typeof inner === 'object' && !Array.isArray(inner)
+      ? Object.fromEntries(Object.entries(inner).sort(([a], [b]) => a.localeCompare(b)))
+      : inner,
+  );
+}
+
 /** What changed in one tool, as Markdown lines (empty when nothing did). */
 function toolChanges(before, after) {
   const out = [];
   if (before.title !== after.title) out.push(`- title: \`${before.title}\` → \`${after.title}\``);
-  if (JSON.stringify(before.annotations) !== JSON.stringify(after.annotations)) {
+  if (canonical(before.annotations) !== canonical(after.annotations)) {
     out.push(
       `- annotations: \`${JSON.stringify(before.annotations)}\` → \`${JSON.stringify(after.annotations)}\``,
     );
@@ -126,7 +138,7 @@ function toolChanges(before, after) {
   for (const name of Object.keys(is).filter((key) => key in was)) {
     const { description: oldText, ...oldRest } = was[name];
     const { description: newText, ...newRest } = is[name];
-    if (JSON.stringify(oldRest) !== JSON.stringify(newRest)) {
+    if (canonical(oldRest) !== canonical(newRest)) {
       out.push(
         `- parameter \`${name}\` schema: \`${JSON.stringify(oldRest)}\` → \`${JSON.stringify(newRest)}\``,
       );
@@ -138,6 +150,24 @@ function toolChanges(before, after) {
   const oldRequired = JSON.stringify(before.inputSchema?.required ?? []);
   const newRequired = JSON.stringify(after.inputSchema?.required ?? []);
   if (oldRequired !== newRequired) out.push(`- required: \`${oldRequired}\` → \`${newRequired}\``);
+
+  // Everything else on the schema object, e.g. `additionalProperties: false`, which tells the model
+  // that parameters outside the schema are not allowed.
+  const schemaKeys = new Set([
+    ...Object.keys(before.inputSchema ?? {}),
+    ...Object.keys(after.inputSchema ?? {}),
+  ]);
+  for (const key of [...schemaKeys].filter((k) => k !== 'properties' && k !== 'required').sort()) {
+    const was = before.inputSchema?.[key];
+    const is = after.inputSchema?.[key];
+    if (canonical(was) !== canonical(is)) {
+      out.push(
+        `- input schema \`${key}\`: \`${was === undefined ? '(absent)' : JSON.stringify(was)}\` → \`${
+          is === undefined ? '(absent)' : JSON.stringify(is)
+        }\``,
+      );
+    }
+  }
   return out;
 }
 
@@ -153,9 +183,9 @@ function reportMode(base, head, shown) {
   for (const name of names) {
     const before = was.get(name);
     const after = is.get(name);
-    const key = `${JSON.stringify(before)}→${JSON.stringify(after)}`;
+    const key = `${canonical(before)}→${canonical(after)}`;
     const delta = bytes(after) - bytes(before);
-    const changed = JSON.stringify(before) !== JSON.stringify(after);
+    const changed = canonical(before) !== canonical(after);
     const status = !before ? 'added' : !after ? 'removed' : changed ? 'changed' : '';
     rows.push(
       `| \`${name}\` | ${bytes(before)} | ${bytes(after)} | ${signed(delta)} | ${status} |`,
