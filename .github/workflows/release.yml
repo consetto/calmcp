@@ -33,19 +33,19 @@ jobs:
       GH_TOKEN: ${{ github.token }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
       # The smoke test comes from the workflow's own commit, so re-running an older tag that
       # predates the script still works. It resolves its SDK import from the tag's node_modules.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: ci-tools
           sparse-checkout: scripts/smoke-mcpb.mjs
           sparse-checkout-cone-mode: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
