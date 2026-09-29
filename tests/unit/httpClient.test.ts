@@ -2,6 +2,7 @@ import { MockAgent, setGlobalDispatcher } from 'undici';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AuthContext, AuthProvider } from '../../src/auth/index.js';
 import { CalmHttpClient, parseErrorResponse } from '../../src/calm/httpClient.js';
+import { forbiddenHint } from '../../src/calm/scopes.js';
 import { ApiError } from '../../src/errors.js';
 import { createLogger } from '../../src/logging.js';
 
@@ -82,6 +83,31 @@ describe('CalmHttpClient', () => {
 
     const client = makeClient();
     await expect(client.get('/Features')).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('names the missing read scope on a 403', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-features/v1/Features', method: 'GET' })
+      .reply(403, 'Forbidden');
+
+    const error = await makeClient()
+      .get('/Features')
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).hint).toContain('calm-api.features.read');
+  });
+});
+
+describe('forbiddenHint', () => {
+  it('asks for the write scope on a create', () => {
+    expect(forbiddenHint('documents', 'POST')).toContain('calm-api.documents.write');
+    expect(forbiddenHint('documents', 'GET')).toContain('calm-api.documents.read');
+  });
+
+  it('mentions the private and protected project scopes where they apply', () => {
+    expect(forbiddenHint('analytics', 'GET')).toContain('calm-api.projects.private.read');
+    expect(forbiddenHint('features', 'GET')).not.toContain('private');
   });
 });
 

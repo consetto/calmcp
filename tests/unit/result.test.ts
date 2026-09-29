@@ -139,4 +139,12 @@ describe('errorResultFrom', () => {
   ])('classifies %o as %s', (error, code, retryable) => {
     expect(codeOf(error)).toMatchObject({ error: code, retryable });
   });
+
+  it('prefers the hint the request site attached to a 403', () => {
+    const error = new ApiError('x', 403, { hint: 'add calm-api.tasks.read' });
+    expect(JSON.parse(textOf(errorResultFrom(error)))).toMatchObject({
+      error: 'FORBIDDEN',
+      hint: 'add calm-api.tasks.read',
+    });
+  });
 });
