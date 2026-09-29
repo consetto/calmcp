@@ -10,7 +10,7 @@ import { handleCalmResources } from '../../src/tools/calmResources.js';
 import { CREATE_RESOURCE_NAMES, CREATE_RESOURCES } from '../../src/tools/create.js';
 import { GET_RESOURCES } from '../../src/tools/registry.js';
 import { describeObject } from '../../src/tools/zodDoc.js';
-import { makeClients, ORIGIN, parse } from './helpers.js';
+import { makeClients, ORIGIN, parse, textOf } from './helpers.js';
 
 const PROJECT = '11111111-1111-1111-1111-111111111111';
 
@@ -79,7 +79,7 @@ describe('handleCalmCreate', () => {
       data: { title: 'x', projectId: PROJECT },
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('CALM_WRITE_ENABLED');
+    expect(textOf(result)).toContain('CALM_WRITE_ENABLED');
   });
 
   it('rejects an unknown resource', async () => {
@@ -88,7 +88,7 @@ describe('handleCalmCreate', () => {
       data: { title: 'x' },
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain("Unknown resource 'task'");
+    expect(textOf(result)).toContain("Unknown resource 'task'");
   });
 
   it('rejects a document without the required title and projectId', async () => {
@@ -97,7 +97,7 @@ describe('handleCalmCreate', () => {
       data: { content: '<p>hi</p>' },
     });
     expect(result.isError).toBe(true);
-    const text = result.content[0]?.text ?? '';
+    const text = textOf(result);
     expect(text).toContain('title');
     expect(text).toContain('projectId');
     expect(text).toContain("calm_resources({ topic: 'document' })");
@@ -109,7 +109,7 @@ describe('handleCalmCreate', () => {
       data: { title: 'x', projectID: PROJECT },
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('projectID');
+    expect(textOf(result)).toContain('projectID');
   });
 
   it('rejects a code outside the spec enum', async () => {
@@ -118,7 +118,7 @@ describe('handleCalmCreate', () => {
       data: { title: 'x', interfaceTypeCode: 'CARRIER_PIGEON' },
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('interfaceTypeCode');
+    expect(textOf(result)).toContain('interfaceTypeCode');
   });
 
   it('POSTs a document with its deep-create children and returns the created entity', async () => {
@@ -212,7 +212,7 @@ describe('handleCalmCreate', () => {
       data: { title: 'x', applicationCleanCoreLevelCode: 'E' },
     });
     expect(bad.isError).toBe(true);
-    expect(bad.content[0]?.text).toContain('applicationCleanCoreLevelCode');
+    expect(textOf(bad)).toContain('applicationCleanCoreLevelCode');
 
     // Configurations carry priority and readiness only.
     const unknown = await handleCalmCreate(clients, {
@@ -220,7 +220,7 @@ describe('handleCalmCreate', () => {
       data: { title: 'x', configurationUsageStatusCode: 'USED' },
     });
     expect(unknown.isError).toBe(true);
-    expect(unknown.content[0]?.text).toContain('configurationUsageStatusCode');
+    expect(textOf(unknown)).toContain('configurationUsageStatusCode');
   });
 
   it('routes each library resource to its own service', async () => {
@@ -253,7 +253,7 @@ describe('handleCalmCreate', () => {
       data: { title: 'x', projectId: PROJECT },
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('Project not found');
+    expect(textOf(result)).toContain('Project not found');
   });
 });
 

@@ -1,3 +1,4 @@
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError, AuthError } from '../../src/errors.js';
 import {
@@ -8,6 +9,7 @@ import {
   responseBudget,
 } from '../../src/tools/result.js';
 import { ShapeError } from '../../src/tools/shape.js';
+import { textOf } from './helpers.js';
 
 const DEFAULT_BUDGET = responseBudget();
 
@@ -18,11 +20,7 @@ function wideTask(index: number): Record<string, unknown> {
   return task;
 }
 
-function textOf(result: { content: { text: string }[] }): string {
-  return result.content[0]?.text ?? '';
-}
-
-function parse(result: { content: { text: string }[] }): Record<string, unknown> {
+function parse(result: CallToolResult): Record<string, unknown> {
   return JSON.parse(textOf(result)) as Record<string, unknown>;
 }
 

@@ -24,6 +24,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "start:http": "node dist/index.js --http",
+    "typecheck": "tsc -p tsconfig.test.json",
     "lint": "biome check src tests",
     "lint:fix": "biome check --write src tests",
     "format": "biome format --write src tests",

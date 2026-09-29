@@ -13,7 +13,7 @@ import { handleCalmResources } from '../../src/tools/calmResources.js';
 import { documentCreateSchema, xlibApplicationCreateSchema } from '../../src/tools/create.js';
 import { fetchAllOData, PAGE_SIZE } from '../../src/tools/paging.js';
 import { calmGetShape, calmListShape } from '../../src/tools/schemas.js';
-import { makeClients, ORIGIN, parse } from './helpers.js';
+import { makeClients, ORIGIN, parse, textOf } from './helpers.js';
 
 const FEATURES = '/api/calm-features/v1/Features';
 
@@ -127,7 +127,7 @@ describe('network-backed hardening', () => {
       })
       .reply(200, { value: [] });
     const result = await handleCalmGet(makeClients(), { resource: 'feature', id: hostile });
-    expect(result.content[0]?.text).toContain('No feature found');
+    expect(textOf(result)).toContain('No feature found');
   });
 
   it('keeps paging past a short page when the service announces a next link', async () => {

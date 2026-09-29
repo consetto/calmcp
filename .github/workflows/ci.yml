@@ -50,6 +50,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Vitest strips types without checking them and the build compiles src only, so this is the
+      # one place the tests are held to the real signatures.
+      - name: Type-check sources and tests
+        run: npm run typecheck
+
       - name: Test
         run: npm test
 
