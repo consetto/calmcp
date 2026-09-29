@@ -2,7 +2,7 @@ import { MockAgent, setGlobalDispatcher } from 'undici';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { handleCalmAnalytics } from '../../src/tools/calmAnalytics.js';
 import { handleCalmList } from '../../src/tools/calmList.js';
-import { makeClients, ORIGIN, parse } from './helpers.js';
+import { makeClients, ORIGIN, parse, textOf } from './helpers.js';
 
 const ANALYTICS = '/api/calm-analytics/v1/odata/v4/analytics';
 const TASKS = '/api/calm-tasks/v1/tasks';
@@ -427,7 +427,7 @@ describe('counting via calm_list', () => {
       group_by: 'nope',
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('status');
+    expect(textOf(result)).toContain('status');
   });
 
   it('rejects count on a REST resource and points at count_only', async () => {
@@ -437,7 +437,7 @@ describe('counting via calm_list', () => {
       count: true,
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('count_only');
+    expect(textOf(result)).toContain('count_only');
   });
 
   it('rejects fields combined with a count, since a count returns no records', async () => {
@@ -458,13 +458,13 @@ describe('counting via calm_list', () => {
       count_only: true,
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('group_by');
+    expect(textOf(result)).toContain('group_by');
   });
 
   it('still enforces required params before counting', async () => {
     const result = await handleCalmList(makeClients(), { resource: 'tasks', count_only: true });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('project_id');
+    expect(textOf(result)).toContain('project_id');
   });
 
   it('keeps a counting result tiny even for a very large collection', async () => {
@@ -479,6 +479,6 @@ describe('counting via calm_list', () => {
       project_id: 'p1',
       group_by: 'status',
     });
-    expect(Buffer.byteLength(result.content[0]?.text ?? '', 'utf8')).toBeLessThan(4096);
+    expect(Buffer.byteLength(textOf(result), 'utf8')).toBeLessThan(4096);
   });
 });

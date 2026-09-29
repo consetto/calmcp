@@ -10,7 +10,7 @@ import { buildMcpServer } from '../../src/server.js';
 import { handleCalmGet } from '../../src/tools/calmGet.js';
 import { handleCalmList } from '../../src/tools/calmList.js';
 import { unknownFieldsMessage } from '../../src/tools/shape.js';
-import { makeClients, ORIGIN, parse } from './helpers.js';
+import { makeClients, ORIGIN, parse, textOf } from './helpers.js';
 
 const logger = pino({ level: 'silent' });
 
@@ -97,7 +97,7 @@ describe('network-backed usability', () => {
       fields: 'priority',
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain("did you mean 'priorityId'");
+    expect(textOf(result)).toContain("did you mean 'priorityId'");
   });
 
   it('counts each tag on its own when grouping by an array field', async () => {

@@ -9,6 +9,7 @@ import { handleCalmGet } from '../../src/tools/calmGet.js';
 import { handleCalmList } from '../../src/tools/calmList.js';
 import { handleCalmResources } from '../../src/tools/calmResources.js';
 import { responseBudget } from '../../src/tools/result.js';
+import { parse, textOf } from './helpers.js';
 
 const ORIGIN = 'https://acme.eu10.alm.cloud.sap';
 
@@ -33,9 +34,6 @@ function makeClients() {
 }
 
 /** Parse the JSON text block from a tool result. */
-function parse(result: { content: { text: string }[] }): unknown {
-  return JSON.parse(result.content[0]?.text ?? 'null');
-}
 
 describe('handleCalmList', () => {
   let agent: MockAgent;
@@ -56,7 +54,7 @@ describe('handleCalmList', () => {
   it('enforces required params for REST resources (tasks needs project_id)', async () => {
     const result = await handleCalmList(makeClients(), { resource: 'tasks' });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('project_id');
+    expect(textOf(result)).toContain('project_id');
   });
 
   it('lists defects via the tasks resource with task_type=CALMDEF', async () => {
@@ -125,7 +123,7 @@ describe('handleCalmList', () => {
       fields: 'displayId,sprint',
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('sprint');
+    expect(textOf(result)).toContain('sprint');
   });
 
   it('filters tasks by timebox_id, paging through the project', async () => {
@@ -189,7 +187,7 @@ describe('handleCalmList', () => {
       timebox_name: 'Sprint 99',
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('Sprint 5');
+    expect(textOf(result)).toContain('Sprint 5');
   });
 
   it('rejects a timebox filter on a non-task resource without a network call', async () => {
@@ -198,7 +196,7 @@ describe('handleCalmList', () => {
       timebox_id: 't5',
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('tasks');
+    expect(textOf(result)).toContain('tasks');
   });
 
   it('rejects timebox_id and timebox_name together', async () => {
@@ -389,7 +387,7 @@ describe('handleCalmResources', () => {
   });
 
   it('keeps the full catalog inside the response budget', () => {
-    const text = handleCalmResources({}).content[0]?.text ?? '';
+    const text = textOf(handleCalmResources({}));
     expect(Buffer.byteLength(text, 'utf8')).toBeLessThan(responseBudget());
   });
 
@@ -429,7 +427,7 @@ describe('parameters a resource does not read', () => {
       filter: "startswith(name,'X')",
     });
     expect(result.isError).toBe(true);
-    const text = result.content[0]?.text ?? '';
+    const text = textOf(result);
     expect(text).toContain('does not read: filter');
     expect(text).toContain('orderby');
   });
@@ -441,7 +439,7 @@ describe('parameters a resource does not read', () => {
       count_only: true,
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('filter');
+    expect(textOf(result)).toContain('filter');
   });
 
   it('rejects a REST parameter on an OData resource', async () => {
@@ -450,7 +448,7 @@ describe('parameters a resource does not read', () => {
       project_id: 'p1',
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('project_id');
+    expect(textOf(result)).toContain('project_id');
   });
 
   it('still forwards the system options a process service reads', async () => {
@@ -477,6 +475,6 @@ describe('parameters a resource does not read', () => {
       expand: 'activities',
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain('expand');
+    expect(textOf(result)).toContain('expand');
   });
 });
