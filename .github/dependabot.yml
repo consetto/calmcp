@@ -11,7 +11,13 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # The default of 5 is shared by the group PRs and every major, so majors queued behind them.
+    open-pull-requests-limit: 10
     groups:
+      # Vitest and its plugins only work at the same major version, so they move together, majors
+      # included. Listed first: a package joins the first group it matches.
+      vitest:
+        patterns: ['vitest', '@vitest/*']
       production:
         dependency-type: production
         update-types: [minor, patch]
