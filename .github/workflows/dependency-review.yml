@@ -1,0 +1,28 @@
+# Judge the dependencies a pull request adds or changes, rather than all of them (that is what
+# `npm audit` in ci.yml does). calmcp is MIT and ships its dependencies inside the .mcpb bundle and
+# the Docker image, so a new copyleft license matters as much as a new vulnerability.
+
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Lets the action explain a failure in a PR comment.
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.1, LGPL-3.0

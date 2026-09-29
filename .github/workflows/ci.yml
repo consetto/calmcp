@@ -23,6 +23,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -54,3 +55,52 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Starts the built server over stdio and HTTP and talks to it with the MCP client. Catches a
+      # broken entry point or a startup crash that the handler-level unit tests cannot see. It needs
+      # no credentials: a placeholder sandbox key passes startup, and no call reaches Cloud ALM.
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+  # The BTP descriptors are only exercised by `cf deploy`, so a mistake would otherwise surface
+  # there. mbt validates mta.yaml; the script checks xs-security.json against the scopes the code
+  # requires.
+  btp-descriptors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate mta.yaml
+        run: npx --yes mbt@1.2.49 validate
+
+      - name: Check xs-security.json against the code
+        run: node scripts/check-xs-security.mjs
+
+  # The image is never built anywhere else before someone deploys it. Build it and check that it
+  # starts and answers /health, which also catches a runtime dependency that `npm ci --omit=dev`
+  # leaves out.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t calmcp:ci .
+
+      - name: Start it and check /health
+        run: |
+          docker run -d --name calmcp -p 8080:8080 \
+            -e CALM_SANDBOX=true -e CALM_API_KEY=placeholder -e CALM_HTTP_API_KEY=placeholder \
+            calmcp:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs calmcp
+          exit 1

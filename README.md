@@ -434,10 +434,16 @@ npm run test:integration # live backend from .env; skipped without credentials
 npm run build && npm run test:e2e   # real MCP calls over stdio and HTTP
 ```
 
-Pushes to `main` and every pull request run `npm ci`, the version check, lint, unit tests and the
-build on Node 22 and 24 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). `npm ci` installs
-strictly from the lockfile, so a stale local `node_modules` can never be mistaken for a real
-failure again.
+Pushes to `main` and every pull request run `npm ci`, the version check, lint, unit tests, the
+build and the e2e tests on Node 22 and 24 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+`npm ci` installs strictly from the lockfile, so a stale local `node_modules` can never be mistaken
+for a real failure again. The same workflow validates `mta.yaml` with `mbt`, checks that
+`xs-security.json` still defines the scopes the code requires
+([`scripts/check-xs-security.mjs`](scripts/check-xs-security.mjs)), and builds the Docker image and
+checks that it answers `/health`. Pull requests also get a
+[dependency review](.github/workflows/dependency-review.yml) that fails on a new dependency with a
+high-severity vulnerability or a GPL-family license. None of these needs credentials. Dependabot
+opens grouped update PRs for npm and GitHub Actions weekly.
 
 Every pull request also gets a **tool surface** comment
 ([`.github/workflows/tool-surface.yml`](.github/workflows/tool-surface.yml)): the server
