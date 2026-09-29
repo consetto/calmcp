@@ -17,7 +17,9 @@ import type { ServiceName } from '../config.js';
 // Shared fragments
 // ---------------------------------------------------------------------------------------------
 
-const uuid = z.string().uuid();
+// `z.guid()`, not `z.uuid()`: zod 4's uuid demands RFC 9562 version and variant bits, which zod 3 did
+// not, and an id Cloud ALM issued is valid whether or not it carries them.
+const uuid = z.guid();
 
 /**
  * A link target. Only http(s): a `javascript:` or `data:` URL would be stored in Cloud ALM and
