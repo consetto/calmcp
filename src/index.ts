@@ -8,7 +8,7 @@ import { Command } from 'commander';
 import { Config } from './config.js';
 import { createLogger } from './logging.js';
 import { buildMcpServer, createClients, VIEWER_SCOPE, WRITER_SCOPE } from './server.js';
-import { createHttpApp } from './transport/http.js';
+import { createHttpApp, parseCorsOrigins } from './transport/http.js';
 import { startStdio } from './transport/stdio.js';
 
 /** Default HTTP port when neither `--port` nor `PORT` is set. */
@@ -20,23 +20,6 @@ const DEFAULT_RATE_LIMIT = 120;
 interface CliOptions {
   http?: boolean;
   port?: string;
-}
-
-/**
- * Parse the CORS origins env var into a value the `cors` middleware accepts. Unset means no CORS
- * headers: MCP clients call the endpoint server-side, so only browser-based clients need an entry.
- */
-function parseCorsOrigins(value: string | undefined): string | string[] | false {
-  if (!value?.trim()) {
-    return false;
-  }
-  if (value.trim() === '*') {
-    return '*';
-  }
-  return value
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
 }
 
 /**
