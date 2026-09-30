@@ -6,6 +6,7 @@
 //   - `getOData`    — GET a single OData entity by key, optionally expanding navigations.
 //   - `getRest`     — GET a REST endpoint with a prebuilt query string.
 //   - `createOData` — POST a new OData entity (only when write access is enabled).
+//   - `updateOData` — PATCH fields of an existing OData entity (only when update access is enabled).
 //
 // Keeping the per-resource knowledge in the registry (see `tools/registry.ts`) keeps these
 // primitives small and avoids duplicating one method per entity set.
@@ -32,6 +33,12 @@ export class CalmClients {
   readonly writeEnabled: boolean;
 
   /**
+   * Whether changing existing entities is allowed (`CALM_UPDATE_ENABLED`). Read by the tool layer to
+   * decide whether to register `calm_update`, and enforced again in {@link updateOData}.
+   */
+  readonly updateEnabled: boolean;
+
+  /**
    * @param auth - The auth provider shared by every service client.
    * @param config - Validated configuration (for timeout and the write switch).
    * @param logger - Application logger.
@@ -39,6 +46,7 @@ export class CalmClients {
   constructor(auth: AuthProvider, config: Config, logger: Logger) {
     const options = { timeoutMs: config.timeoutMs(), logger };
     this.writeEnabled = config.writeEnabled;
+    this.updateEnabled = config.updateEnabled;
     // Build a client for every known service. `Object.keys` over a const map needs a cast.
     const services = Object.keys(SERVICE_PATHS) as ServiceName[];
     this.clients = {} as Record<ServiceName, CalmHttpClient>;
@@ -98,8 +106,8 @@ export class CalmClients {
   /**
    * POST a new OData entity.
    *
-   * This is the only write primitive. It creates; it never touches an existing entity, so a
-   * document's stored HTML (with its embedded images) can never be overwritten through calmcp.
+   * It creates; it never touches an existing entity. Changing one is {@link updateOData}, behind its
+   * own switch.
    *
    * @param service - The owning service.
    * @param entitySet - The entity set name (e.g. "Documents").
@@ -112,5 +120,31 @@ export class CalmClients {
       throw ConfigError.writeDisabled();
     }
     return this.clients[service].post(`/${entitySet}`, body);
+  }
+
+  /**
+   * PATCH fields of an existing OData entity.
+   *
+   * Sends exactly the body it is given: the tool layer reduces it to the fields the caller asked to
+   * change, after checking them. There is no PUT: a whole-object replace would reset every field
+   * the caller did not mention.
+   *
+   * @param service - The owning service.
+   * @param entitySet - The entity set name (e.g. "Features").
+   * @param key - The entity key (uuid).
+   * @param body - The fields to change.
+   * @returns The response body (the updated entity, or undefined on 204).
+   * @throws {ConfigError} When update access is disabled.
+   */
+  async updateOData(
+    service: ServiceName,
+    entitySet: string,
+    key: string,
+    body: unknown,
+  ): Promise<unknown> {
+    if (!this.updateEnabled) {
+      throw ConfigError.updateDisabled();
+    }
+    return this.clients[service].patch(`/${entitySet}/${encodeURIComponent(key)}`, body);
   }
 }

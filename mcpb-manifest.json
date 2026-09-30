@@ -25,7 +25,8 @@
         "CALM_CLIENT_SECRET": "${user_config.calm_client_secret}",
         "CALM_DEBUG": "${user_config.calm_debug}",
         "CALM_TIMEOUT_SECONDS": "${user_config.calm_timeout_seconds}",
-        "CALM_WRITE_ENABLED": "${user_config.calm_write_enabled}"
+        "CALM_WRITE_ENABLED": "${user_config.calm_write_enabled}",
+        "CALM_UPDATE_ENABLED": "${user_config.calm_update_enabled}"
       }
     }
   },
@@ -48,7 +49,11 @@
     },
     {
       "name": "calm_create",
-      "description": "Only with 'Write Access' on: create a new document or library entry (cross-library application, configuration, configuration activity, development, interface). Never updates or deletes."
+      "description": "Only with 'Write Access' on: create a new document, feature or library entry (cross-library application, configuration, configuration activity, development, interface). Never changes or deletes."
+    },
+    {
+      "name": "calm_update",
+      "description": "Only with 'Update Access' on: change fields of an existing feature. Refused if the feature changed since it was read, or if a new description would drop an image."
     }
   ],
   "keywords": ["sap", "cloud-alm", "calm", "alm", "btp", "mcp"],
@@ -110,8 +115,15 @@
     },
     "calm_write_enabled": {
       "type": "boolean",
-      "title": "Write Access (create documents and library entries)",
-      "description": "Off by default: calmcp is read-only. When on, Claude gets one extra tool, calm_create, that creates NEW documents and library entries only. Existing objects are never changed or deleted. The OAuth2 client needs the calm-api.documents.write and calm-api.lib.write scopes.",
+      "title": "Write Access (create documents, features and library entries)",
+      "description": "Off by default: calmcp is read-only. When on, Claude gets one extra tool, calm_create, that creates NEW documents, features and library entries only. Existing objects are never changed or deleted. The OAuth2 client needs the calm-api.documents.write, calm-api.features.write and calm-api.lib.write scopes.",
+      "default": false,
+      "required": false
+    },
+    "calm_update_enabled": {
+      "type": "boolean",
+      "title": "Update Access (change existing features)",
+      "description": "Off by default. When on, Claude gets calm_update, which changes fields of EXISTING features (title, description, status, priority, ...). It refuses when the feature changed since Claude read it, and when a new description would remove an image, unless you confirm. Nothing is ever deleted. The OAuth2 client needs the calm-api.features.write scope.",
       "default": false,
       "required": false
     }

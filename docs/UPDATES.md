@@ -7,6 +7,18 @@ allow, where rich text and images live, and what a safe update tool would need.
 Sources: the OpenAPI specs of the 19 Cloud ALM APIs (pulled 2026-09-21), SAP's *API Guide for SAP
 Cloud ALM* (generated 2026-09-29), and read-only checks against a real tenant on 2026-09-30.
 
+## Status
+
+Implemented on this basis:
+
+- **`imagesOmitted`**: `calm_get` and `calm_list` flag every document whose returned `content` lacks
+  images its stored body has, using a `contains(content,'<img')` check (see "Suggested first step").
+- **Feature create**: `calm_create` accepts `feature`.
+- **`calm_update` for features**, behind `CALM_UPDATE_ENABLED`, with every point of "What a safe
+  update tool would need" below: PATCH of only the changed fields, a field allowlist, the image
+  guard, the change check against `modifiedAt`, no target-state endpoints, documents excluded, an
+  audit log, and the Writer scope on HTTP. Tasks and the other objects are not covered yet.
+
 ## Summary
 
 - **Documents cannot be updated.** The API has no way to change a document's title or HTML body.

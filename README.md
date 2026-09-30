@@ -5,9 +5,11 @@ assistants (Claude, GitHub Copilot, …) to **SAP Cloud ALM** (aka CALM). It exp
 through four consolidated, intent-based tools, runs over **stdio** locally or **Streamable HTTP**
 remotely, and deploys to **SAP BTP Cloud Foundry**.
 
-> calmcp is read-only by default: it never updates or deletes data in SAP Cloud ALM. An operator
-> can opt in to **create-only** access for documents and library entries with
-> `CALM_WRITE_ENABLED=true`; see [Write access](#write-access-opt-in).
+> calmcp is read-only by default: it never changes or deletes data in SAP Cloud ALM. An operator
+> can opt in to **creating** documents, features and library entries with
+> `CALM_WRITE_ENABLED=true` ([Write access](#write-access-opt-in)), and separately to **changing
+> fields of existing features** with `CALM_UPDATE_ENABLED=true`
+> ([Update access](#update-access-opt-in)). Nothing is ever deleted.
 
 `calmcp` is my second SAP Cloud ALM MCP bridge . It succeeds an earlier
 **Rust** implementation [sap-cloud-alm-mcp](https://github.com/consetto/sap-cloud-alm-odata-mcp) and reuses the knowledge of the Cloud ALM APIs, while taking a different technical direction.
@@ -21,8 +23,9 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
 | `calm_list` | List/query any collection — tasks (incl. **requirements**, **user stories** and **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource; `count_only`/`group_by` return a live count instead of the records. |
 | `calm_get` | Fetch a single entity by id (a feature also by display id, e.g. `6-123`). |
 | `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Providers span the whole tenant, so `count_only`/`group_by` here answer "how many across all projects". It aggregates but does **not** sort: `$orderby` is silently ignored by the service, so it is not offered. |
-| `calm_resources` | Discovery: the catalog of resources/providers, per-provider analytics dimensions and measures, the task type/status/priority code lists, and worked recipes. With write access on, also the payload fields of every `calm_create` resource. |
-| `calm_create` | **Only when `CALM_WRITE_ENABLED=true`.** Create a new document or a new library entry (cross-library application, configuration, configuration activity, development, interface). Create-only: never updates or deletes. See [Write access](#write-access-opt-in). |
+| `calm_resources` | Discovery: the catalog of resources/providers, per-provider analytics dimensions and measures, the task type/status/priority code lists, and worked recipes. With write or update access on, also the fields `calm_create` and `calm_update` accept, per resource by `topic`. |
+| `calm_create` | **Only when `CALM_WRITE_ENABLED=true`.** Create a new document, feature or library entry (cross-library application, configuration, configuration activity, development, interface). Never changes or deletes. See [Write access](#write-access-opt-in). |
+| `calm_update` | **Only when `CALM_UPDATE_ENABLED=true`.** Change fields of an existing feature, guarded against overwriting concurrent edits and losing images. See [Update access](#update-access-opt-in). |
 
 ### Worked examples
 
@@ -165,6 +168,7 @@ extra tool is registered:
 | Tool | Resources | Cloud ALM call |
 | --- | --- | --- |
 | `calm_create` | `document` | `POST /calm-documents/v1/Documents` |
+| | `feature` | `POST /calm-features/v1/Features` |
 | | `xlib_application` | `POST /calm-crosslibraryapplications/v1/Applications` |
 | | `xlib_configuration` | `POST /calm-crosslibraryconfigurations/v1/Configurations` |
 | | `xlib_configuration_activity` | `POST /calm-crosslibraryconfigurations/v1/ConfigurationActivities` |
@@ -173,10 +177,12 @@ extra tool is registered:
 
 What it does and does not do:
 
-- **Create only.** There is no update and no delete, on purpose. A Cloud ALM document stores its
-  body as HTML with embedded images; a round-trip through an AI client would not preserve those,
-  so the one operation that cannot damage an existing record is the only one offered. Calling
-  `calm_create` twice makes two entries.
+- **Create only.** `calm_create` never changes or deletes an existing record. Calling it twice
+  makes two entries. Changing fields of a feature is the separate
+  [`calm_update`](#update-access-opt-in).
+- **Document images are not copied.** The Documents API returns a document body without its images
+  (see [docs/UPDATES.md](docs/UPDATES.md)); `calm_get` and `calm_list` flag such documents with
+  `imagesOmitted: true`. A new document built from that body would have none of the images.
 - **Strict payloads.** Each resource's fields are transcribed from the `*-create` schemas in the
   OpenAPI specs and validated before any request is sent. An unknown field is an error, not
   something silently dropped. `calm_resources({ topic: "document" })` returns the field list.
@@ -184,7 +190,8 @@ What it does and does not do:
   `toProcessHierarchyAssignments`, `toTaskAssignments`, …) can be included in the same `data`
   object and are created together with the entity, exactly as the OData API allows.
 - **Scopes.** The OAuth2 client (or the BTP destination) needs `calm-api.documents.write` for
-  documents and `calm-api.lib.write` for library entries, in addition to the read scopes.
+  documents, `calm-api.features.write` for features and `calm-api.lib.write` for library entries,
+  in addition to the read scopes.
 - **Writer scope on HTTP.** On the HTTP transport the switch alone is not enough: `calm_create` is
   offered only to callers whose XSUAA token carries the `Writer` scope (role collection
   `CALMCP_Editor`). Viewers of the same deployment and API-key callers never see the tool. Cloud
@@ -205,6 +212,50 @@ Example:
 }
 ```
 
+### Update access (opt-in)
+
+Changing an existing object can lose what creating one cannot: a newer edit made in the Cloud ALM
+UI, or images in a rich-text description. calmcp therefore offers updates only behind their own
+switch, `CALM_UPDATE_ENABLED=true` (or **Update Access** in the Claude Desktop extension), separate
+from write access, and only for features so far. [docs/UPDATES.md](docs/UPDATES.md) has the
+analysis behind this: which objects the Cloud ALM APIs can change at all (documents cannot), and
+where images live.
+
+| Tool | Resource | Fields it may change | Cloud ALM call |
+| --- | --- | --- | --- |
+| `calm_update` | `feature` | `title`, `description` (HTML), `statusCode`, `priorityCode`, `scopeId`, `responsibleId`, `releaseId`, `workstreamId` | `PATCH /calm-features/v1/Features/{uuid}` |
+
+Every call goes through the same checks, in order:
+
+- **Allowlist.** Only the fields above; anything else, such as `projectId`, is an error. No link or
+  assignment lists, whose update semantics the API does not state.
+- **Change check.** The call carries `expected_modified_at`, the `modifiedAt` the model read.
+  calmcp reads the feature again and refuses with `CONFLICT` if it changed since. Cloud ALM has no
+  ETag or `If-Match`, so this is the only protection against overwriting someone else's edit; it
+  narrows the window to the moment between the check and the write.
+- **Only real changes.** Fields that already hold the requested value are not sent.
+- **Image guard.** A feature description references its images as `<img>` tags pointing at Cloud
+  ALM's image service. A new description that drops one is refused, naming the image, unless the
+  call sets `allow_image_removal: true` after the user confirmed it.
+- **PATCH, never PUT,** and never retried: a throttled or failed update is reported, not repeated.
+- **Result and audit.** The answer shows each changed field before and after (a description as its
+  length and image count). calmcp logs every update at `info` level with the caller, the fields
+  and the modification timestamps, because Cloud ALM records only the technical user.
+
+Like `calm_create`, `calm_update` is offered over HTTP only to callers with the `Writer` scope
+(role collection `CALMCP_Editor`), and the OAuth2 client needs `calm-api.features.write`.
+
+Example:
+
+```json
+{
+  "resource": "feature",
+  "id": "5a4d46a3-13c4-492e-9bc4-5512ff56ef5c",
+  "expected_modified_at": "2026-09-14T11:20:58.396Z",
+  "changes": { "statusCode": "IN_TESTING", "priorityCode": 20 }
+}
+```
+
 ## Configuration
 
 Configuration is read from environment variables (see [`.env.example`](.env.example)). Two local
@@ -220,6 +271,7 @@ auth modes, plus a BTP destination mode:
 | `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port, and the exact origins of browser-based clients allowed by CORS (comma-separated, e.g. `http://localhost:6274`). Unset sends no CORS headers, which is right for MCP clients such as Claude Desktop. A wildcard (`*`) is refused at startup: on the local unauthenticated endpoint it would let any website read Cloud ALM data through the developer's browser. |
 | `CALM_DEBUG`, `CALM_TIMEOUT_SECONDS` | Verbose tracing and request timeout. |
 | `CALM_WRITE_ENABLED` | `true` registers `calm_create` (create-only). Default `false`: read-only. See [Write access](#write-access-opt-in). |
+| `CALM_UPDATE_ENABLED` | `true` registers `calm_update` (change fields of existing features). Default `false`. See [Update access](#update-access-opt-in). |
 
 ### Cloud ALM API scopes
 

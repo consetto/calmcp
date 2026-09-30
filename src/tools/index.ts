@@ -1,6 +1,6 @@
 // Registers the MCP tools on an `McpServer`, wiring each to its handler and the shared Cloud ALM
-// client container. The four read tools are always present; `calm_create` is registered only when
-// the caller may write (operator switch plus, over HTTP, the Writer scope). Tool calls and (truncated) results are traced via the logger.
+// client container. The four read tools are always present; `calm_create` and `calm_update` are
+// registered only when the caller may use them (operator switch plus, over HTTP, the Writer scope). Tool calls and (truncated) results are traced via the logger.
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
@@ -14,12 +14,14 @@ import { type CalmCreateArgs, handleCalmCreate } from './calmCreate.js';
 import { type CalmGetArgs, handleCalmGet } from './calmGet.js';
 import { type CalmListArgs, handleCalmList } from './calmList.js';
 import { type CalmResourcesArgs, handleCalmResources } from './calmResources.js';
+import { type CalmUpdateArgs, handleCalmUpdate } from './calmUpdate.js';
 import {
   calmAnalyticsShape,
   calmCreateShape,
   calmGetShape,
   calmListShape,
   calmResourcesShape,
+  calmUpdateShape,
 } from './schemas.js';
 
 /**
@@ -36,19 +38,29 @@ const READ_ONLY: ToolAnnotations = { readOnlyHint: true, openWorldHint: true };
 /** `calm_resources` answers from static catalogue data and never calls Cloud ALM. */
 const DISCOVERY: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
 
+/** Which write tools one caller gets, decided by `buildMcpServer`. */
+export interface ToolAccess {
+  /** Offer `calm_create`. */
+  write: boolean;
+  /** Offer `calm_update`. */
+  update: boolean;
+  /** Who is calling, for the audit log of updates (user, client id, or "local"). */
+  caller?: string;
+}
+
 /**
  * Register all calmcp tools on the given MCP server.
  *
  * @param server - The MCP server to register tools on.
  * @param clients - The Cloud ALM client container handlers call into.
  * @param logger - Application logger.
- * @param writeAllowed - Whether this caller gets `calm_create`; see `buildMcpServer`.
+ * @param access - The write tools this caller gets; see `buildMcpServer`.
  */
 export function registerTools(
   server: McpServer,
   clients: CalmClients,
   logger: Logger,
-  writeAllowed = clients.writeEnabled,
+  access: ToolAccess = { write: clients.writeEnabled, update: clients.updateEnabled },
 ): void {
   // Wrap a handler with call/result tracing so every tool gets consistent debug logging.
   // Each call also runs with its abort signal in context, so Cloud ALM requests stop when the client
@@ -123,24 +135,33 @@ export function registerTools(
         'Discovery helper: lists every resource/provider the other tools accept, their required ' +
         'parameters, the task type/status/priority code lists, and worked recipes. Pass ' +
         'topic="recipes" for multi-step examples, or a resource/provider name to focus.' +
-        (writeAllowed
+        (access.write
           ? ' Also lists what calm_create accepts, with the fields of each payload.'
-          : ''),
+          : '') +
+        (access.update ? ' Also lists the fields calm_update may change.' : ''),
       inputSchema: strictInput(calmResourcesShape),
     },
     traced('calm_resources', (args: CalmResourcesArgs) =>
-      handleCalmResources(args, { writeEnabled: writeAllowed }),
+      handleCalmResources(args, { writeEnabled: access.write, updateEnabled: access.update }),
     ),
   );
 
-  if (!writeAllowed) {
-    return;
-  }
+  if (access.write) registerCreate(server, clients, traced);
+  if (access.update) registerUpdate(server, clients, logger, traced, access.caller);
+}
 
+/** The tracing wrapper `registerTools` applies to every handler. */
+type Traced = <A>(
+  tool: string,
+  handler: (a: A) => CallToolResult | Promise<CallToolResult>,
+) => (args: A, extra: { signal: AbortSignal }) => Promise<CallToolResult>;
+
+/** Register `calm_create`. */
+function registerCreate(server: McpServer, clients: CalmClients, traced: Traced): void {
   server.registerTool(
     'calm_create',
     {
-      title: 'Create a SAP Cloud ALM document or library entry',
+      title: 'Create a SAP Cloud ALM document, feature or library entry',
       // Adds a record but never overwrites one; a repeat call creates a second entry.
       annotations: {
         readOnlyHint: false,
@@ -149,14 +170,52 @@ export function registerTools(
         openWorldHint: true,
       },
       description:
-        'Create a NEW SAP Cloud ALM document, or a new library entry (cross-library application, ' +
-        'configuration, configuration activity, development or interface). This is create-only: ' +
-        'it never updates or deletes an existing object, so calling it twice makes two entries. ' +
+        'Create a NEW SAP Cloud ALM document, feature, or library entry (cross-library ' +
+        'application, configuration, configuration activity, development or interface). It never ' +
+        'changes or deletes an existing object, so calling it twice makes two entries. ' +
         'Pass "resource" and a "data" object; calm_resources({ topic: "<resource>" }) lists the ' +
         'fields. Links and assignments can be included in "data" and are created with the entity. ' +
         'Returns the created entity including its uuid and displayId.',
       inputSchema: strictInput(calmCreateShape),
     },
     traced('calm_create', (args: CalmCreateArgs) => handleCalmCreate(clients, args)),
+  );
+}
+
+/** Register `calm_update`, with every update written to the audit log. */
+function registerUpdate(
+  server: McpServer,
+  clients: CalmClients,
+  logger: Logger,
+  traced: Traced,
+  caller = 'unknown',
+): void {
+  server.registerTool(
+    'calm_update',
+    {
+      title: 'Change fields of a SAP Cloud ALM feature',
+      // Changes an existing record; repeating the same change leaves it as it is.
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+      description:
+        'Change fields of an EXISTING SAP Cloud ALM feature (title, HTML description, status, ' +
+        'priority, scope, responsible, release, workstream). First read it with calm_get and ' +
+        'pass its uuid and modifiedAt as expected_modified_at; the update is refused if it ' +
+        'changed since. Send only the fields to change in "changes". A description change that ' +
+        'would drop an image (<img> tag) is refused unless allow_image_removal is true, which ' +
+        "needs the user's confirmation. Confirm every change with the user before calling. " +
+        'Returns each changed field before and after.',
+      inputSchema: strictInput(calmUpdateShape),
+    },
+    traced('calm_update', (args: CalmUpdateArgs) =>
+      handleCalmUpdate(clients, args, (entry) =>
+        // Cloud ALM records only calmcp's technical user, so this log is where the person is.
+        logger.info({ audit: 'calm_update', caller, ...entry }, 'Cloud ALM object updated'),
+      ),
+    ),
   );
 }

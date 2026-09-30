@@ -19,8 +19,19 @@ import { describe, expect, it } from 'vitest';
 import { buildMcpServer } from '../../src/server.js';
 import { makeClients } from './helpers.js';
 
-/** Serialized `tools/list` bytes allowed, read-only and with calm_create. */
-const BUDGET = { readOnly: 14_000, withWrite: 16_000 };
+/** The deployments whose tool lists differ, each with its serialized `tools/list` budget in bytes. */
+const MODES = [
+  { label: 'read-only', writeEnabled: false, updateEnabled: false, budget: 14_000 },
+  { label: 'with calm_create', writeEnabled: true, updateEnabled: false, budget: 16_000 },
+  {
+    label: 'with calm_create and calm_update',
+    writeEnabled: true,
+    updateEnabled: true,
+    budget: 18_500,
+  },
+];
+
+type Access = { writeEnabled: boolean; updateEnabled?: boolean };
 
 /** Keywords some hosts cannot handle anywhere in a tool schema. */
 const FORBIDDEN_KEYS = [
@@ -34,16 +45,16 @@ const FORBIDDEN_KEYS = [
   'nullable',
 ];
 
-async function connect(writeEnabled: boolean) {
-  const server = buildMcpServer(makeClients({ writeEnabled }), pino({ level: 'silent' }));
+async function connect(access: Access) {
+  const server = buildMcpServer(makeClients(access), pino({ level: 'silent' }));
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'schema-test', version: '1' });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
   return client;
 }
 
-async function listTools(writeEnabled: boolean) {
-  return (await (await connect(writeEnabled)).listTools()).tools;
+async function listTools(access: Access) {
+  return (await (await connect(access)).listTools()).tools;
 }
 
 /** Every problem found while walking a schema, as `path: reason`. */
@@ -79,30 +90,28 @@ describe('tool schemas', () => {
     ]);
   });
 
-  for (const writeEnabled of [false, true]) {
-    const label = writeEnabled ? 'with calm_create' : 'read-only';
-
+  for (const { label, budget, ...access } of MODES) {
     it(`use only widely supported JSON Schema (${label})`, async () => {
-      const tools = await listTools(writeEnabled);
+      const tools = await listTools(access);
       const problems = tools.flatMap((tool) => incompatibilities(tool.inputSchema, tool.name));
       expect(problems).toEqual([]);
     });
 
     it(`reject parameters outside the schema (${label})`, async () => {
-      const tools = await listTools(writeEnabled);
+      const tools = await listTools(access);
       for (const tool of tools) {
         expect(tool.inputSchema.additionalProperties, tool.name).toBe(false);
       }
     });
 
     it(`stay within the size budget (${label})`, async () => {
-      const bytes = JSON.stringify(await listTools(writeEnabled)).length;
-      expect(bytes).toBeLessThan(writeEnabled ? BUDGET.withWrite : BUDGET.readOnly);
+      const bytes = JSON.stringify(await listTools(access)).length;
+      expect(bytes).toBeLessThan(budget);
     });
   }
 
   it('names an invented parameter instead of dropping it', async () => {
-    const client = await connect(false);
+    const client = await connect({ writeEnabled: false });
     const result = await client.callTool({
       name: 'calm_list',
       arguments: { resource: 'tasks', projectId: 'p' },
