@@ -40,7 +40,7 @@
     },
     {
       "name": "calm_analytics",
-      "description": "Query an analytics provider (Defects, Tasks, Tests, ...) with $filter/$orderby for sorted and aggregated questions."
+      "description": "Tenant-wide counts and breakdowns from an analytics provider (Defects, Tasks, Tests, ...), with $filter. Does not sort: $orderby is ignored by the service."
     },
     {
       "name": "calm_resources",
