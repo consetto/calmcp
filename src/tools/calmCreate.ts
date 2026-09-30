@@ -14,16 +14,28 @@ import type { calmCreateShape } from './schemas.js';
 /** Arguments accepted by the `calm_create` tool. */
 export type CalmCreateArgs = z.infer<z.ZodObject<typeof calmCreateShape>>;
 
+/** One record of the audit trail, written for every entity Cloud ALM created. */
+export interface CreateAuditEntry {
+  resource: string;
+  /** The new entity's key and display id, as Cloud ALM returned them. */
+  id: unknown;
+  displayId: unknown;
+  /** The payload fields the caller set (names only; values may be long or personal). */
+  fields: string[];
+}
+
 /**
  * Handle a `calm_create` call.
  *
  * @param clients - The Cloud ALM client container.
  * @param args - Validated tool arguments.
+ * @param audit - Receives one entry per entity created, for the operator's log.
  * @returns The created entity as a JSON tool result, or an error result.
  */
 export async function handleCalmCreate(
   clients: CalmClients,
   args: CalmCreateArgs,
+  audit: (entry: CreateAuditEntry) => void = () => {},
 ): Promise<CallToolResult> {
   // Belt and braces: the tool is not registered without the switch, but the HTTP transport builds a
   // server per request and a stale client could still hold the tool name.
@@ -52,7 +64,10 @@ export async function handleCalmCreate(
   }
 
   try {
-    return jsonResult(await clients.createOData(def.service, def.entitySet, parsed.data));
+    const created = await clients.createOData(def.service, def.entitySet, parsed.data);
+    const { uuid, displayId } = (created ?? {}) as { uuid?: unknown; displayId?: unknown };
+    audit({ resource: args.resource, id: uuid, displayId, fields: Object.keys(parsed.data) });
+    return jsonResult(created);
   } catch (error) {
     return errorResultFrom(error);
   }

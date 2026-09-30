@@ -44,7 +44,7 @@ export interface ToolAccess {
   write: boolean;
   /** Offer `calm_update`. */
   update: boolean;
-  /** Who is calling, for the audit log of updates (user, client id, or "local"). */
+  /** Who is calling, for the audit log of creates and updates (user, client id, or "local"). */
   caller?: string;
 }
 
@@ -146,7 +146,7 @@ export function registerTools(
     ),
   );
 
-  if (access.write) registerCreate(server, clients, traced);
+  if (access.write) registerCreate(server, clients, logger, traced, access.caller);
   if (access.update) registerUpdate(server, clients, logger, traced, access.caller);
 }
 
@@ -156,8 +156,14 @@ type Traced = <A>(
   handler: (a: A) => CallToolResult | Promise<CallToolResult>,
 ) => (args: A, extra: { signal: AbortSignal }) => Promise<CallToolResult>;
 
-/** Register `calm_create`. */
-function registerCreate(server: McpServer, clients: CalmClients, traced: Traced): void {
+/** Register `calm_create`, with every created entity written to the audit log. */
+function registerCreate(
+  server: McpServer,
+  clients: CalmClients,
+  logger: Logger,
+  traced: Traced,
+  caller = 'unknown',
+): void {
   server.registerTool(
     'calm_create',
     {
@@ -178,7 +184,12 @@ function registerCreate(server: McpServer, clients: CalmClients, traced: Traced)
         'Returns the created entity including its uuid and displayId.',
       inputSchema: strictInput(calmCreateShape),
     },
-    traced('calm_create', (args: CalmCreateArgs) => handleCalmCreate(clients, args)),
+    traced('calm_create', (args: CalmCreateArgs) =>
+      handleCalmCreate(clients, args, (entry) =>
+        // Cloud ALM records only calmcp's technical user as creator; this log names the person.
+        logger.info({ audit: 'calm_create', caller, ...entry }, 'Cloud ALM object created'),
+      ),
+    ),
   );
 }
 
