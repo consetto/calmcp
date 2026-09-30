@@ -5,6 +5,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { odataString } from '../calm/odata.js';
+import { flagOmittedImages, returnsDocumentBodies } from './documentImages.js';
 import { GET_RESOURCES } from './registry.js';
 import { errorResult, errorResultFrom, jsonResult } from './result.js';
 import type { calmGetShape } from './schemas.js';
@@ -47,12 +48,18 @@ export async function handleCalmGet(
   }
 
   // A single task carries ~70 fields and HTML descriptions; `fields` keeps just the ones needed.
-  const respond = (entity: unknown) =>
-    jsonResult(args.fields ? projectFields(entity, args.fields) : entity, GET_OVERSIZE_HINT);
+  // A document body comes back without its images, so it is flagged when it had any.
+  const respond = async (entity: unknown) => {
+    const shaped = args.fields ? projectFields(entity, args.fields) : entity;
+    return jsonResult(
+      returnsDocumentBodies(def) ? await flagOmittedImages(clients, entity, shaped) : shaped,
+      GET_OVERSIZE_HINT,
+    );
+  };
 
   try {
     if (def.kind === 'rest') {
-      return respond(await clients.getRest(def.service, def.build(args.id)));
+      return await respond(await clients.getRest(def.service, def.build(args.id)));
     }
 
     // OData entity: resolve a feature display id to its uuid when the id is not a UUID.
@@ -67,12 +74,14 @@ export async function handleCalmGet(
       }
       // If an expand was requested, re-fetch by uuid to include the navigations.
       if (args.expand && first.uuid) {
-        return respond(await clients.getOData(def.service, def.entitySet, first.uuid, args.expand));
+        return await respond(
+          await clients.getOData(def.service, def.entitySet, first.uuid, args.expand),
+        );
       }
-      return respond(first);
+      return await respond(first);
     }
 
-    return respond(await clients.getOData(def.service, def.entitySet, args.id, args.expand));
+    return await respond(await clients.getOData(def.service, def.entitySet, args.id, args.expand));
   } catch (error) {
     return errorResultFrom(error);
   }
