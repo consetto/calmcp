@@ -49,8 +49,10 @@ export const RECIPES: Recipe[] = [
   {
     question: 'How many user stories are open in project X, by sprint?',
     steps: [
-      "calm_list({ resource: 'tasks', project_id: '<uuid>', task_type: 'CALMUS', status: " +
+      "calm_list({ resource: 'tasks', project_name: 'X', task_type: 'CALMUS', status: " +
         "'CIPUSOPEN', group_by: 'timeboxId' })",
+      'project_name is resolved to the project id first; an ambiguous or unknown name is an ' +
+        'error naming the candidates. Pass project_id instead when you already have it.',
       'The Tasks REST API has no count of any kind, so calmcp pages through and returns only the ' +
         'tally. This is a live read, unlike the analytics snapshot.',
       'Drop group_by and pass count_only: true for the plain total.',
