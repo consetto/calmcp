@@ -146,8 +146,9 @@ export function registerTools(
     ),
   );
 
-  if (access.write) registerCreate(server, clients, logger, traced, access.caller);
-  if (access.update) registerUpdate(server, clients, logger, traced, access.caller);
+  const audit = auditLog(logger, access.caller ?? 'unknown');
+  if (access.write) registerCreate(server, clients, traced, audit);
+  if (access.update) registerUpdate(server, clients, traced, audit);
 }
 
 /** The tracing wrapper `registerTools` applies to every handler. */
@@ -156,13 +157,23 @@ type Traced = <A>(
   handler: (a: A) => CallToolResult | Promise<CallToolResult>,
 ) => (args: A, extra: { signal: AbortSignal }) => Promise<CallToolResult>;
 
+/** Builds the callback a write handler reports each Cloud ALM write to. */
+type Audit = (tool: 'calm_create' | 'calm_update', message: string) => (entry: object) => void;
+
+/**
+ * The audit trail of every write, at `info` level with the caller. Cloud ALM records only calmcp's
+ * technical user as creator or editor, so this log is where the person is.
+ */
+function auditLog(logger: Logger, caller: string): Audit {
+  return (tool, message) => (entry) => logger.info({ audit: tool, caller, ...entry }, message);
+}
+
 /** Register `calm_create`, with every created entity written to the audit log. */
 function registerCreate(
   server: McpServer,
   clients: CalmClients,
-  logger: Logger,
   traced: Traced,
-  caller = 'unknown',
+  audit: Audit,
 ): void {
   server.registerTool(
     'calm_create',
@@ -185,10 +196,7 @@ function registerCreate(
       inputSchema: strictInput(calmCreateShape),
     },
     traced('calm_create', (args: CalmCreateArgs) =>
-      handleCalmCreate(clients, args, (entry) =>
-        // Cloud ALM records only calmcp's technical user as creator; this log names the person.
-        logger.info({ audit: 'calm_create', caller, ...entry }, 'Cloud ALM object created'),
-      ),
+      handleCalmCreate(clients, args, audit('calm_create', 'Cloud ALM object created')),
     ),
   );
 }
@@ -197,9 +205,8 @@ function registerCreate(
 function registerUpdate(
   server: McpServer,
   clients: CalmClients,
-  logger: Logger,
   traced: Traced,
-  caller = 'unknown',
+  audit: Audit,
 ): void {
   server.registerTool(
     'calm_update',
@@ -224,10 +231,7 @@ function registerUpdate(
       inputSchema: strictInput(calmUpdateShape),
     },
     traced('calm_update', (args: CalmUpdateArgs) =>
-      handleCalmUpdate(clients, args, (entry) =>
-        // Cloud ALM records only calmcp's technical user, so this log is where the person is.
-        logger.info({ audit: 'calm_update', caller, ...entry }, 'Cloud ALM object updated'),
-      ),
+      handleCalmUpdate(clients, args, audit('calm_update', 'Cloud ALM object updated')),
     ),
   );
 }
