@@ -8,10 +8,20 @@
 // had images. Those get `imagesOmitted: true` and a note.
 
 import type { CalmClients } from '../calm/index.js';
+import { isGuid } from '../calm/odata.js';
 import { locateRecords } from './shape.js';
 
-/** Documents checked per `$filter` request, which keeps the URL well under gateway limits. */
-const CHECK_BATCH = 20;
+/**
+ * Documents checked per `$filter` request. Each adds about 48 characters (`uuid eq <uuid> or `), so
+ * 50 keep the URL near 2.5 KB, well under gateway limits.
+ */
+const CHECK_BATCH = 50;
+
+/**
+ * Check requests in flight at once. A long list still costs a handful of requests; a few in
+ * parallel stay far below Cloud ALM's 500 requests per 5 seconds, shared with every other client.
+ */
+const CHECK_CONCURRENCY = 3;
 
 /** Shown on every document whose images the API left out. */
 export const IMAGES_NOTE =
@@ -23,9 +33,6 @@ export const IMAGES_NOTE =
 const UNCHECKED_NOTE =
   'The Cloud ALM API does not return images in document content, and calmcp could not check ' +
   'whether this document has any.';
-
-/** Accepts the document keys the API issues, so a uuid can go into a filter unquoted. */
-const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Flag the documents whose returned `content` lacks images the stored body has.
@@ -45,15 +52,21 @@ export async function flagOmittedImages(
   shaped: unknown,
 ): Promise<unknown> {
   const rawRecords = locateRecords(raw)?.records ?? [];
-  const candidates = rawRecords.filter(
-    (record) => typeof record.content === 'string' && !/<img\b/i.test(record.content),
+  // An empty body has nothing to be incomplete, so it is not checked.
+  const candidates = new Set(
+    rawRecords.filter(
+      (record) =>
+        typeof record.content === 'string' &&
+        record.content.length > 0 &&
+        !/<img\b/i.test(record.content),
+    ),
   );
   const located = locateRecords(shaped);
   // Nothing to flag when there is no candidate, or when `fields` left `content` out.
-  if (!located || candidates.length === 0) return shaped;
+  if (!located || candidates.size === 0) return shaped;
   if (!located.records.some((record) => 'content' in record)) return shaped;
 
-  const uuids = candidates.map((record) => record.uuid).filter(isGuid);
+  const uuids = [...candidates].map((record) => record.uuid).filter(isGuid);
   let withImages: Set<string> | undefined;
   try {
     withImages = await documentsWithImages(clients, uuids);
@@ -64,7 +77,7 @@ export async function flagOmittedImages(
   return located.rebuild(
     located.records.map((record, index) => {
       const source = rawRecords[index];
-      if (!source || !candidates.includes(source) || !('content' in record)) return record;
+      if (!source || !candidates.has(source) || !('content' in record)) return record;
       // A record without a usable uuid (e.g. `$select` left it out) cannot be checked either.
       if (withImages === undefined || !isGuid(source.uuid)) {
         return { ...record, imagesNote: UNCHECKED_NOTE };
@@ -78,9 +91,12 @@ export async function flagOmittedImages(
 
 /** The uuids (lower case) among `uuids` whose stored body contains an `<img`. */
 async function documentsWithImages(clients: CalmClients, uuids: string[]): Promise<Set<string>> {
-  const found = new Set<string>();
+  const batches: string[][] = [];
   for (let start = 0; start < uuids.length; start += CHECK_BATCH) {
-    const batch = uuids.slice(start, start + CHECK_BATCH);
+    batches.push(uuids.slice(start, start + CHECK_BATCH));
+  }
+  const found = new Set<string>();
+  const check = async (batch: string[]) => {
     const keys = batch.map((uuid) => `uuid eq ${uuid}`).join(' or ');
     const body = await clients.listOData('documents', 'Documents', {
       filter: `contains(content,'<img') and (${keys})`,
@@ -90,12 +106,14 @@ async function documentsWithImages(clients: CalmClients, uuids: string[]): Promi
     for (const record of locateRecords(body)?.records ?? []) {
       if (typeof record.uuid === 'string') found.add(record.uuid.toLowerCase());
     }
-  }
+  };
+  // A few workers drain the queue; any failure rejects the whole check, which then says so.
+  const queue = [...batches];
+  const worker = async () => {
+    for (let batch = queue.shift(); batch; batch = queue.shift()) await check(batch);
+  };
+  await Promise.all(Array.from({ length: Math.min(CHECK_CONCURRENCY, batches.length) }, worker));
   return found;
-}
-
-function isGuid(value: unknown): value is string {
-  return typeof value === 'string' && GUID.test(value);
 }
 
 /** Whether a get or list resource reads the Documents entity set, whose bodies lose images. */

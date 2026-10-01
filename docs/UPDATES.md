@@ -18,6 +18,12 @@ Implemented on this basis:
   update tool would need" below: PATCH of only the changed fields, a field allowlist, the image
   guard, the change check against `modifiedAt`, no target-state endpoints, documents excluded, an
   audit log, and the Writer scope on HTTP. Tasks and the other objects are not covered yet.
+- **After review:** rich text written by `calm_create` and `calm_update` is refused when it carries
+  active content (scripts, event handlers, `javascript:`/`data:` URLs, CSS `url(...)`) or images
+  from outside Cloud ALM's image service; image removal names the images (`remove_images`) instead
+  of a blanket switch; an update Cloud ALM accepted is reported and audited even when reading it
+  back fails, and one without an answer is audited as `outcome: unknown`; the audit entry holds the
+  replaced values; `null` clears assignments.
 
 ## Summary
 
@@ -119,7 +125,7 @@ object references it.
    does today; an unknown field is an error.
 3. **An image guard for rich-text fields.** Before sending a new `description`, read the current
    one and collect the `imageId`s (and any other `<img src>`). If the new value drops any, refuse
-   unless the call says `allow_image_removal: true`. The error names the images that would be lost.
+   unless the call names exactly those images in `remove_images`. The error lists their keys.
 4. **A change check instead of optimistic locking.** The call carries the `modifiedAt` (or
    `lastChangedTimestamp`) the model read. The tool re-reads the object and refuses if it changed
    since. This narrows the race window to milliseconds; it cannot close it.

@@ -128,3 +128,17 @@ export function buildQueryString(params: Record<string, QueryValue>): string {
 
   return parts.length > 0 ? `?${parts.join('&')}` : '';
 }
+
+/** A Cloud ALM key: 8-4-4-4-12 hex digits, with or without RFC 9562 version bits. */
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whether a value is a Cloud ALM key. Such a value can go into a URL path or, unquoted, into a
+ * `$filter` (`uuid eq <key>`) without escaping, so it is also how a display id is told apart.
+ *
+ * @param value - Anything.
+ * @returns True for an 8-4-4-4-12 hex string.
+ */
+export function isGuid(value: unknown): value is string {
+  return typeof value === 'string' && GUID_PATTERN.test(value);
+}

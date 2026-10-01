@@ -228,19 +228,31 @@ where images live.
 Every call goes through the same checks, in order:
 
 - **Allowlist.** Only the fields above; anything else, such as `projectId`, is an error. No link or
-  assignment lists, whose update semantics the API does not state.
+  assignment lists, whose update semantics the API does not state. `null` clears `scopeId`,
+  `responsibleId`, `releaseId` or `workstreamId` (not yet verified against a tenant).
 - **Change check.** The call carries `expected_modified_at`, the `modifiedAt` the model read.
   calmcp reads the feature again and refuses with `CONFLICT` if it changed since. Cloud ALM has no
   ETag or `If-Match`, so this is the only protection against overwriting someone else's edit; it
   narrows the window to the moment between the check and the write.
 - **Only real changes.** Fields that already hold the requested value are not sent.
+- **No active content.** Rich text may not contain scripts, event handlers (`onerror=`, ...),
+  `javascript:`/`vbscript:`/`data:` URLs, CSS `url(...)`, or images from anywhere but Cloud ALM's
+  image service (an image already in the current text may stay). calmcp reads text other people
+  wrote, so an instruction planted in one object could otherwise make a model write a tracking
+  pixel or a script into another. The same check applies to `calm_create`.
 - **Image guard.** A feature description references its images as `<img>` tags pointing at Cloud
   ALM's image service. A new description that drops one is refused, naming the image, unless the
-  call sets `allow_image_removal: true` after the user confirmed it.
+  call lists exactly that image in `remove_images` (e.g. `["imageId:4e4b…"]`) after the user
+  confirmed it. Any other dropped image is still refused.
 - **PATCH, never PUT,** and never retried: a throttled or failed update is reported, not repeated.
+  When Cloud ALM gives no answer (timeout, 5xx), the result says the update may or may not have
+  been applied, and how to find out with `calm_get`.
 - **Result and audit.** The answer shows each changed field before and after (a description as its
-  length and image count). calmcp logs every update at `info` level with the caller, the fields
-  and the modification timestamps, because Cloud ALM records only the technical user.
+  length and image count). Once Cloud ALM accepted the change, it is reported as done even if
+  reading it back fails. calmcp logs every update at `info` level with the caller, the outcome
+  (`applied`, or `unknown` when there was no answer), each field's old and new value, and the
+  modification timestamps, so a change can be undone by hand; Cloud ALM records only the
+  technical user.
 
 Like `calm_create`, `calm_update` is offered over HTTP only to callers with the `Writer` scope
 (role collection `CALMCP_Editor`), and the OAuth2 client needs `calm-api.features.write`.

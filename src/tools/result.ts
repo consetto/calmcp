@@ -8,6 +8,7 @@
 // the answer looks authoritative and is wrong.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { z } from 'zod';
 import { describeError, type ErrorCode, type ErrorInfo } from '../errors.js';
 import { collectFieldNames, locateRecords, ShapeError } from './shape.js';
 
@@ -160,4 +161,29 @@ export function errorResultFrom(error: unknown): CallToolResult {
 
 function structuredError(info: ErrorInfo): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(info, null, 2) }], isError: true };
+}
+
+/**
+ * The error result for a write payload that failed its schema, listing every problem at once so
+ * the caller can fix them in one go.
+ *
+ * @param what - The argument that failed, e.g. "data" or "changes".
+ * @param resource - The resource it was meant for.
+ * @param issues - The schema's issues.
+ * @param tool - The tool, for the pointer to its field list.
+ * @returns An `INVALID_ARGUMENT` error result.
+ */
+export function invalidPayloadResult(
+  what: string,
+  resource: string,
+  issues: z.core.$ZodIssue[],
+  tool: string,
+): CallToolResult {
+  const problems = issues.map(
+    (issue) => `${issue.path.length > 0 ? issue.path.join('.') : what}: ${issue.message}`,
+  );
+  return errorResult(
+    `Invalid ${what} for resource '${resource}':\n- ${problems.join('\n- ')}\n` +
+      `Call calm_resources({ topic: '${resource}' }) for the fields ${tool} accepts.`,
+  );
 }

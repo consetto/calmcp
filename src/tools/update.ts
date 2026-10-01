@@ -31,14 +31,24 @@ export const featureUpdateSchema = z
   .object({
     title: featureEditableFields.title.optional(),
     description: featureEditableFields.description.optional(),
-    scopeId: featureEditableFields.scopeId.optional(),
     statusCode: featureEditableFields.statusCode.optional(),
     priorityCode: featureEditableFields.priorityCode.optional(),
-    responsibleId: featureEditableFields.responsibleId.optional(),
-    releaseId: featureEditableFields.releaseId.optional(),
-    workstreamId: featureEditableFields.workstreamId.optional(),
+    // Assignments can be removed: null clears them. Not yet verified against a tenant that the
+    // Features API accepts null for each of them.
+    scopeId: clearable(featureEditableFields.scopeId),
+    responsibleId: clearable(featureEditableFields.responsibleId),
+    releaseId: clearable(featureEditableFields.releaseId),
+    workstreamId: clearable(featureEditableFields.workstreamId),
   })
   .strict();
+
+/** An optional field that `null` clears, with the description saying so. */
+function clearable<T extends z.ZodType>(field: T) {
+  return field
+    .nullable()
+    .optional()
+    .describe(`${field.description ?? ''}. null removes it`);
+}
 
 /** Resources changeable via `calm_update`, keyed by the public `resource` value. */
 export const UPDATE_RESOURCES: Record<string, UpdateResource> = {
@@ -56,38 +66,3 @@ export const UPDATE_RESOURCES: Record<string, UpdateResource> = {
 
 /** Public `resource` values accepted by `calm_update`. */
 export const UPDATE_RESOURCE_NAMES = Object.keys(UPDATE_RESOURCES);
-
-/**
- * The images an HTML value references, one key per image.
- *
- * Cloud ALM stores an image in its image service and puts `<img src="/ui/imageServiceAPI/v1/
- * getImage?imageId=<uuid>">` into the HTML; the image id is the key, so a tag rewritten with other
- * attributes still counts as the same image. Any other `<img>` is keyed by its `src`.
- *
- * @param html - An HTML string (or anything else, which has no images).
- * @returns The image keys, in order of appearance, without duplicates.
- */
-export function imageKeys(html: unknown): string[] {
-  if (typeof html !== 'string') return [];
-  const keys: string[] = [];
-  for (const [tag] of html.matchAll(/<img\b[^>]*>/gi)) {
-    const src = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
-    const value = (src?.[1] ?? src?.[2] ?? src?.[3] ?? '').replace(/&amp;/g, '&');
-    const imageId = /[?&]imageId=([^&#]+)/i.exec(value)?.[1];
-    const key = imageId ? `imageId:${decodeURIComponent(imageId).toLowerCase()}` : `src:${value}`;
-    if (!keys.includes(key)) keys.push(key);
-  }
-  return keys;
-}
-
-/**
- * The images `current` references that `next` no longer does.
- *
- * @param current - The stored HTML.
- * @param next - The HTML the caller wants to store instead.
- * @returns The keys of the images the change would remove.
- */
-export function droppedImages(current: unknown, next: unknown): string[] {
-  const kept = new Set(imageKeys(next));
-  return imageKeys(current).filter((key) => !kept.has(key));
-}
