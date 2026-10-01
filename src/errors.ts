@@ -35,6 +35,13 @@ export class ConfigError extends CalmError {
     return new ConfigError(`Invalid configuration: ${detail}`);
   }
 
+  /** An update was attempted while the operator left `calm_update` switched off. */
+  static updateDisabled(): ConfigError {
+    return new ConfigError(
+      'Update access is disabled: calmcp changes existing objects only when CALM_UPDATE_ENABLED=true.',
+    );
+  }
+
   /** A write was attempted while calmcp runs in its default read-only mode. */
   static writeDisabled(): ConfigError {
     return new ConfigError(

@@ -14,6 +14,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { CalmClients } from '../calm/index.js';
 import { countOData, countRest } from './counting.js';
+import { flagOmittedImages, returnsDocumentBodies } from './documentImages.js';
 import { fetchAllRest, hasNextLink, MAX_PAGES_RETURN, PAGE_SIZE } from './paging.js';
 import {
   ignoredParams,
@@ -226,7 +227,12 @@ export async function handleCalmList(
       return jsonResult(await countList(clients, def, args));
     }
     const data = await fetchList(clients, def, args);
-    const shaped = args.fields ? projectFields(data, args.fields) : data;
+    const projected = args.fields ? projectFields(data, args.fields) : data;
+    // Document bodies come back without their images; flag the ones that had any.
+    const shaped =
+      def.kind === 'odata' && returnsDocumentBodies(def)
+        ? await flagOmittedImages(clients, data, projected)
+        : projected;
     return jsonResult(withEmptyNote(withNextPage(shaped, data, args), args));
   } catch (error) {
     return errorResultFrom(error);

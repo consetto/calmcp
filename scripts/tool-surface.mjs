@@ -18,10 +18,14 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 /** Marker that identifies the PR comment, so a later run updates it instead of adding another. */
 export const MARKER = '<!-- calmcp-tool-surface -->';
 
-/** The two deployments whose surfaces differ: default read-only, and write access switched on. */
+/** The deployments whose surfaces differ: default read-only, write access, write plus update. */
 const MODES = {
   readOnly: { label: 'Read-only (default)', env: {} },
   write: { label: 'With write access', env: { CALM_WRITE_ENABLED: 'true' } },
+  update: {
+    label: 'With write and update access',
+    env: { CALM_WRITE_ENABLED: 'true', CALM_UPDATE_ENABLED: 'true' },
+  },
 };
 
 /** Start the server in one mode and return its instructions and tools. */
@@ -232,10 +236,10 @@ function diff(basePath, headPath, brief) {
   const base = JSON.parse(readFileSync(basePath, 'utf8'));
   const head = JSON.parse(readFileSync(headPath, 'utf8'));
   const shown = new Set();
-  const reports = Object.entries(MODES).map(([mode, { label }]) => ({
-    label,
-    ...reportMode(base[mode], head[mode], shown),
-  }));
+  // A snapshot taken before a mode existed has no entry for it; compare only what both have.
+  const reports = Object.entries(MODES)
+    .filter(([mode]) => base[mode] && head[mode])
+    .map(([mode, { label }]) => ({ label, ...reportMode(base[mode], head[mode], shown) }));
   const changed = reports.some((report) => report.changed);
 
   const lines = [MARKER, '## Tool surface', ''];

@@ -1,11 +1,11 @@
 // Create registry: the resources `calm_create` can add to SAP Cloud ALM, each with the strict payload
-// schema transcribed from the `*-create` request bodies in `YAML/CALM_SD.yaml` and the four
-// `YAML/CALM_XLIB_*.yaml` specs.
+// schema transcribed from the `*-create` request bodies in `YAML/CALM_SD.yaml`,
+// `YAML/CALM_CDM_ODATA.yaml` and the four `YAML/CALM_XLIB_*.yaml` specs.
 //
-// Scope is deliberately narrow: new documents and new library entries (cross-library applications,
-// configurations, configuration activities, developments, interfaces). There is no update and no
-// delete. A document's stored HTML carries embedded images that a round-trip through an AI client
-// would not preserve, so the safe operation is the one that cannot touch an existing record.
+// Scope is deliberately narrow: new documents, features and library entries (cross-library
+// applications, configurations, configuration activities, developments, interfaces). Nothing here
+// changes or deletes an existing record; changing fields of a feature is `calm_update`
+// (`update.ts`), behind its own switch. Documents cannot be changed through the API at all.
 //
 // Every schema is `.strict()`: an unknown property is an error, not something silently dropped,
 // because a caller who typed `projectID` would otherwise get a document in no project at all.
@@ -414,6 +414,78 @@ export const xlibInterfaceCreateSchema = z
   .strict();
 
 // ---------------------------------------------------------------------------------------------
+// Features (CALM_CDM_ODATA.yaml — POST /Features, schema Features-create)
+// ---------------------------------------------------------------------------------------------
+
+/** Feature lifecycle status codes, with the labels the Cloud ALM UI shows. */
+const FEATURE_STATUS_CODES = [
+  'CREATED',
+  'NOT_PLANNED',
+  'IN_REALIZATION',
+  'IN_TESTING',
+  'SUCCESSFULLY_TESTED',
+  'APPROVED_FOR_DEPLOYMENT',
+  'CONFIRMED',
+] as const;
+
+/**
+ * The feature fields a caller may set on create and change on update. Shared, so the two cannot
+ * drift apart. `projectId` and `type` are create-only: moving a feature between projects or changing
+ * its type is not something an update should do on the side.
+ */
+export const featureEditableFields = {
+  title: z.string().min(1).max(600).describe('Feature title'),
+  description: z
+    .string()
+    .max(500_000)
+    .describe(
+      "HTML rich-text description. Images are <img> tags referencing Cloud ALM's image service; " +
+        'keep every such tag when changing the text',
+    ),
+  scopeId: uuid.describe('UUID of the process scope'),
+  statusCode: z
+    .enum(FEATURE_STATUS_CODES)
+    .describe(
+      'Status: CREATED (In Specification), NOT_PLANNED, IN_REALIZATION, IN_TESTING, ' +
+        'SUCCESSFULLY_TESTED, APPROVED_FOR_DEPLOYMENT, CONFIRMED',
+    ),
+  priorityCode: z
+    .union([z.literal(10), z.literal(20), z.literal(30), z.literal(40)])
+    .describe('Priority: 10 very high, 20 high, 30 medium, 40 low'),
+  responsibleId: z.string().min(1).max(255).describe('User id of the responsible person'),
+  releaseId: uuid.describe('UUID of the release'),
+  workstreamId: z.string().min(1).max(255).describe('Workstream id'),
+};
+
+/** A feature's external reference: here the identifier field is called `id`. */
+const featureExternalReference = z
+  .object({
+    id: z.string().min(1).max(255).describe('Identifier in the external system'),
+    name: z.string().min(1).max(255).describe('Name of the external system'),
+    url: httpUrl(1000).optional().describe('URL pointing into the external system'),
+  })
+  .strict();
+
+export const featureCreateSchema = z
+  .object({
+    title: featureEditableFields.title,
+    projectId: uuid.describe('UUID of the project the feature belongs to'),
+    description: featureEditableFields.description.optional(),
+    scopeId: featureEditableFields.scopeId.optional(),
+    statusCode: featureEditableFields.statusCode.optional(),
+    priorityCode: featureEditableFields.priorityCode.optional(),
+    responsibleId: featureEditableFields.responsibleId.optional(),
+    releaseId: featureEditableFields.releaseId.optional(),
+    workstreamId: featureEditableFields.workstreamId.optional(),
+    toURLReferences: z.array(urlReference).optional().describe('Links to attach'),
+    toExternalReferences: z
+      .array(featureExternalReference)
+      .optional()
+      .describe('External system identifiers to attach'),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------------------------
 
@@ -423,6 +495,8 @@ export interface CreateResource {
   entitySet: string;
   /** Strict payload schema; unknown properties are rejected. */
   schema: z.ZodObject<z.ZodRawShape>;
+  /** Fields Cloud ALM may render as HTML, checked for active content before sending. */
+  textFields: string[];
   description: string;
 }
 
@@ -432,26 +506,39 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     service: 'documents',
     entitySet: 'Documents',
     schema: documentCreateSchema,
+    textFields: ['content'],
     description:
       'A new document in a project, with optional HTML content and assignments (links, ' +
       'processes, hierarchy nodes, tasks, library elements, test cases) created in the same call',
+  },
+  feature: {
+    service: 'features',
+    entitySet: 'Features',
+    schema: featureCreateSchema,
+    textFields: ['description'],
+    description:
+      'A new feature in a project, with optional HTML description, status, priority and links ' +
+      'created in the same call',
   },
   xlib_application: {
     service: 'xlibApplications',
     entitySet: 'Applications',
     schema: xlibApplicationCreateSchema,
+    textFields: ['description'],
     description: 'A new cross-library application (Fiori app, transaction, program, ...)',
   },
   xlib_configuration: {
     service: 'xlibConfigurations',
     entitySet: 'Configurations',
     schema: xlibConfigurationCreateSchema,
+    textFields: ['description'],
     description: 'A new cross-library configuration (authorization, master data, WRICEF, ...)',
   },
   xlib_configuration_activity: {
     service: 'xlibConfigurations',
     entitySet: 'ConfigurationActivities',
     schema: xlibConfigurationActivityCreateSchema,
+    textFields: ['description'],
     description:
       'A new configuration activity (IMG activity, role, program, transaction), optionally ' +
       'assigned to existing configurations',
@@ -460,12 +547,14 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     service: 'xlibDevelopments',
     entitySet: 'Developments',
     schema: xlibDevelopmentCreateSchema,
+    textFields: ['description'],
     description: 'A new cross-library development object (class, program, package, ...)',
   },
   xlib_interface: {
     service: 'xlibInterfaces',
     entitySet: 'Interfaces',
     schema: xlibInterfaceCreateSchema,
+    textFields: ['description'],
     description: 'A new cross-library interface (OData, RFC, SOAP, REST, MCP server, ...)',
   },
 };

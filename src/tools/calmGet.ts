@@ -4,7 +4,8 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
-import { odataString } from '../calm/odata.js';
+import { isGuid, odataString } from '../calm/odata.js';
+import { flagOmittedImages, returnsDocumentBodies } from './documentImages.js';
 import { GET_RESOURCES } from './registry.js';
 import { errorResult, errorResultFrom, jsonResult } from './result.js';
 import type { calmGetShape } from './schemas.js';
@@ -17,9 +18,6 @@ export type CalmGetArgs = z.infer<z.ZodObject<typeof calmGetShape>>;
 const GET_OVERSIZE_HINT =
   'Re-run calm_get with fields:"<comma-separated names>" picked from availableFields, e.g. the ' +
   'header fields first and a long description only if it is really needed. Drop expand if set.';
-
-/** RFC 4122 UUID matcher — distinguishes a key from a feature display id. */
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Handle a `calm_get` call.
@@ -47,16 +45,22 @@ export async function handleCalmGet(
   }
 
   // A single task carries ~70 fields and HTML descriptions; `fields` keeps just the ones needed.
-  const respond = (entity: unknown) =>
-    jsonResult(args.fields ? projectFields(entity, args.fields) : entity, GET_OVERSIZE_HINT);
+  // A document body comes back without its images, so it is flagged when it had any.
+  const respond = async (entity: unknown) => {
+    const shaped = args.fields ? projectFields(entity, args.fields) : entity;
+    return jsonResult(
+      returnsDocumentBodies(def) ? await flagOmittedImages(clients, entity, shaped) : shaped,
+      GET_OVERSIZE_HINT,
+    );
+  };
 
   try {
     if (def.kind === 'rest') {
-      return respond(await clients.getRest(def.service, def.build(args.id)));
+      return await respond(await clients.getRest(def.service, def.build(args.id)));
     }
 
     // OData entity: resolve a feature display id to its uuid when the id is not a UUID.
-    if (def.allowDisplayId && !UUID_PATTERN.test(args.id)) {
+    if (def.allowDisplayId && !isGuid(args.id)) {
       const collection = await clients.listOData(def.service, def.entitySet, {
         filter: `displayId eq ${odataString(args.id)}`,
         top: 1,
@@ -67,12 +71,14 @@ export async function handleCalmGet(
       }
       // If an expand was requested, re-fetch by uuid to include the navigations.
       if (args.expand && first.uuid) {
-        return respond(await clients.getOData(def.service, def.entitySet, first.uuid, args.expand));
+        return await respond(
+          await clients.getOData(def.service, def.entitySet, first.uuid, args.expand),
+        );
       }
-      return respond(first);
+      return await respond(first);
     }
 
-    return respond(await clients.getOData(def.service, def.entitySet, args.id, args.expand));
+    return await respond(await clients.getOData(def.service, def.entitySet, args.id, args.expand));
   } catch (error) {
     return errorResultFrom(error);
   }

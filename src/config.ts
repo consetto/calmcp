@@ -92,6 +92,11 @@ export interface ConfigValues {
    * an operator turns this on deliberately via `CALM_WRITE_ENABLED=true`.
    */
   writeEnabled?: boolean;
+  /**
+   * Enable the update tool (`calm_update`), which changes fields of existing objects. Off by
+   * default and separate from `writeEnabled`: changing a record can lose what creating one cannot.
+   */
+  updateEnabled?: boolean;
 }
 
 /**
@@ -113,6 +118,7 @@ export class Config {
   readonly destinationName?: string;
   readonly maxResponseBytes: number;
   readonly writeEnabled: boolean;
+  readonly updateEnabled: boolean;
 
   constructor(values: ConfigValues) {
     this.sandbox = values.sandbox;
@@ -127,6 +133,7 @@ export class Config {
     this.destinationName = values.destinationName;
     this.maxResponseBytes = values.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
     this.writeEnabled = values.writeEnabled ?? false;
+    this.updateEnabled = values.updateEnabled ?? false;
   }
 
   /**
@@ -151,6 +158,7 @@ export class Config {
       destinationName: env.CALM_DESTINATION_NAME?.trim() || undefined,
       maxResponseBytes: parseNumber(env.CALM_MAX_RESPONSE_BYTES, DEFAULT_MAX_RESPONSE_BYTES),
       writeEnabled: parseBool(env.CALM_WRITE_ENABLED),
+      updateEnabled: parseBool(env.CALM_UPDATE_ENABLED),
     };
 
     const config = new Config(values);
