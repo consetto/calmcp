@@ -196,6 +196,10 @@ What it does and does not do:
   offered only to callers whose XSUAA token carries the `Writer` scope (role collection
   `CALMCP_Editor`). Viewers of the same deployment and API-key callers never see the tool. Cloud
   ALM still records the destination's technical user as the creator.
+- **Audit log.** calmcp logs every created entity at `info` level with the caller (XSUAA user,
+  else OAuth client, else `local`), the resource, the new uuid and display id, and the names of the
+  fields set, not their values. With Cloud ALM naming only the technical user, this log is where
+  the person is.
 
 Example:
 
