@@ -248,11 +248,12 @@ export const calmUpdateShape = {
       'modifiedAt exactly as calm_get returned it when you read the object. The update is refused ' +
         'if the object changed since, so an edit made in the meantime is never overwritten',
     ),
-  allow_image_removal: z
-    .boolean()
+  remove_images: z
+    .array(z.string().min(1))
     .optional()
     .describe(
-      'Only after the user confirmed it: allow a new description that drops images the current ' +
-        'one has. Without it such a change is refused',
+      'Only after the user confirmed removing exactly these images: the image keys (e.g. ' +
+        '"imageId:4e4b…") a new description may drop. A refused call lists them. Any other ' +
+        'dropped image is still refused',
     ),
 };

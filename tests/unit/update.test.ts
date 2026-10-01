@@ -14,7 +14,7 @@ import { buildMcpServer } from '../../src/server.js';
 import { handleCalmResources } from '../../src/tools/calmResources.js';
 import { handleCalmUpdate, type UpdateAuditEntry } from '../../src/tools/calmUpdate.js';
 import { featureCreateSchema } from '../../src/tools/create.js';
-import { droppedImages, imageKeys } from '../../src/tools/update.js';
+import { droppedImages, imageKeys } from '../../src/tools/richText.js';
 import { makeClients, ORIGIN, parse, textOf } from './helpers.js';
 
 const ID = '5a4d46a3-13c4-492e-9bc4-5512ff56ef5c';
@@ -119,7 +119,7 @@ describe('handleCalmUpdate', () => {
     );
     expect(errorOf(result)).toMatchObject({ error: 'INVALID_ARGUMENT' });
     expect(errorOf(result).message).toContain('imageId:aaa');
-    expect(errorOf(result).message).toContain('allow_image_removal');
+    expect(errorOf(result).message).toContain('remove_images: ["imageId:aaa"]');
   });
 
   it('sends only the changed fields, reports before and after, and audits the update', async () => {
@@ -166,29 +166,146 @@ describe('handleCalmUpdate', () => {
         resource: 'feature',
         id: ID,
         displayId: '6-132',
-        // Schema order, not the caller's: zod returns the fields in the order the schema lists them.
-        fields: ['description', 'statusCode'],
+        outcome: 'applied',
+        // The replaced values, so the change can be undone by hand; HTML as length and images.
+        changes: {
+          description: {
+            before: { length: stored.description.length, images: 2 },
+            after: { length: newDescription.length, images: 2 },
+          },
+          statusCode: { before: 'IN_REALIZATION', after: 'IN_TESTING' },
+        },
         modifiedBefore: MODIFIED,
         modifiedAfter: '2026-09-30T09:00:00Z',
       },
     ]);
   });
 
-  it('removes an image when the caller confirms it', async () => {
+  it('removes exactly the images the caller names', async () => {
     agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
     agent.get(ORIGIN).intercept({ path: FEATURE, method: 'PATCH' }).reply(204, '');
     agent
       .get(ORIGIN)
       .intercept({ path: FEATURE })
-      .reply(200, { ...stored, description: '<p>none</p>' });
+      .reply(200, { ...stored, description: `<p>one left</p>${img('bbb')}` });
     const result = await handleCalmUpdate(
       clients(),
-      call({ description: '<p>none</p>' }, { allow_image_removal: true }),
+      // A bare id is accepted as an image-service id.
+      call({ description: `<p>one left</p>${img('bbb')}` }, { remove_images: ['AAA'] }),
     );
     expect(parse(result)).toMatchObject({
       updated: true,
-      changes: { description: { after: { images: 0 } } },
+      changes: { description: { after: { images: 1 } } },
     });
+  });
+
+  it('still refuses an image the caller did not name', async () => {
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    const result = await handleCalmUpdate(
+      clients(),
+      call({ description: '<p>none</p>' }, { remove_images: ['imageId:aaa'] }),
+    );
+    expect(errorOf(result).message).toContain('remove_images: ["imageId:bbb"]');
+  });
+
+  it('reports a change Cloud ALM accepted as done, and audits it, when reading it back fails', async () => {
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    agent.get(ORIGIN).intercept({ path: FEATURE, method: 'PATCH' }).reply(204, '');
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(500, 'read-back failed');
+    const audit: UpdateAuditEntry[] = [];
+    const result = await handleCalmUpdate(clients(), call({ title: 'New' }), (entry) =>
+      audit.push(entry),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(parse(result)).toMatchObject({
+      updated: true,
+      changes: { title: { before: 'Close periods', after: 'New' } },
+    });
+    expect((parse(result) as { note: string }).note).toContain('reading it back failed');
+    expect(audit).toMatchObject([{ outcome: 'applied', modifiedAfter: undefined }]);
+  });
+
+  it('audits a PATCH with no answer as outcome unknown and says it may have been applied', async () => {
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    agent.get(ORIGIN).intercept({ path: FEATURE, method: 'PATCH' }).reply(504, 'gateway timeout');
+    const audit: UpdateAuditEntry[] = [];
+    const result = await handleCalmUpdate(clients(), call({ title: 'New' }), (entry) =>
+      audit.push(entry),
+    );
+    expect(errorOf(result)).toMatchObject({ error: 'TIMEOUT', retryable: false });
+    expect(errorOf(result).message).toContain('may or may not have been applied');
+    expect(audit).toMatchObject([
+      { outcome: 'unknown', changes: { title: { before: 'Close periods', after: 'New' } } },
+    ]);
+  });
+
+  it('writes no audit entry when Cloud ALM rejects the PATCH', async () => {
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    agent
+      .get(ORIGIN)
+      .intercept({ path: FEATURE, method: 'PATCH' })
+      .reply(400, { error: { code: 'BAD', message: 'invalid status transition' } });
+    const audit: UpdateAuditEntry[] = [];
+    const result = await handleCalmUpdate(clients(), call({ statusCode: 'CONFIRMED' }), (entry) =>
+      audit.push(entry),
+    );
+    expect(errorOf(result)).toMatchObject({ error: 'BAD_REQUEST' });
+    expect(audit).toEqual([]);
+  });
+
+  it.each([
+    ['a script', '<p>x</p><script>alert(1)</script>', '<script>'],
+    ['an event handler', '<p onmouseover="steal()">x</p>', 'onmouseover='],
+    ['a javascript link', '<a href="javascript:steal()">x</a>', 'javascript:'],
+    ['an entity-disguised javascript link', '<a href="jav&#x61;script:x()">x</a>', 'javascript:'],
+    ['a foreign image', '<img src="https://evil.example/p.png">', 'image service'],
+    [
+      'a foreign image posing as an image-service id',
+      '<img src="https://evil.example/x?imageId=aaa">',
+      'image service',
+    ],
+    ['a CSS url', '<p style="background:url(https://evil.example/p)">x</p>', 'url('],
+  ])('refuses a description with %s, before any PATCH', async (_, extra, named) => {
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    const result = await handleCalmUpdate(
+      clients(),
+      call({ description: `${stored.description}${extra}` }),
+    );
+    expect(errorOf(result)).toMatchObject({ error: 'INVALID_ARGUMENT' });
+    expect(errorOf(result).message).toContain(named);
+  });
+
+  it('keeps an image someone added in the UI from elsewhere, so the update is not blocked', async () => {
+    const outside = '<img src="https://intranet.example/diagram.png">';
+    agent
+      .get(ORIGIN)
+      .intercept({ path: FEATURE })
+      .reply(200, { ...stored, description: `${stored.description}${outside}` });
+    agent.get(ORIGIN).intercept({ path: FEATURE, method: 'PATCH' }).reply(204, '');
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    const result = await handleCalmUpdate(
+      clients(),
+      call({ description: `<p>Reworded</p>${img('aaa')}${img('bbb')}${outside}` }),
+    );
+    expect(parse(result)).toMatchObject({ updated: true });
+  });
+
+  it('clears an assignment with null', async () => {
+    let sent: unknown;
+    agent
+      .get(ORIGIN)
+      .intercept({ path: FEATURE })
+      .reply(200, { ...stored, responsibleId: 'jane' });
+    agent
+      .get(ORIGIN)
+      .intercept({ path: FEATURE, method: 'PATCH' })
+      .reply(204, (request) => {
+        sent = JSON.parse(String(request.body));
+        return '';
+      });
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    await handleCalmUpdate(clients(), call({ responsibleId: null }));
+    expect(sent).toEqual({ responsibleId: null });
   });
 
   it('never retries a PATCH the service throttled', async () => {

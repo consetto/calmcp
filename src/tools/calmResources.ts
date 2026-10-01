@@ -72,7 +72,9 @@ function describeUpdateResource(name: string, def: UpdateResource) {
       `Pass ${def.modifiedField} exactly as calm_get returned it as expected_modified_at; the ` +
         'update is refused if the object changed since.',
       `A change to ${def.richTextFields.join(', ')} that drops an <img> tag is refused unless ` +
-        'allow_image_removal is true.',
+        'remove_images names that image (the refusal lists the keys).',
+      `${def.richTextFields.join(', ')} may not contain scripts, event handlers, ` +
+        "javascript:/data: URLs or images from outside Cloud ALM's image service.",
       'Fields already holding the requested value are not sent.',
     ],
     example:

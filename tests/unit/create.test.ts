@@ -211,6 +211,20 @@ describe('handleCalmCreate', () => {
     expect(audit).toEqual([]);
   });
 
+  it('refuses active content in a text field before sending anything', async () => {
+    // No intercept: a POST that slipped through would fail the call as NETWORK instead.
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'feature',
+      data: {
+        title: 'Close periods',
+        projectId: PROJECT,
+        description: '<p>Steps</p><img src="https://evil.example/pixel.png">',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('image service');
+  });
+
   it('sends exactly the validated payload, nothing added', async () => {
     let sent: unknown;
     agent

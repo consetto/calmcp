@@ -216,10 +216,11 @@ function registerUpdate(
         'Change fields of an EXISTING SAP Cloud ALM feature (title, HTML description, status, ' +
         'priority, scope, responsible, release, workstream). First read it with calm_get and ' +
         'pass its uuid and modifiedAt as expected_modified_at; the update is refused if it ' +
-        'changed since. Send only the fields to change in "changes". A description change that ' +
-        'would drop an image (<img> tag) is refused unless allow_image_removal is true, which ' +
-        "needs the user's confirmation. Confirm every change with the user before calling. " +
-        'Returns each changed field before and after.',
+        'changed since. Send only the fields to change in "changes"; null clears scope, ' +
+        'responsible, release or workstream. A description change that drops an image (<img> ' +
+        "tag) is refused unless remove_images names it, which needs the user's confirmation; " +
+        'scripts, event handlers and foreign images are always refused. Confirm every change ' +
+        'with the user before calling. Returns each changed field before and after.',
       inputSchema: strictInput(calmUpdateShape),
     },
     traced('calm_update', (args: CalmUpdateArgs) =>

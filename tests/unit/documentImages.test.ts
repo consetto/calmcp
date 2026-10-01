@@ -121,4 +121,47 @@ describe('documents whose images the API leaves out', () => {
     expect(result.isError).toBeFalsy();
     expect((parse(result) as { value: unknown[] }).value[0]).toEqual({ displayId: '7-1' });
   });
+
+  it('checks a long list in batches of at most 50 documents', async () => {
+    const uuids = Array.from(
+      { length: 120 },
+      (_, i) => `${String(i).padStart(8, '0')}-1111-4111-8111-111111111111`,
+    );
+    agent
+      .get(ORIGIN)
+      .intercept({ path: isListRequest })
+      .reply(200, { value: uuids.map((uuid) => ({ uuid, content: '<p>x</p>' })) });
+    // undici may call the matcher more than once per request, and encodes spaces as "+": count
+    // each distinct decoded query once.
+    const checks = new Set<string>();
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) => {
+          if (!isImageCheck(path)) return false;
+          checks.add(decodeURIComponent(path.replace(/\+/g, ' ')));
+          return true;
+        },
+      })
+      .reply(200, { value: [{ uuid: uuids[119] }] })
+      .times(3);
+
+    const body = parse(await handleCalmList(makeClients(), { resource: 'documents' })) as {
+      value: Record<string, unknown>[];
+    };
+    const batchSizes = [...checks].map((query) => (query.match(/uuid eq /g) ?? []).length);
+    expect(batchSizes.sort((a, b) => a - b)).toEqual([20, 50, 50]);
+    expect(body.value[119]).toMatchObject({ imagesOmitted: true });
+    expect(body.value[0]).not.toHaveProperty('imagesOmitted');
+  });
+
+  it('does not check an empty body', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${DOCS}/${A}` })
+      .reply(200, { uuid: A, content: '' });
+    const result = await handleCalmGet(makeClients(), { resource: 'document', id: A });
+    expect(result.isError).toBeFalsy();
+    expect(parse(result)).not.toHaveProperty('imagesNote');
+  });
 });

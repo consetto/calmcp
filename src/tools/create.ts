@@ -495,6 +495,8 @@ export interface CreateResource {
   entitySet: string;
   /** Strict payload schema; unknown properties are rejected. */
   schema: z.ZodObject<z.ZodRawShape>;
+  /** Fields Cloud ALM may render as HTML, checked for active content before sending. */
+  textFields: string[];
   description: string;
 }
 
@@ -504,6 +506,7 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     service: 'documents',
     entitySet: 'Documents',
     schema: documentCreateSchema,
+    textFields: ['content'],
     description:
       'A new document in a project, with optional HTML content and assignments (links, ' +
       'processes, hierarchy nodes, tasks, library elements, test cases) created in the same call',
@@ -512,6 +515,7 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     service: 'features',
     entitySet: 'Features',
     schema: featureCreateSchema,
+    textFields: ['description'],
     description:
       'A new feature in a project, with optional HTML description, status, priority and links ' +
       'created in the same call',
@@ -520,18 +524,21 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     service: 'xlibApplications',
     entitySet: 'Applications',
     schema: xlibApplicationCreateSchema,
+    textFields: ['description'],
     description: 'A new cross-library application (Fiori app, transaction, program, ...)',
   },
   xlib_configuration: {
     service: 'xlibConfigurations',
     entitySet: 'Configurations',
     schema: xlibConfigurationCreateSchema,
+    textFields: ['description'],
     description: 'A new cross-library configuration (authorization, master data, WRICEF, ...)',
   },
   xlib_configuration_activity: {
     service: 'xlibConfigurations',
     entitySet: 'ConfigurationActivities',
     schema: xlibConfigurationActivityCreateSchema,
+    textFields: ['description'],
     description:
       'A new configuration activity (IMG activity, role, program, transaction), optionally ' +
       'assigned to existing configurations',
@@ -540,12 +547,14 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     service: 'xlibDevelopments',
     entitySet: 'Developments',
     schema: xlibDevelopmentCreateSchema,
+    textFields: ['description'],
     description: 'A new cross-library development object (class, program, package, ...)',
   },
   xlib_interface: {
     service: 'xlibInterfaces',
     entitySet: 'Interfaces',
     schema: xlibInterfaceCreateSchema,
+    textFields: ['description'],
     description: 'A new cross-library interface (OData, RFC, SOAP, REST, MCP server, ...)',
   },
 };
