@@ -505,8 +505,13 @@ MIT
 Contributions are welcome! Please ensure your code:
 
 - Builds without errors (`npm run build`)
-- Passes all tests (`npm test`)
+- Passes all tests (`npm test`) and the type-check (`npm run typecheck`)
 - Passes linting and formatting (`npm run lint`, or `npm run lint:fix` to auto-fix)
+
+[AGENTS.md](AGENTS.md) explains how calmcp is built and which files change together; it is also
+what coding agents read. Open a pull request as a draft until it is finished, fill in the template
+(writes need a test against a real tenant), and check [docs/ROADMAP.md](docs/ROADMAP.md) for
+planned and deferred work.
 
 ## Disclaimer
 
