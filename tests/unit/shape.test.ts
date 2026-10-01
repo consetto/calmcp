@@ -4,6 +4,7 @@ import {
   parseFields,
   pickTimebox,
   projectFields,
+  resolveProjectName,
   resolveTimeboxName,
   ShapeError,
 } from '../../src/tools/shape.js';
@@ -122,5 +123,44 @@ describe('resolveTimeboxName', () => {
       { id: 'b', name: 'Sprint 5' },
     ];
     expect(() => resolveTimeboxName(duplicated, 'Sprint 5')).toThrow(/ambiguous/);
+  });
+});
+
+describe('resolveProjectName', () => {
+  // Shaped like real tenant names: a double space and umlauts.
+  const projects = [
+    { id: 'p1', name: 'Müller GmbH  - ERP Number: 12977' },
+    { id: 'p2', name: 'Sandbox - Do not use' },
+    { id: 'p3', name: 'S4 Transformation @ Müller' },
+  ];
+
+  it('ignores case and runs of whitespace', () => {
+    expect(resolveProjectName(projects, 'müller gmbh - erp number: 12977')).toBe('p1');
+  });
+
+  it('matches an umlaut typed in the other Unicode form', () => {
+    expect(resolveProjectName(projects, 'S4 Transformation @ Mu\u0308ller')).toBe('p3');
+  });
+
+  it('names the candidates with their ids instead of picking one', () => {
+    const twice = [...projects, { id: 'p4', name: 'sandbox - do not use' }];
+    expect(() => resolveProjectName(twice, 'Sandbox - Do not use')).toThrow(
+      /ambiguous: 'Sandbox - Do not use' \(p2\), 'sandbox - do not use' \(p4\)/,
+    );
+  });
+
+  it('suggests names that contain the one given, but never matches on them', () => {
+    expect(() => resolveProjectName(projects, 'Sandbox')).toThrow(
+      /No project named 'Sandbox'\. Did you mean: 'Sandbox - Do not use'\?/,
+    );
+  });
+
+  it("lists a small tenant's projects when nothing is similar", () => {
+    expect(() => resolveProjectName(projects, 'Unknown')).toThrow(/Known projects: /);
+  });
+
+  it('points to calm_list instead of listing a large tenant', () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, name: `Project ${i}` }));
+    expect(() => resolveProjectName(many, 'Other')).toThrow(/lists all 30/);
   });
 });

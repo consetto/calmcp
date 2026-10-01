@@ -87,6 +87,15 @@ export const calmListShape = {
     ),
   expand: z.string().optional().describe('OData $expand — comma-separated navigation properties'),
   project_id: pathId().optional().describe('Project id (required for tasks/deliverables/etc.)'),
+  project_name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'Project name instead of project_id, e.g. "S4 Transformation" (case and spacing ' +
+        'ignored, otherwise exact). Works wherever project_id does; an ambiguous or unknown ' +
+        'name is an error naming the candidates',
+    ),
   program_id: pathId().optional().describe('Program id (required for program_teams)'),
   task_id: pathId().optional().describe('Task id (required for task sub-resources)'),
   team_id: pathId().optional().describe('Team id (required for team_roles/program_team_roles)'),

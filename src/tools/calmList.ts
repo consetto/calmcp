@@ -29,6 +29,7 @@ import {
   pickTimebox,
   projectFields,
   type Record_,
+  resolveProjectName,
   resolveTimeboxName,
   ShapeError,
 } from './shape.js';
@@ -114,6 +115,7 @@ async function listTasksInTimebox(
 function querySubject(args: CalmListArgs): Record<string, string> {
   const subject: Record<string, string> = { resource: args.resource };
   const scoping = [
+    'project_name',
     'project_id',
     'program_id',
     'task_id',
@@ -218,19 +220,63 @@ export async function handleCalmList(
       `Unknown resource '${args.resource}'. Use calm_resources to list valid ones.`,
     );
   }
-  const problem = validateListArgs(def, args);
-  if (problem) return errorResult(problem);
-
   try {
-    if (args.count_only === true || args.group_by !== undefined) {
-      return jsonResult(await countList(clients, def, args));
+    // From here on the call is one with project_id: every check and path below applies unchanged.
+    const call = await withProjectId(clients, def, args);
+    const problem = validateListArgs(def, call);
+    if (problem) return errorResult(problem);
+
+    if (call.count_only === true || call.group_by !== undefined) {
+      return jsonResult(await countList(clients, def, call));
     }
-    const data = await fetchList(clients, def, args);
-    const shaped = args.fields ? projectFields(data, args.fields) : data;
-    return jsonResult(withEmptyNote(withNextPage(shaped, data, args), args));
+    const data = await fetchList(clients, def, call);
+    const shaped = call.fields ? projectFields(data, call.fields) : data;
+    return jsonResult(withEmptyNote(withNextPage(shaped, data, call), call));
   } catch (error) {
     return errorResultFrom(error);
   }
+}
+
+/**
+ * Replace `project_name` by the `project_id` it names, so the rest of `calm_list` never sees a name.
+ *
+ * @param clients - The Cloud ALM client container.
+ * @param def - The resource definition.
+ * @param args - Validated tool arguments.
+ * @returns The arguments with `project_id` set, or unchanged when no name was given.
+ * @throws {ShapeError} When the name is combined with an id, the resource takes no project, or the
+ *   name matches no project or several.
+ */
+async function withProjectId(
+  clients: CalmClients,
+  def: ListResource,
+  args: CalmListArgs,
+): Promise<CalmListArgs> {
+  if (args.project_name === undefined) return args;
+  if (args.project_id !== undefined) {
+    throw new ShapeError('Pass either project_id or project_name, not both.');
+  }
+  if (!takesProject(def)) {
+    const takers = Object.keys(LIST_RESOURCES).filter((name) =>
+      takesProject(LIST_RESOURCES[name] as ListResource),
+    );
+    throw new ShapeError(
+      `Resource '${args.resource}' takes no project, so project_name does not apply. ` +
+        `It works for: ${takers.join(', ')}.`,
+    );
+  }
+  const projects = LIST_RESOURCES.projects as RestListResource;
+  const { path, query } = projects.build({});
+  const id = resolveProjectName(
+    await clients.getRest(projects.service, path, query),
+    args.project_name,
+  );
+  return { ...args, project_id: id };
+}
+
+/** Whether a resource's request carries the project id. */
+function takesProject(def: ListResource): boolean {
+  return def.kind === 'rest' && readParams(def).includes('project_id');
 }
 
 /**
