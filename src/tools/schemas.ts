@@ -14,9 +14,17 @@ function toEnumValues(values: string[]): [string, ...string[]] {
 /**
  * An id that calmcp places in a URL path segment. `encodeURIComponent` leaves dots alone, so "."
  * or ".." would climb out of the segment (e.g. `/tasks/..` resolving to the service root).
+ *
+ * A refinement rather than `.regex()`: the regex needs a lookahead, Zod would copy it into the
+ * advertised JSON Schema as `pattern`, and model APIs that validate tool schemas with a regex
+ * subset (OpenAI's strict mode, for one) then reject the whole tool list, so the host fails on
+ * every turn while calmcp is enabled. A refinement emits nothing into the schema.
  */
 function pathId() {
-  return z.string().regex(/^(?!\.\.?$).+$/, 'must be a non-empty id other than "." or ".."');
+  return z
+    .string()
+    .min(1)
+    .refine((id) => id !== '.' && id !== '..', 'must be an id other than "." or ".."');
 }
 
 // Shared OData system query options, reused by `calm_list` (OData resources) and `calm_analytics`.
