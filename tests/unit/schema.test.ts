@@ -11,6 +11,10 @@
 // Strictness: every tool advertises `additionalProperties: false` and rejects a parameter outside
 // its schema. Zod 4 stopped emitting that for a plain object, and a parameter the model invented
 // (`projectId` for `project_id`) was then dropped without a word.
+//
+// Patterns: some model APIs validate every `pattern` against a regex subset with no lookaround or
+// backreferences (OpenAI's strict tool schemas reject the tool list with "regex lookaround is not
+// supported"). Zod copies a `.regex()` verbatim into `pattern`, so the check runs on the output.
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -32,6 +36,13 @@ const MODES = [
 ];
 
 type Access = { writeEnabled: boolean; updateEnabled?: boolean };
+
+/**
+ * Regex constructs outside the subset model APIs accept in `pattern`: lookahead and lookbehind
+ * (`(?=`, `(?!`, `(?<=`, `(?<!`), named groups (`(?<x>`), backreferences (`\\1`, `\\k<x>`) and
+ * inline flags (`(?i)`). `(?:` non-capturing groups are portable and pass.
+ */
+const UNSUPPORTED_REGEX = /\(\?[=!<]|\(\?[a-z]+[-:)]|\\[1-9]|\\k</;
 
 /** Keywords some hosts cannot handle anywhere in a tool schema. */
 const FORBIDDEN_KEYS = [
@@ -69,6 +80,8 @@ function incompatibilities(node: unknown, path: string): string[] {
     if (!keysAreFieldNames) {
       if (FORBIDDEN_KEYS.includes(key)) problems.push(`${path}.${key}: forbidden keyword`);
       if (key === 'type' && Array.isArray(value)) problems.push(`${path}.type: array of types`);
+      if (key === 'pattern' && typeof value === 'string' && UNSUPPORTED_REGEX.test(value))
+        problems.push(`${path}.pattern: regex construct outside the portable subset`);
     }
     problems.push(...incompatibilities(value, `${path}.${key}`));
   }
@@ -82,13 +95,35 @@ describe('tool schemas', () => {
       properties: {
         not: { type: ['string', 'null'] },
         pick: { anyOf: [{ type: 'string' }, { type: 'number' }] },
+        id: { type: 'string', pattern: '^(?!\\.\\.?$).+$' },
+        url: { type: 'string', pattern: '^https?://\\S+$' },
       },
     };
     expect(incompatibilities(schema, 't')).toEqual([
       't.properties.not.type: array of types',
       't.properties.pick.anyOf: forbidden keyword',
+      't.properties.id.pattern: regex construct outside the portable subset',
     ]);
   });
+
+  it.each([
+    ['lookahead', '(?=a)'],
+    ['negative lookahead', '^(?!\\.\\.?$).+$'],
+    ['lookbehind', '(?<=a)b'],
+    ['negative lookbehind', '(?<!a)b'],
+    ['backreference', '(a)\\1'],
+    ['named backreference', '(?<x>a)\\k<x>'],
+    ['inline flag', '(?i)abc'],
+  ])('flags a pattern with a %s', (_label, pattern) => {
+    expect(UNSUPPORTED_REGEX.test(pattern)).toBe(true);
+  });
+
+  it.each(['^[0-9a-f]{32}$', '^(?:a|b)+$', '^https?://\\S+$', '^\\d+-\\d+$'])(
+    'accepts the portable pattern %j',
+    (pattern) => {
+      expect(UNSUPPORTED_REGEX.test(pattern)).toBe(false);
+    },
+  );
 
   for (const { label, budget, ...access } of MODES) {
     it(`use only widely supported JSON Schema (${label})`, async () => {
