@@ -1,6 +1,6 @@
 // `calm_resources` — discovery tool. Returns the catalog of resources/providers, the static code
-// lists (task types/statuses/priorities), worked recipes, and (when write access is on) the
-// payload fields of every `calm_create` resource, so an AI client can build correct calls without
+// lists (task types/statuses/priorities), worked recipes, and (when write or update access is on)
+// the payload fields of every `calm_create` resource and the changeable fields of `calm_update`, so an AI client can build correct calls without
 // guessing. Purely static; no API calls.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -25,6 +25,7 @@ import {
 } from './registry.js';
 import { jsonResult } from './result.js';
 import type { calmResourcesShape } from './schemas.js';
+import { UPDATE_RESOURCES, type UpdateResource } from './update.js';
 import { describeObject } from './zodDoc.js';
 
 /** Arguments accepted by the `calm_resources` tool. */
@@ -34,6 +35,8 @@ export type CalmResourcesArgs = z.infer<z.ZodObject<typeof calmResourcesShape>>;
 export interface CalmResourcesOptions {
   /** Whether `calm_create` is registered (`CALM_WRITE_ENABLED`). */
   writeEnabled: boolean;
+  /** Whether `calm_update` is registered (`CALM_UPDATE_ENABLED`). */
+  updateEnabled?: boolean;
 }
 
 /** What the catalog says about creating when the operator left calmcp read-only. */
@@ -56,6 +59,30 @@ function describeCreateResource(name: string, def: CreateResource) {
   };
 }
 
+/** Describe one `calm_update` resource with the fields a caller may change. */
+function describeUpdateResource(name: string, def: UpdateResource) {
+  return {
+    resource: name,
+    tool: 'calm_update',
+    service: def.service,
+    entitySet: def.entitySet,
+    description: def.description,
+    fields: describeObject(def.schema),
+    guards: [
+      `Pass ${def.modifiedField} exactly as calm_get returned it as expected_modified_at; the ` +
+        'update is refused if the object changed since.',
+      `A change to ${def.richTextFields.join(', ')} that drops an <img> tag is refused unless ` +
+        'remove_images names that image (the refusal lists the keys).',
+      `${def.richTextFields.join(', ')} may not contain scripts, event handlers, ` +
+        "javascript:/data: URLs or images from outside Cloud ALM's image service.",
+      'Fields already holding the requested value are not sent.',
+    ],
+    example:
+      `calm_update({ resource: '${name}', id: '<uuid>', expected_modified_at: '<modifiedAt>', ` +
+      "changes: { statusCode: 'IN_TESTING' } })",
+  };
+}
+
 /** The `createResources` section of the catalog. */
 function createSection(options: CalmResourcesOptions) {
   if (!options.writeEnabled) {
@@ -66,9 +93,18 @@ function createSection(options: CalmResourcesOptions) {
     note:
       'calm_create only creates. It never updates or deletes, so check with calm_list first ' +
       'whether an equivalent entry already exists.',
-    resources: Object.entries(CREATE_RESOURCES).map(([name, def]) =>
-      describeCreateResource(name, def),
-    ),
+    // Names only: the payload fields of every resource together overflow the response budget.
+    // calm_resources({ topic: '<resource>' }) returns one resource's fields.
+    resources: Object.entries(CREATE_RESOURCES).map(([name, def]) => briefResource(name, def)),
+  };
+}
+
+/** A write resource in the full catalog: what it is and where its fields are listed. */
+function briefResource(name: string, def: { description: string }) {
+  return {
+    resource: name,
+    description: def.description,
+    fields: `calm_resources({ topic: '${name}' })`,
   };
 }
 
@@ -148,6 +184,13 @@ function fullCatalog(options: CalmResourcesOptions) {
       description: def.description,
     })),
     createResources: createSection(options),
+    ...(options.updateEnabled
+      ? {
+          updateResources: Object.entries(UPDATE_RESOURCES).map(([name, def]) =>
+            briefResource(name, def),
+          ),
+        }
+      : {}),
     analyticsProviders: ANALYTICS_PROVIDERS,
     analyticsProviderFields: ANALYTICS_PROVIDER_FIELDS,
     countingHint: COUNTING_HINT,
@@ -196,11 +239,16 @@ export function handleCalmResources(
       options.writeEnabled && Object.hasOwn(CREATE_RESOURCES, topic)
         ? CREATE_RESOURCES[topic]
         : undefined;
-    if (get || create) {
+    const update =
+      options.updateEnabled && Object.hasOwn(UPDATE_RESOURCES, topic)
+        ? UPDATE_RESOURCES[topic]
+        : undefined;
+    if (get || create || update) {
       return jsonResult({
         resource: topic,
         ...(get ? { ...get, build: undefined } : {}),
         ...(create ? { create: describeCreateResource(topic, create) } : {}),
+        ...(update ? { update: describeUpdateResource(topic, update) } : {}),
       });
     }
     if (ANALYTICS_PROVIDERS.includes(topic)) {

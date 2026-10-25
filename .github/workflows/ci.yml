@@ -42,7 +42,9 @@ jobs:
         run: npm ci
 
       - name: Audit runtime dependencies
-        run: npm audit --omit=dev --audit-level=high
+        # High and critical runtime advisories fail the job. audit-ci.json accepts one unfixed
+        # advisory until its expiry; any other, or that one after the expiry, still fails.
+        run: npm run audit:ci
 
       - name: Check version consistency
         run: npm run version:check

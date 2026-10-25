@@ -1,11 +1,12 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import pino from 'pino';
 import { MockAgent, setGlobalDispatcher } from 'undici';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Config } from '../../src/config.js';
 import { createLogger } from '../../src/logging.js';
 import { buildMcpServer } from '../../src/server.js';
-import { handleCalmCreate } from '../../src/tools/calmCreate.js';
+import { type CreateAuditEntry, handleCalmCreate } from '../../src/tools/calmCreate.js';
 import { handleCalmResources } from '../../src/tools/calmResources.js';
 import { CREATE_RESOURCE_NAMES, CREATE_RESOURCES } from '../../src/tools/create.js';
 import { GET_RESOURCES } from '../../src/tools/registry.js';
@@ -147,6 +148,83 @@ describe('handleCalmCreate', () => {
     expect(parse(result)).toMatchObject({ uuid: 'd-1', displayId: '12-1', title: 'Design' });
   });
 
+  it('audits a created entity with its id and the fields set, not their values', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .reply(201, { uuid: 'd-2', displayId: '12-2', title: 'Design' });
+
+    const audit: CreateAuditEntry[] = [];
+    await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'document', data: { title: 'Design', projectId: PROJECT, content: '<p>x</p>' } },
+      (entry) => audit.push(entry),
+    );
+    expect(audit).toEqual([
+      {
+        resource: 'document',
+        id: 'd-2',
+        displayId: '12-2',
+        fields: ['title', 'projectId', 'content'],
+      },
+    ]);
+  });
+
+  it('logs the audit entry with the caller when called through the server', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .reply(201, { uuid: 'd-3', displayId: '12-3' });
+
+    const lines: string[] = [];
+    const logger = pino({ level: 'info' }, { write: (line: string) => lines.push(line) });
+    const server = buildMcpServer(makeClients({ writeEnabled: true }), logger);
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    await client.callTool({
+      name: 'calm_create',
+      arguments: { resource: 'document', data: { title: 'Design', projectId: PROJECT } },
+    });
+    await client.close();
+
+    const entries = lines.map((line) => JSON.parse(line)).filter((e) => e.audit);
+    // No authInfo: a stdio or local caller, named "local".
+    expect(entries).toMatchObject([
+      { audit: 'calm_create', caller: 'local', resource: 'document', id: 'd-3', level: 30 },
+    ]);
+  });
+
+  it('writes no audit entry when Cloud ALM refuses the create', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .reply(400, { error: { code: 'BAD', message: 'Project not found' } });
+
+    const audit: CreateAuditEntry[] = [];
+    const result = await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'document', data: { title: 'Design', projectId: PROJECT } },
+      (entry) => audit.push(entry),
+    );
+    expect(result.isError).toBe(true);
+    expect(audit).toEqual([]);
+  });
+
+  it('refuses active content in a text field before sending anything', async () => {
+    // No intercept: a POST that slipped through would fail the call as NETWORK instead.
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'feature',
+      data: {
+        title: 'Close periods',
+        projectId: PROJECT,
+        description: '<p>Steps</p><img src="https://evil.example/pixel.png">',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('image service');
+  });
+
   it('sends exactly the validated payload, nothing added', async () => {
     let sent: unknown;
     agent
@@ -258,9 +336,10 @@ describe('handleCalmCreate', () => {
 });
 
 describe('create registry', () => {
-  it('covers documents and the five library entry types, and nothing else', () => {
-    expect(CREATE_RESOURCE_NAMES.sort()).toEqual([
+  it('covers documents, features and the five library entry types, and nothing else', () => {
+    expect([...CREATE_RESOURCE_NAMES].sort()).toEqual([
       'document',
+      'feature',
       'xlib_application',
       'xlib_configuration',
       'xlib_configuration_activity',
@@ -306,17 +385,26 @@ describe('calm_resources and write access', () => {
     expect(catalog.createResources.resources).toBeUndefined();
   });
 
-  it('lists every create resource with its fields when write access is on', () => {
+  it('names every create resource when write access is on, and gives its fields by topic', () => {
     const catalog = parse(handleCalmResources({}, { writeEnabled: true })) as {
-      createResources: { enabled: boolean; resources: { resource: string; fields: unknown[] }[] };
+      createResources: { enabled: boolean; resources: { resource: string; fields: string }[] };
     };
     expect(catalog.createResources.enabled).toBe(true);
     expect(catalog.createResources.resources.map((r) => r.resource).sort()).toEqual(
       [...CREATE_RESOURCE_NAMES].sort(),
     );
     for (const r of catalog.createResources.resources) {
-      expect(r.fields.length).toBeGreaterThan(0);
+      expect(r.fields).toContain(`topic: '${r.resource}'`);
+      const focused = parse(handleCalmResources({ topic: r.resource }, { writeEnabled: true })) as {
+        create: { fields: unknown[] };
+      };
+      expect(focused.create.fields.length).toBeGreaterThan(0);
     }
+  });
+
+  it('keeps the full catalog within the response budget with every write tool on', () => {
+    const result = handleCalmResources({}, { writeEnabled: true, updateEnabled: true });
+    expect(textOf(result)).not.toContain('RESPONSE_TOO_LARGE');
   });
 
   it('adds the create payload to a focused topic only when the tool is offered', () => {

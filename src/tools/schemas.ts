@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ANALYTICS_PROVIDERS, TASK_TYPE_CODES } from './constants.js';
 import { CREATE_RESOURCE_NAMES } from './create.js';
 import { GET_RESOURCE_NAMES, LIST_RESOURCE_NAMES } from './registry.js';
+import { UPDATE_RESOURCE_NAMES } from './update.js';
 
 /** Cast a string list to the non-empty tuple shape `z.enum` requires. */
 function toEnumValues(values: string[]): [string, ...string[]] {
@@ -14,9 +15,17 @@ function toEnumValues(values: string[]): [string, ...string[]] {
 /**
  * An id that calmcp places in a URL path segment. `encodeURIComponent` leaves dots alone, so "."
  * or ".." would climb out of the segment (e.g. `/tasks/..` resolving to the service root).
+ *
+ * A refinement rather than `.regex()`: the regex needs a lookahead, Zod would copy it into the
+ * advertised JSON Schema as `pattern`, and model APIs that validate tool schemas with a regex
+ * subset (OpenAI's strict mode, for one) then reject the whole tool list, so the host fails on
+ * every turn while calmcp is enabled. A refinement emits nothing into the schema.
  */
 function pathId() {
-  return z.string().regex(/^(?!\.\.?$).+$/, 'must be a non-empty id other than "." or ".."');
+  return z
+    .string()
+    .min(1)
+    .refine((id) => id !== '.' && id !== '..', 'must be an id other than "." or ".."');
 }
 
 // Shared OData system query options, reused by `calm_list` (OData resources) and `calm_analytics`.
@@ -221,16 +230,47 @@ export const calmCreateShape = {
   resource: z
     .enum(toEnumValues(CREATE_RESOURCE_NAMES))
     .describe(
-      'What to create: "document" or a library entry (xlib_application, xlib_configuration, ' +
-        'xlib_configuration_activity, xlib_development, xlib_interface). ' +
+      'What to create: "document", "feature" or a library entry (xlib_application, ' +
+        'xlib_configuration, xlib_configuration_activity, xlib_development, xlib_interface). ' +
         'calm_resources({ topic: "<resource>" }) lists the fields',
     ),
   data: z
     .record(z.string(), z.unknown())
     .describe(
       'The new entity. A document needs title and projectId (uuid), optionally content (HTML). ' +
+        'A feature needs title and projectId, optionally description (HTML). ' +
         'A library entry needs title. Related links and assignments (toURLReferences, ' +
         'toLibraryAssignments, ...) can be included and are created in the same call. Unknown ' +
         'fields are rejected, never dropped',
+    ),
+};
+
+export const calmUpdateShape = {
+  resource: z
+    .enum(toEnumValues(UPDATE_RESOURCE_NAMES))
+    .describe(
+      'What to change: "feature". calm_resources({ topic: "<resource>" }) lists the fields',
+    ),
+  id: z.string().min(1).describe('uuid of the object, as calm_get returns it'),
+  changes: z
+    .record(z.string(), z.unknown())
+    .describe(
+      'Only the fields to change, with their new values, e.g. { "statusCode": "IN_TESTING" }. ' +
+        'Fields not named stay as they are. Unknown fields are rejected, never dropped',
+    ),
+  expected_modified_at: z
+    .string()
+    .min(1)
+    .describe(
+      'modifiedAt exactly as calm_get returned it when you read the object. The update is refused ' +
+        'if the object changed since, so an edit made in the meantime is never overwritten',
+    ),
+  remove_images: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      'Only after the user confirmed removing exactly these images: the image keys (e.g. ' +
+        '"imageId:4e4b…") a new description may drop. A refused call lists them. Any other ' +
+        'dropped image is still refused',
     ),
 };

@@ -11,6 +11,10 @@
 // Strictness: every tool advertises `additionalProperties: false` and rejects a parameter outside
 // its schema. Zod 4 stopped emitting that for a plain object, and a parameter the model invented
 // (`projectId` for `project_id`) was then dropped without a word.
+//
+// Patterns: some model APIs validate every `pattern` against a regex subset with no lookaround or
+// backreferences (OpenAI's strict tool schemas reject the tool list with "regex lookaround is not
+// supported"). Zod copies a `.regex()` verbatim into `pattern`, so the check runs on the output.
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -19,8 +23,26 @@ import { describe, expect, it } from 'vitest';
 import { buildMcpServer } from '../../src/server.js';
 import { makeClients } from './helpers.js';
 
-/** Serialized `tools/list` bytes allowed, read-only and with calm_create. */
-const BUDGET = { readOnly: 14_000, withWrite: 16_000 };
+/** The deployments whose tool lists differ, each with its serialized `tools/list` budget in bytes. */
+const MODES = [
+  { label: 'read-only', writeEnabled: false, updateEnabled: false, budget: 14_000 },
+  { label: 'with calm_create', writeEnabled: true, updateEnabled: false, budget: 16_000 },
+  {
+    label: 'with calm_create and calm_update',
+    writeEnabled: true,
+    updateEnabled: true,
+    budget: 18_500,
+  },
+];
+
+type Access = { writeEnabled: boolean; updateEnabled?: boolean };
+
+/**
+ * Regex constructs outside the subset model APIs accept in `pattern`: lookahead and lookbehind
+ * (`(?=`, `(?!`, `(?<=`, `(?<!`), named groups (`(?<x>`), backreferences (`\\1`, `\\k<x>`) and
+ * inline flags (`(?i)`). `(?:` non-capturing groups are portable and pass.
+ */
+const UNSUPPORTED_REGEX = /\(\?[=!<]|\(\?[a-z]+[-:)]|\\[1-9]|\\k</;
 
 /** Keywords some hosts cannot handle anywhere in a tool schema. */
 const FORBIDDEN_KEYS = [
@@ -34,16 +56,16 @@ const FORBIDDEN_KEYS = [
   'nullable',
 ];
 
-async function connect(writeEnabled: boolean) {
-  const server = buildMcpServer(makeClients({ writeEnabled }), pino({ level: 'silent' }));
+async function connect(access: Access) {
+  const server = buildMcpServer(makeClients(access), pino({ level: 'silent' }));
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'schema-test', version: '1' });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
   return client;
 }
 
-async function listTools(writeEnabled: boolean) {
-  return (await (await connect(writeEnabled)).listTools()).tools;
+async function listTools(access: Access) {
+  return (await (await connect(access)).listTools()).tools;
 }
 
 /** Every problem found while walking a schema, as `path: reason`. */
@@ -58,6 +80,8 @@ function incompatibilities(node: unknown, path: string): string[] {
     if (!keysAreFieldNames) {
       if (FORBIDDEN_KEYS.includes(key)) problems.push(`${path}.${key}: forbidden keyword`);
       if (key === 'type' && Array.isArray(value)) problems.push(`${path}.type: array of types`);
+      if (key === 'pattern' && typeof value === 'string' && UNSUPPORTED_REGEX.test(value))
+        problems.push(`${path}.pattern: regex construct outside the portable subset`);
     }
     problems.push(...incompatibilities(value, `${path}.${key}`));
   }
@@ -71,38 +95,58 @@ describe('tool schemas', () => {
       properties: {
         not: { type: ['string', 'null'] },
         pick: { anyOf: [{ type: 'string' }, { type: 'number' }] },
+        id: { type: 'string', pattern: '^(?!\\.\\.?$).+$' },
+        url: { type: 'string', pattern: '^https?://\\S+$' },
       },
     };
     expect(incompatibilities(schema, 't')).toEqual([
       't.properties.not.type: array of types',
       't.properties.pick.anyOf: forbidden keyword',
+      't.properties.id.pattern: regex construct outside the portable subset',
     ]);
   });
 
-  for (const writeEnabled of [false, true]) {
-    const label = writeEnabled ? 'with calm_create' : 'read-only';
+  it.each([
+    ['lookahead', '(?=a)'],
+    ['negative lookahead', '^(?!\\.\\.?$).+$'],
+    ['lookbehind', '(?<=a)b'],
+    ['negative lookbehind', '(?<!a)b'],
+    ['backreference', '(a)\\1'],
+    ['named backreference', '(?<x>a)\\k<x>'],
+    ['inline flag', '(?i)abc'],
+  ])('flags a pattern with a %s', (_label, pattern) => {
+    expect(UNSUPPORTED_REGEX.test(pattern)).toBe(true);
+  });
 
+  it.each(['^[0-9a-f]{32}$', '^(?:a|b)+$', '^https?://\\S+$', '^\\d+-\\d+$'])(
+    'accepts the portable pattern %j',
+    (pattern) => {
+      expect(UNSUPPORTED_REGEX.test(pattern)).toBe(false);
+    },
+  );
+
+  for (const { label, budget, ...access } of MODES) {
     it(`use only widely supported JSON Schema (${label})`, async () => {
-      const tools = await listTools(writeEnabled);
+      const tools = await listTools(access);
       const problems = tools.flatMap((tool) => incompatibilities(tool.inputSchema, tool.name));
       expect(problems).toEqual([]);
     });
 
     it(`reject parameters outside the schema (${label})`, async () => {
-      const tools = await listTools(writeEnabled);
+      const tools = await listTools(access);
       for (const tool of tools) {
         expect(tool.inputSchema.additionalProperties, tool.name).toBe(false);
       }
     });
 
     it(`stay within the size budget (${label})`, async () => {
-      const bytes = JSON.stringify(await listTools(writeEnabled)).length;
-      expect(bytes).toBeLessThan(writeEnabled ? BUDGET.withWrite : BUDGET.readOnly);
+      const bytes = JSON.stringify(await listTools(access)).length;
+      expect(bytes).toBeLessThan(budget);
     });
   }
 
   it('names an invented parameter instead of dropping it', async () => {
-    const client = await connect(false);
+    const client = await connect({ writeEnabled: false });
     const result = await client.callTool({
       name: 'calm_list',
       arguments: { resource: 'tasks', projectId: 'p' },

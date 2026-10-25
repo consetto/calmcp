@@ -4,6 +4,7 @@
 // than leaving the model to guess.
 
 import type { ServiceName } from '../config.js';
+import type { HttpMethod } from './httpClient.js';
 
 /** Scope a GET on each service needs. */
 const READ_SCOPES: Record<ServiceName, string> = {
@@ -27,9 +28,10 @@ const READ_SCOPES: Record<ServiceName, string> = {
   testPlans: 'calm-api.testplans.read',
 };
 
-/** Scope a POST needs, for the services `calm_create` writes to. */
+/** Scope a POST or PATCH needs, for the services `calm_create` and `calm_update` write to. */
 const WRITE_SCOPES: Partial<Record<ServiceName, string>> = {
   documents: 'calm-api.documents.write',
+  features: 'calm-api.features.write',
   xlibApplications: 'calm-api.lib.write',
   xlibConfigurations: 'calm-api.lib.write',
   xlibDevelopments: 'calm-api.lib.write',
@@ -43,11 +45,11 @@ const PROJECT_RESTRICTED = new Set<ServiceName>(['projects', 'analytics']);
  * The hint for a 403 from one Cloud ALM service.
  *
  * @param service - The service that refused the request.
- * @param method - The request method; a POST needs the write scope.
+ * @param method - The request method; a POST or PATCH needs the write scope.
  * @returns Which scope the Cloud ALM API service instance behind calmcp is missing.
  */
-export function forbiddenHint(service: ServiceName, method: 'GET' | 'POST'): string {
-  const scope = (method === 'POST' ? WRITE_SCOPES[service] : undefined) ?? READ_SCOPES[service];
+export function forbiddenHint(service: ServiceName, method: HttpMethod): string {
+  const scope = (method !== 'GET' ? WRITE_SCOPES[service] : undefined) ?? READ_SCOPES[service];
   const project = PROJECT_RESTRICTED.has(service)
     ? ' A private or protected project also needs calm-api.projects.private.read or ' +
       'calm-api.projects.protected.read.'
