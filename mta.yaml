@@ -57,6 +57,10 @@ modules:
       # library entries (never updates or deletes), to callers holding the Writer scope (role
       # collection CALMCP_Editor). Viewers and the API key never get it.
       CALM_WRITE_ENABLED: 'false'
+    provides:
+      - name: oauth-api
+        properties:
+          url: ${default-url}
     requires:
       - name: calmcp-xsuaa
       - name: calmcp-destination
@@ -65,10 +69,20 @@ modules:
 resources:
   - name: calmcp-xsuaa
     type: org.cloudfoundry.managed-service
+    requires:
+      - name: oauth-api
     parameters:
       service: xsuaa
       service-plan: application
       path: ./xs-security.json
+      config:
+        # This object replaces oauth2-configuration from xs-security.json on deploy, so it repeats
+        # the token lifetimes from there.
+        oauth2-configuration:
+          token-validity: 3600
+          refresh-token-validity: 2592000
+          redirect-uris:
+            - ~{oauth-api/url}/oauth/callback
   - name: calmcp-destination
     type: org.cloudfoundry.managed-service
     parameters:
