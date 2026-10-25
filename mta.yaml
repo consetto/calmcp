@@ -46,6 +46,13 @@ modules:
         - "*.mcpb"
         - "*.log"
         - .env
+        # Local, gitignored files: notes, assistant settings and scripts that may name tenants or
+        # customers. A release build in CI never has them; a build on a workstation does.
+        - "*.local.*"
+        - .claude/
+        - .mcp.json
+        - .DS_Store
+        - "Makefile_*.mta"
     properties:
       # The MCP server authenticates to Cloud ALM via the bound destination.
       CALM_DESTINATION_NAME: SAP_CALM
