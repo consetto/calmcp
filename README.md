@@ -1,5 +1,7 @@
 # calmcp - Cloud ALM MCP Server
 
+> Upgrading an XSUAA deployment? Read the [OAuth upgrade guide](docs/XSUAA-AUTH-UPGRADE.md) before redeploying.
+
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that bridges AI
 assistants (Claude, GitHub Copilot, …) to **SAP Cloud ALM** (aka CALM). It exposes the Cloud ALM read APIs
 through four consolidated, intent-based tools, runs over **stdio** locally or **Streamable HTTP**
@@ -435,6 +437,10 @@ This creates and binds `calmcp-xsuaa` (XSUAA), `calmcp-destination` (Destination
 
 ### Using `cf push`
 
+Before creating or updating XSUAA, configure the exact public `/oauth/callback` in
+`xs-security.json`; the checked-in localhost example is not a production route. See the
+[OAuth upgrade guide](docs/XSUAA-AUTH-UPGRADE.md).
+
 Create the services, build, then push (see [`manifest.yml`](manifest.yml)):
 
 ```bash
@@ -573,8 +579,13 @@ MIT
 Contributions are welcome! Please ensure your code:
 
 - Builds without errors (`npm run build`)
-- Passes all tests (`npm test`)
+- Passes all tests (`npm test`) and the type-check (`npm run typecheck`)
 - Passes linting and formatting (`npm run lint`, or `npm run lint:fix` to auto-fix)
+
+[AGENTS.md](AGENTS.md) explains how calmcp is built and which files change together; it is also
+what coding agents read. Open a pull request as a draft until it is finished, fill in the template
+(writes need a test against a real tenant), and check [docs/ROADMAP.md](docs/ROADMAP.md) for
+planned and deferred work.
 
 ## Disclaimer
 
