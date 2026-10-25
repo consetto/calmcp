@@ -50,15 +50,23 @@ for (const collection of descriptor['role-collections'] ?? []) {
 // Loopback is the only host a redirect URI may leave open; the deployed route comes from mta.yaml.
 const loopback = /^http:\/\/localhost:\*\/oauth\/callback$/;
 const mta = readFileSync('mta.yaml', 'utf8');
+// Problems name a redirect URI by its position, not its value: CodeQL treats anything read from
+// oauth2-configuration as a secret and flags printing it.
 const redirects = [
-  ...(descriptor['oauth2-configuration']?.['redirect-uris'] ?? []),
-  ...[...mta.matchAll(/^\s*- ((?:~\{|[a-z]+:\/\/)\S*)$/gm)].map((match) => match[1]),
+  ...(descriptor['oauth2-configuration']?.['redirect-uris'] ?? []).map((uri, index) => ({
+    uri,
+    where: `xs-security.json redirect-uris[${index}]`,
+  })),
+  ...[...mta.matchAll(/^\s*- ((?:~\{|[a-z]+:\/\/)\S*)$/gm)].map((match) => ({
+    uri: match[1],
+    where: `mta.yaml line ${mta.slice(0, match.index).split('\n').length}`,
+  })),
 ];
-for (const uri of redirects) {
+for (const { uri, where } of redirects) {
   if (uri.includes('*') && !loopback.test(uri)) {
-    problems.push(`redirect URI ${uri} has a wildcard; list the exact /oauth/callback URL`);
+    problems.push(`${where} has a wildcard; list the exact /oauth/callback URL`);
   } else if (!uri.endsWith('/oauth/callback')) {
-    problems.push(`redirect URI ${uri} is not an /oauth/callback URL`);
+    problems.push(`${where} is not an /oauth/callback URL`);
   }
 }
 
@@ -69,5 +77,5 @@ if (problems.length > 0) {
 console.log(
   `✓ xs-security.json: ${scopes.size} scopes, ${templates.size} role templates, ` +
     `${(descriptor['role-collections'] ?? []).length} role collections, all references resolve, ` +
-    `${redirects.length} exact redirect URIs`,
+    'redirect URIs exact',
 );
