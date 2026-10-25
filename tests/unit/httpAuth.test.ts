@@ -60,6 +60,38 @@ describe('createHttpApp with XSUAA auth', () => {
     expect(res.body).toHaveProperty('authorization_endpoint');
     expect(res.body).toHaveProperty('registration_endpoint'); // DCR advertised
   });
+
+  // GHSA-6935-r3wv-f646: a registered client must not reach XSUAA without the user approving it,
+  // or an existing SSO session would grant a stranger's client access silently.
+  it('asks the user to approve a registered client before sending them to XSUAA', async () => {
+    const redirectUri = 'http://127.0.0.1:33418/callback';
+    const registration = await request(app)
+      .post('/register')
+      .send({
+        client_name: 'Some client',
+        redirect_uris: [redirectUri],
+        token_endpoint_auth_method: 'none',
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+      });
+    expect(registration.status).toBe(201);
+
+    const res = await request(app).get('/authorize').query({
+      response_type: 'code',
+      client_id: registration.body.client_id,
+      redirect_uri: redirectUri,
+      code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+      code_challenge_method: 'S256',
+      state: 'state',
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.location).toBeUndefined();
+    expect(res.text).toContain('Some client');
+    expect(res.text).toContain(redirectUri);
+    // helmet runs first; the approval page's own policies must still win.
+    expect(res.headers['referrer-policy']).toBe('origin');
+    expect(res.headers['content-security-policy']).not.toContain('form-action');
+  });
 });
 
 describe('createHttpApp without auth (local dev)', () => {

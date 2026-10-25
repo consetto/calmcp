@@ -2,7 +2,9 @@
 // Check that xs-security.json still grants what the code checks for. calmcp admits an HTTP caller
 // with the Viewer scope and offers calm_create only with Writer (src/server.ts); a renamed or
 // dropped scope in the descriptor would only show on BTP, as every user being refused. Also checks
-// that role templates and role collections reference names that exist.
+// that role templates and role collections reference names that exist, and that XSUAA only
+// returns sign-ins to calmcp's own callback: a host wildcard such as https://*.hana.ondemand.com/**
+// would hand the authorization code to any app on the shared domain.
 //
 // Usage: node scripts/check-xs-security.mjs
 
@@ -45,11 +47,27 @@ for (const collection of descriptor['role-collections'] ?? []) {
   }
 }
 
+// Loopback is the only host a redirect URI may leave open; the deployed route comes from mta.yaml.
+const loopback = /^http:\/\/localhost:\*\/oauth\/callback$/;
+const mta = readFileSync('mta.yaml', 'utf8');
+const redirects = [
+  ...(descriptor['oauth2-configuration']?.['redirect-uris'] ?? []),
+  ...[...mta.matchAll(/^\s*- ((?:~\{|[a-z]+:\/\/)\S*)$/gm)].map((match) => match[1]),
+];
+for (const uri of redirects) {
+  if (uri.includes('*') && !loopback.test(uri)) {
+    problems.push(`redirect URI ${uri} has a wildcard; list the exact /oauth/callback URL`);
+  } else if (!uri.endsWith('/oauth/callback')) {
+    problems.push(`redirect URI ${uri} is not an /oauth/callback URL`);
+  }
+}
+
 if (problems.length > 0) {
   for (const problem of problems) console.error(`✗ ${problem}`);
   process.exit(1);
 }
 console.log(
   `✓ xs-security.json: ${scopes.size} scopes, ${templates.size} role templates, ` +
-    `${(descriptor['role-collections'] ?? []).length} role collections, all references resolve`,
+    `${(descriptor['role-collections'] ?? []).length} role collections, all references resolve, ` +
+    `${redirects.length} exact redirect URIs`,
 );

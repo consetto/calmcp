@@ -369,6 +369,11 @@ This creates and binds `calmcp-xsuaa` (XSUAA), `calmcp-destination` (Destination
 
 Create the services, build, then push (see [`manifest.yml`](manifest.yml)):
 
+`xs-security.json` lets XSUAA return sign-ins only to `localhost`. Add the app's own callback
+first: `https://<your calmcp route>/oauth/callback` in `oauth2-configuration.redirect-uris`
+(`mta.yaml` does this for you). Never use a wildcard such as `https://*.hana.ondemand.com/**`:
+XSUAA would then hand authorization codes to any app on the shared domain.
+
 ```bash
 cf create-service xsuaa application calmcp-xsuaa -c xs-security.json
 cf create-service destination lite calmcp-destination
@@ -428,6 +433,20 @@ registration, proxied to XSUAA), so an AI tool such as Claude Desktop, Cursor or
 user in interactively** with no manual token handling. The OAuth flow is delegated to XSUAA; calmcp
 never sees the user's password. This is the recommended path: each user authenticates as themselves
 with a BTP user and the `CALMCP_Viewer` role collection.
+
+Before the sign-in goes to XSUAA, calmcp shows an **approval page** with the client's name and the
+address it returns to. The user approves only sign-ins they started themselves. The page appears
+even with an existing SSO session: without it, a link from a stranger's registered client could
+sign the user in silently and hand that client their access
+([GHSA-6935-r3wv-f646](https://github.com/arc-mcp/arc-1/security/advisories/GHSA-6935-r3wv-f646)).
+For it to work, use one public URL (`CALM_PUBLIC_URL` behind a custom domain), and a reverse proxy
+in front of calmcp must pass `Cookie`, `Set-Cookie` and `Origin` through unchanged.
+
+**Upgrading from 0.9.2 or earlier:** redeploy the whole MTA (`cf deploy`), not just the app, so the
+XSUAA instance drops the old `https://*.hana.ondemand.com/**` callback. With `cf push`, run
+`cf update-service calmcp-xsuaa -c xs-security.json` after adding the callback as above. Sign-ins
+in progress during the upgrade must start again. The upgrade does not revoke tokens already issued;
+if you suspect misuse, have the XSUAA administrator revoke them.
 
 **Alternative: a static API key** for non-interactive, server-to-server callers (for example
 Microsoft Copilot Studio). Set `CALM_HTTP_API_KEY` and the caller sends `Authorization: Bearer <key>`.

@@ -40,8 +40,7 @@
     "token-validity": 3600,
     "refresh-token-validity": 2592000,
     "redirect-uris": [
-      "https://*.hana.ondemand.com/**",
-      "http://localhost:*/**"
+      "http://localhost:*/oauth/callback"
     ]
   }
 }

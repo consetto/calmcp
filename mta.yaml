@@ -57,6 +57,10 @@ modules:
       # library entries (never updates or deletes), to callers holding the Writer scope (role
       # collection CALMCP_Editor). Viewers and the API key never get it.
       CALM_WRITE_ENABLED: 'false'
+    provides:
+      - name: calmcp-api
+        properties:
+          url: ${default-url}
     requires:
       - name: calmcp-xsuaa
       - name: calmcp-destination
@@ -69,6 +73,19 @@ resources:
       service: xsuaa
       service-plan: application
       path: ./xs-security.json
+      config:
+        # XSUAA may send the sign-in back to this app's own OAuth callback and nowhere else. A
+        # wildcard over the shared domain would let any app on it receive the authorization code.
+        # This object replaces the one in xs-security.json, so it repeats the token lifetimes.
+        # Behind a custom domain, add its callback here or in an .mtaext.
+        oauth2-configuration:
+          token-validity: 3600
+          refresh-token-validity: 2592000
+          redirect-uris:
+            - ~{calmcp-api/url}/oauth/callback
+            - http://localhost:*/oauth/callback
+    requires:
+      - name: calmcp-api
   - name: calmcp-destination
     type: org.cloudfoundry.managed-service
     parameters:
