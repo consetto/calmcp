@@ -16,8 +16,6 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
   supports it. Needs the HTML check for descriptions and the required fields per task type.
 - **`calm_update` for tasks** (status, assignee, sprint), after #24 proved itself on a tenant. First
   sample whether task descriptions hold images; the Tasks REST API has no server-side filter.
-- **Projects by name.** A `project_name` parameter resolved like `timebox_name`, so a model does not
-  have to list projects first for almost every task query.
 - **Text search** on task titles (case-insensitive, applied while paging, like the timebox filter).
 - **Several ids in one `calm_get`**, e.g. all features of a defect in one call.
 

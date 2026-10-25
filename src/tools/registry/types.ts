@@ -45,6 +45,8 @@ export interface ListParams {
   timebox_id?: string;
   /** Timebox name (e.g. "Sprint 5") — resolved against the project's timeboxes. */
   timebox_name?: string;
+  /** Project name; resolved to `project_id` by calmcp before any request is built. */
+  project_name?: string;
   /** Comma-separated field projection applied by calmcp to the response records. */
   fields?: string;
   /** Free-form REST filters for the Landscape and BSM services (e.g. objectType, serviceName). */

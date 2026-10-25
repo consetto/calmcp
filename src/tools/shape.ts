@@ -227,10 +227,36 @@ export function pickTimebox(records: Record_[], timeboxId: string): Record_[] {
   return records.filter((record) => record.timeboxId === timeboxId);
 }
 
-/** A timebox as returned by `/projects/{id}/timeboxes`. */
-interface Timebox {
+/** An entry of a list resolved by name: a timebox or a project. */
+interface Named {
   id?: unknown;
   name?: unknown;
+}
+
+/**
+ * A name as matched: Unicode-normalised, trimmed, runs of whitespace collapsed, case folded. Real
+ * Cloud ALM names carry double spaces and umlauts ("Müller GmbH  - ERP"), and an agent passes the
+ * name a user typed.
+ */
+function matchKey(name: string): string {
+  return name.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+/** Every entry whose name matches `name` exactly (after {@link matchKey}). */
+function byName(list: unknown, name: string): Named[] {
+  const entries = Array.isArray(list) ? (list as Named[]) : [];
+  const wanted = matchKey(name);
+  return entries.filter(
+    (entry) => typeof entry.name === 'string' && matchKey(entry.name) === wanted,
+  );
+}
+
+/** The names of a list, sorted. */
+function namesOf(list: unknown): string[] {
+  return (Array.isArray(list) ? (list as Named[]) : [])
+    .map((entry) => entry.name)
+    .filter((value): value is string => typeof value === 'string')
+    .sort();
 }
 
 /**
@@ -244,27 +270,57 @@ interface Timebox {
  * @throws {ShapeError} When the name matches no timebox, or more than one.
  */
 export function resolveTimeboxName(timeboxes: unknown, name: string): string {
-  const list = Array.isArray(timeboxes) ? (timeboxes as Timebox[]) : [];
-  const wanted = name.trim().toLowerCase();
-  const matches = list.filter(
-    (timebox) => typeof timebox.name === 'string' && timebox.name.trim().toLowerCase() === wanted,
-  );
-
-  if (matches.length === 1) {
-    const id = matches[0]?.id;
-    if (typeof id === 'string') return id;
-  }
+  const matches = byName(timeboxes, name);
+  if (matches.length === 1 && typeof matches[0]?.id === 'string') return matches[0].id;
   if (matches.length > 1) {
     throw new ShapeError(
       `Timebox name '${name}' is ambiguous (${matches.length} matches). Pass timebox_id instead.`,
     );
   }
-
-  const known = list
-    .map((timebox) => timebox.name)
-    .filter((value): value is string => typeof value === 'string')
-    .sort();
   throw new ShapeError(
-    `No timebox named '${name}' in this project. Known timeboxes: ${known.join(', ')}`,
+    `No timebox named '${name}' in this project. Known timeboxes: ${namesOf(timeboxes).join(', ')}`,
   );
+}
+
+/** Names listed in full when no project matches; a larger tenant gets suggestions instead. */
+const MAX_LISTED_PROJECTS = 20;
+
+/**
+ * Resolve a project name to its id.
+ *
+ * Exact match after normalising case and whitespace, never a guess: an ambiguous name lists the
+ * candidates with their ids, an unknown one suggests the names that contain it (or that it
+ * contains), so the agent can ask the user rather than pick a project for them.
+ *
+ * @param projects - The projects, as `/projects` returns them.
+ * @param name - The project name to resolve.
+ * @returns The matching project id.
+ * @throws {ShapeError} When the name matches no project, or more than one.
+ */
+export function resolveProjectName(projects: unknown, name: string): string {
+  const matches = byName(projects, name);
+  if (matches.length === 1 && typeof matches[0]?.id === 'string') return matches[0].id;
+  if (matches.length > 1) {
+    const candidates = matches.map((entry) => `'${String(entry.name)}' (${String(entry.id)})`);
+    throw new ShapeError(
+      `Project name '${name}' is ambiguous: ${candidates.join(', ')}. Pass project_id instead.`,
+    );
+  }
+
+  const names = namesOf(projects);
+  const wanted = matchKey(name);
+  const similar = names.filter((candidate) => {
+    const key = matchKey(candidate);
+    return key.includes(wanted) || wanted.includes(key);
+  });
+  const hint =
+    similar.length > 0
+      ? `Did you mean: ${similar
+          .slice(0, MAX_LISTED_PROJECTS)
+          .map((n) => `'${n}'`)
+          .join(', ')}?`
+      : names.length <= MAX_LISTED_PROJECTS
+        ? `Known projects: ${names.map((n) => `'${n}'`).join(', ')}.`
+        : `calm_list({ resource: 'projects', fields: 'id,name' }) lists all ${names.length}.`;
+  throw new ShapeError(`No project named '${name}'. ${hint} Names must match exactly.`);
 }

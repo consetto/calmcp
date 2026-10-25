@@ -478,3 +478,86 @@ describe('parameters a resource does not read', () => {
     expect(textOf(result)).toContain('expand');
   });
 });
+
+describe('calm_list with project_name', () => {
+  let agent: MockAgent;
+  beforeEach(() => {
+    agent = new MockAgent();
+    agent.disableNetConnect();
+    setGlobalDispatcher(agent);
+  });
+  afterEach(async () => {
+    await agent.close();
+  });
+
+  const projects = [
+    { id: 'p1', name: 'S4 Transformation' },
+    { id: 'p2', name: 'Sandbox' },
+  ];
+  const projectList = () =>
+    agent.get(ORIGIN).intercept({ path: '/api/calm-projects/v1/projects' }).reply(200, projects);
+
+  it('resolves the name and queries that project', async () => {
+    projectList();
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMDEF' })
+      .reply(200, [{ id: 't1', title: 'Defect' }]);
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_name: 's4 transformation',
+      task_type: 'CALMDEF',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(parse(result)).toEqual([{ id: 't1', title: 'Defect' }]);
+  });
+
+  it('counts by name, and says which project it resolved to', async () => {
+    projectList();
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith('/api/calm-tasks/v1/tasks?') && path.includes('projectId=p2'),
+      })
+      .reply(200, [{ id: 't1' }, { id: 't2' }]);
+    const body = parse(
+      await handleCalmList(makeClients(), {
+        resource: 'tasks',
+        project_name: 'Sandbox',
+        count_only: true,
+      }),
+    ) as { total: number; subject: Record<string, string> };
+    expect(body.total).toBe(2);
+    expect(body.subject).toMatchObject({ project_name: 'Sandbox', project_id: 'p2' });
+  });
+
+  it('refuses an unknown name before querying any tasks', async () => {
+    projectList();
+    // No tasks intercept: a tasks request would fail the call as NETWORK instead.
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_name: 'S4',
+    });
+    expect(JSON.parse(textOf(result))).toMatchObject({ error: 'INVALID_ARGUMENT' });
+    expect(textOf(result)).toContain("Did you mean: 'S4 Transformation'");
+  });
+
+  it('refuses project_name together with project_id', async () => {
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_id: 'p1',
+      project_name: 'Sandbox',
+    });
+    expect(textOf(result)).toContain('either project_id or project_name');
+  });
+
+  it('refuses project_name on a resource that takes no project, naming those that do', async () => {
+    const result = await handleCalmList(makeClients(), {
+      resource: 'features',
+      project_name: 'Sandbox',
+    });
+    expect(textOf(result)).toContain("Resource 'features' takes no project");
+    expect(textOf(result)).toContain('tasks');
+  });
+});
