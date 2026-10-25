@@ -1,0 +1,14 @@
+{
+  "high": true,
+  "package-manager": "npm",
+  "skip-dev": true,
+  "allowlist": [
+    {
+      "GHSA-86w9-cpqp-85rv": {
+        "active": true,
+        "expiry": "2026-12-31T00:00:00+01:00",
+        "notes": "node-forge 1.4.0 has no fix. calmcp reaches it only through @sap-cloud-sdk/connectivity 4.9.1 -> jks-js 1.1.7 -> node-forge 1.4.0. SAP's assessment: keystore conversion does not reach Forge's vulnerable RSA verifier; certificates are verified by Node's TLS stack (https://github.com/SAP/cloud-sdk-js/issues/7023#issuecomment-6365515697). Remove when a fix ships; recheck if the dependency path changes or before the expiry."
+      }
+    }
+  ]
+}
