@@ -67,12 +67,13 @@ it('requires approval, preserves client state and returns a browser-bound code',
         Object.fromEntries(
           [...html.matchAll(/name="([^"]+)" value="([^"]*)"/g)].map((m) => [
             m[1] ?? '',
+            // &amp; last, or "&amp;lt;" would decode twice into "<".
             (m[2] ?? '')
-              .replace(/&amp;/g, '&')
               .replace(/&quot;/g, '"')
               .replace(/&#39;/g, "'")
               .replace(/&lt;/g, '<')
-              .replace(/&gt;/g, '>'),
+              .replace(/&gt;/g, '>')
+              .replace(/&amp;/g, '&'),
           ]),
         ),
       );
