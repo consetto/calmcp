@@ -147,6 +147,20 @@ describe('handleCalmCreate', () => {
     expect(parse(result)).toMatchObject({ uuid: 'd-1', displayId: '12-1', title: 'Design' });
   });
 
+  it('refuses active content in a text field before sending anything', async () => {
+    // No intercept: a POST that slipped through would fail the call as NETWORK instead.
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'feature',
+      data: {
+        title: 'Close periods',
+        projectId: PROJECT,
+        description: '<p>Steps</p><img src="https://evil.example/pixel.png">',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('image service');
+  });
+
   it('sends exactly the validated payload, nothing added', async () => {
     let sent: unknown;
     agent
@@ -258,9 +272,10 @@ describe('handleCalmCreate', () => {
 });
 
 describe('create registry', () => {
-  it('covers documents and the five library entry types, and nothing else', () => {
-    expect(CREATE_RESOURCE_NAMES.sort()).toEqual([
+  it('covers documents, features and the five library entry types, and nothing else', () => {
+    expect([...CREATE_RESOURCE_NAMES].sort()).toEqual([
       'document',
+      'feature',
       'xlib_application',
       'xlib_configuration',
       'xlib_configuration_activity',
@@ -306,17 +321,26 @@ describe('calm_resources and write access', () => {
     expect(catalog.createResources.resources).toBeUndefined();
   });
 
-  it('lists every create resource with its fields when write access is on', () => {
+  it('names every create resource when write access is on, and gives its fields by topic', () => {
     const catalog = parse(handleCalmResources({}, { writeEnabled: true })) as {
-      createResources: { enabled: boolean; resources: { resource: string; fields: unknown[] }[] };
+      createResources: { enabled: boolean; resources: { resource: string; fields: string }[] };
     };
     expect(catalog.createResources.enabled).toBe(true);
     expect(catalog.createResources.resources.map((r) => r.resource).sort()).toEqual(
       [...CREATE_RESOURCE_NAMES].sort(),
     );
     for (const r of catalog.createResources.resources) {
-      expect(r.fields.length).toBeGreaterThan(0);
+      expect(r.fields).toContain(`topic: '${r.resource}'`);
+      const focused = parse(handleCalmResources({ topic: r.resource }, { writeEnabled: true })) as {
+        create: { fields: unknown[] };
+      };
+      expect(focused.create.fields.length).toBeGreaterThan(0);
     }
+  });
+
+  it('keeps the full catalog within the response budget with every write tool on', () => {
+    const result = handleCalmResources({}, { writeEnabled: true, updateEnabled: true });
+    expect(textOf(result)).not.toContain('RESPONSE_TOO_LARGE');
   });
 
   it('adds the create payload to a focused topic only when the tool is offered', () => {

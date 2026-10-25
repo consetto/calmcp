@@ -9,7 +9,7 @@
     },
     {
       "name": "$XSAPPNAME.Writer",
-      "description": "Create documents and library entries via calm_create (needs CALM_WRITE_ENABLED=true)"
+      "description": "Create objects via calm_create and change features via calm_update (each needs its switch: CALM_WRITE_ENABLED, CALM_UPDATE_ENABLED)"
     }
   ],
   "role-templates": [
@@ -20,7 +20,7 @@
     },
     {
       "name": "Editor",
-      "description": "Read access plus calm_create (only when the deployment enables writes)",
+      "description": "Read access plus calm_create and calm_update (only when the deployment enables them)",
       "scope-references": ["$XSAPPNAME.Viewer", "$XSAPPNAME.Writer"]
     }
   ],
@@ -32,7 +32,7 @@
     },
     {
       "name": "CALMCP_Editor",
-      "description": "calmcp viewer that may also create documents and library entries",
+      "description": "calmcp viewer that may also create objects and change features",
       "role-template-references": ["$XSAPPNAME.Editor"]
     }
   ],

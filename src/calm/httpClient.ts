@@ -1,10 +1,10 @@
 // Shared HTTP client for the SAP Cloud ALM services.
 //
 // One instance is bound to a single Cloud ALM service (e.g. "features"). It resolves auth per
-// request via the configured `AuthProvider`, performs GET (and, for the opt-in create tool, POST)
-// requests, and maps non-success responses to `ApiError` — recognising the OData v4 structured
-// error body when present. There is deliberately no PUT/PATCH/DELETE: calmcp never modifies or
-// removes an existing Cloud ALM object.
+// request via the configured `AuthProvider`, performs GET (and, for the opt-in create and update
+// tools, POST and PATCH) requests, and maps non-success responses to `ApiError` — recognising the
+// OData v4 structured error body when present. There is deliberately no PUT and no DELETE: calmcp
+// never replaces a whole object and never removes one.
 
 import type { Logger } from 'pino';
 // Use undici's fetch rather than the global one. They are the same implementation, but the global
@@ -17,6 +17,9 @@ import { SERVICE_PATHS, type ServiceName } from '../config.js';
 import { currentSignal } from '../context.js';
 import { ApiError, type ApiErrorDetails, summarizeBody } from '../errors.js';
 import { forbiddenHint } from './scopes.js';
+
+/** The methods calmcp issues. PUT (whole-object replace) and DELETE are deliberately absent. */
+export type HttpMethod = 'GET' | 'POST' | 'PATCH';
 
 /** Maximum characters of a response body to include in debug logs. */
 const MAX_BODY_LOG_CHARS = 500;
@@ -91,6 +94,21 @@ export class CalmHttpClient {
   }
 
   /**
+   * PATCH the given fields of an existing resource. Never retried, like a create: the change may
+   * have been applied, and repeating it blindly is not the caller's decision.
+   *
+   * @typeParam T - The expected response type (the updated entity, or nothing on 204).
+   * @param endpoint - Service-relative path of the entity (e.g. `/Features/<uuid>`).
+   * @param body - Only the fields to change.
+   * @returns The parsed response body, or undefined when the service answers 204.
+   * @throws {ApiError} On a non-success status or an unparseable body.
+   * @throws {AuthError} If authentication cannot be resolved.
+   */
+  async patch<T>(endpoint: string, body: unknown): Promise<T> {
+    return this.request<T>('PATCH', endpoint, '', body);
+  }
+
+  /**
    * Perform one request with auth resolved, mapping transport failures to `ApiError`.
    *
    * A GET answered with 429/503 is retried once, after the service's `Retry-After` (at most
@@ -98,7 +116,7 @@ export class CalmHttpClient {
    * attempt would make a duplicate entry.
    */
   private async request<T>(
-    method: 'GET' | 'POST',
+    method: HttpMethod,
     endpoint: string,
     query: string,
     body?: unknown,
@@ -124,7 +142,7 @@ export class CalmHttpClient {
   /** Issue the fetch, turning a request that never got a response into an `ApiError` (status 0). */
   private async send(
     url: string,
-    method: 'GET' | 'POST',
+    method: HttpMethod,
     headers: Record<string, string>,
     body: unknown,
     cancel: AbortSignal | undefined,
@@ -148,11 +166,7 @@ export class CalmHttpClient {
   }
 
   /** Parse a successful body, or convert a failure into the most specific `ApiError`. */
-  private async handleResponse<T>(
-    response: Response,
-    url: string,
-    method: 'GET' | 'POST',
-  ): Promise<T> {
+  private async handleResponse<T>(response: Response, url: string, method: HttpMethod): Promise<T> {
     const body = await response.text();
 
     if (response.ok) {

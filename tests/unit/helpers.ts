@@ -19,10 +19,13 @@ export class StubAuth implements AuthProvider {
 /**
  * Build a client container pointing at {@link ORIGIN}.
  *
- * @param options - `writeEnabled` turns on the create primitive (default off, like production).
+ * @param options - `writeEnabled` turns on the create primitive and `updateEnabled` the update
+ *   primitive (both default off, like production).
  * @returns The clients under test.
  */
-export function makeClients(options: { writeEnabled?: boolean } = {}): CalmClients {
+export function makeClients(
+  options: { writeEnabled?: boolean; updateEnabled?: boolean } = {},
+): CalmClients {
   const config = new Config({
     sandbox: false,
     tenant: 'acme',
@@ -33,6 +36,7 @@ export function makeClients(options: { writeEnabled?: boolean } = {}): CalmClien
     timeoutSeconds: 30,
     tokenRefreshBufferSeconds: 5,
     writeEnabled: options.writeEnabled,
+    updateEnabled: options.updateEnabled,
   });
   return new CalmClients(new StubAuth(), config, createLogger(false));
 }
