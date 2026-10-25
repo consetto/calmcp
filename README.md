@@ -1,5 +1,7 @@
 # calmcp - Cloud ALM MCP Server
 
+> Upgrading an XSUAA deployment? Read the [OAuth upgrade guide](docs/XSUAA-AUTH-UPGRADE.md) before redeploying.
+
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that bridges AI
 assistants (Claude, GitHub Copilot, …) to **SAP Cloud ALM** (aka CALM). It exposes the Cloud ALM read APIs
 through four consolidated, intent-based tools, runs over **stdio** locally or **Streamable HTTP**
@@ -366,6 +368,10 @@ This creates and binds `calmcp-xsuaa` (XSUAA), `calmcp-destination` (Destination
 `calmcp-logs` (Application Logs), and runs the HTTP transport with a `/health` check.
 
 ### Using `cf push`
+
+Before creating or updating XSUAA, configure the exact public `/oauth/callback` in
+`xs-security.json`; the checked-in localhost example is not a production route. See the
+[OAuth upgrade guide](docs/XSUAA-AUTH-UPGRADE.md).
 
 Create the services, build, then push (see [`manifest.yml`](manifest.yml)):
 

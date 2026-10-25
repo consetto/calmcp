@@ -29,6 +29,10 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 
 ## Security and operations
 
+- **XSUAA upgrade rollout.** The 1.2.0 dependency and local approval regression are in place;
+  an operator still needs to verify real-tenant sign-in and reconnect after applying the exact
+  callback configuration. See [the upgrade guide](XSUAA-AUTH-UPGRADE.md).
+
 - **Access levels through Cloud ALM API scopes.** Two API service instances and destinations, one
   without the private-project and `*.personal.read` scopes, picked by a new XSUAA role. User
   propagation is not possible: the Cloud ALM API accepts client credentials only, and project
