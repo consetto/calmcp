@@ -76,7 +76,11 @@ resources:
       service-plan: application
       path: ./xs-security.json
       config:
+        # This object replaces oauth2-configuration from xs-security.json on deploy, so it repeats
+        # the token lifetimes from there.
         oauth2-configuration:
+          token-validity: 3600
+          refresh-token-validity: 2592000
           redirect-uris:
             - ~{oauth-api/url}/oauth/callback
   - name: calmcp-destination
