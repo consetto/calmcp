@@ -1,11 +1,12 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import pino from 'pino';
 import { MockAgent, setGlobalDispatcher } from 'undici';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Config } from '../../src/config.js';
 import { createLogger } from '../../src/logging.js';
 import { buildMcpServer } from '../../src/server.js';
-import { handleCalmCreate } from '../../src/tools/calmCreate.js';
+import { type CreateAuditEntry, handleCalmCreate } from '../../src/tools/calmCreate.js';
 import { handleCalmResources } from '../../src/tools/calmResources.js';
 import { CREATE_RESOURCE_NAMES, CREATE_RESOURCES } from '../../src/tools/create.js';
 import { GET_RESOURCES } from '../../src/tools/registry.js';
@@ -145,6 +146,69 @@ describe('handleCalmCreate', () => {
     });
     expect(result.isError).toBeFalsy();
     expect(parse(result)).toMatchObject({ uuid: 'd-1', displayId: '12-1', title: 'Design' });
+  });
+
+  it('audits a created entity with its id and the fields set, not their values', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .reply(201, { uuid: 'd-2', displayId: '12-2', title: 'Design' });
+
+    const audit: CreateAuditEntry[] = [];
+    await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'document', data: { title: 'Design', projectId: PROJECT, content: '<p>x</p>' } },
+      (entry) => audit.push(entry),
+    );
+    expect(audit).toEqual([
+      {
+        resource: 'document',
+        id: 'd-2',
+        displayId: '12-2',
+        fields: ['title', 'projectId', 'content'],
+      },
+    ]);
+  });
+
+  it('logs the audit entry with the caller when called through the server', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .reply(201, { uuid: 'd-3', displayId: '12-3' });
+
+    const lines: string[] = [];
+    const logger = pino({ level: 'info' }, { write: (line: string) => lines.push(line) });
+    const server = buildMcpServer(makeClients({ writeEnabled: true }), logger);
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    await client.callTool({
+      name: 'calm_create',
+      arguments: { resource: 'document', data: { title: 'Design', projectId: PROJECT } },
+    });
+    await client.close();
+
+    const entries = lines.map((line) => JSON.parse(line)).filter((e) => e.audit);
+    // No authInfo: a stdio or local caller, named "local".
+    expect(entries).toMatchObject([
+      { audit: 'calm_create', caller: 'local', resource: 'document', id: 'd-3', level: 30 },
+    ]);
+  });
+
+  it('writes no audit entry when Cloud ALM refuses the create', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .reply(400, { error: { code: 'BAD', message: 'Project not found' } });
+
+    const audit: CreateAuditEntry[] = [];
+    const result = await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'document', data: { title: 'Design', projectId: PROJECT } },
+      (entry) => audit.push(entry),
+    );
+    expect(result.isError).toBe(true);
+    expect(audit).toEqual([]);
   });
 
   it('refuses active content in a text field before sending anything', async () => {

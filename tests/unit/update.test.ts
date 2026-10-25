@@ -328,6 +328,61 @@ describe('handleCalmUpdate', () => {
   });
 });
 
+describe('calm_update audit log', () => {
+  let agent: MockAgent;
+  beforeEach(() => {
+    agent = new MockAgent();
+    agent.disableNetConnect();
+    setGlobalDispatcher(agent);
+  });
+  afterEach(async () => {
+    await agent.close();
+  });
+
+  it('logs the update with the XSUAA user as caller, through the server', async () => {
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    agent.get(ORIGIN).intercept({ path: FEATURE, method: 'PATCH' }).reply(204, '');
+    agent
+      .get(ORIGIN)
+      .intercept({ path: FEATURE })
+      .reply(200, { ...stored, title: 'New' });
+
+    const lines: string[] = [];
+    const logger = pino({ level: 'info' }, { write: (line: string) => lines.push(line) });
+    const authInfo: AuthInfo = {
+      token: 't',
+      clientId: 'c',
+      scopes: ['Viewer', 'Writer'],
+      extra: { userName: 'jane.doe' },
+    };
+    const server = buildMcpServer(makeClients({ updateEnabled: true }), logger, authInfo);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'audit-test', version: '1' });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    await client.callTool({
+      name: 'calm_update',
+      arguments: {
+        resource: 'feature',
+        id: ID,
+        changes: { title: 'New' },
+        expected_modified_at: MODIFIED,
+      },
+    });
+    await client.close();
+
+    const entries = lines.map((line) => JSON.parse(line)).filter((entry) => entry.audit);
+    expect(entries).toMatchObject([
+      {
+        level: 30,
+        audit: 'calm_update',
+        caller: 'jane.doe',
+        outcome: 'applied',
+        changes: { title: { before: 'Close periods', after: 'New' } },
+      },
+    ]);
+  });
+});
+
 describe('who gets calm_update', () => {
   async function toolNames(options: { updateEnabled: boolean }, authInfo?: AuthInfo) {
     const server = buildMcpServer(makeClients(options), pino({ level: 'silent' }), authInfo);
