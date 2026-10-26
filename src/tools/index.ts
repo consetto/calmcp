@@ -193,7 +193,8 @@ function registerCreate(
         'changes or deletes an existing object, so calling it twice makes two entries. ' +
         'Pass "resource" and a "data" object; calm_resources({ topic: "<resource>" }) lists the ' +
         'fields. Links and assignments can be included in "data" and are created with the entity. ' +
-        'Returns the created entity including its uuid and displayId.',
+        'Returns the new uuid (tasks and comments: id), the displayId and each field set as ' +
+        'Cloud ALM stored it; calm_get returns the whole entity.',
       inputSchema: strictInput(calmCreateShape),
     },
     traced('calm_create', (args: CalmCreateArgs) =>
