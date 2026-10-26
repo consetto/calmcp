@@ -85,11 +85,11 @@ describe('handleCalmCreate', () => {
 
   it('rejects an unknown resource', async () => {
     const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
-      resource: 'task',
+      resource: 'workstream',
       data: { title: 'x' },
     });
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toContain("Unknown resource 'task'");
+    expect(textOf(result)).toContain("Unknown resource 'workstream'");
   });
 
   it('rejects a document without the required title and projectId', async () => {
@@ -320,6 +320,160 @@ describe('handleCalmCreate', () => {
     }
   });
 
+  it('POSTs a task to the Tasks REST API and audits its id', async () => {
+    let sent: unknown;
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: '/api/calm-tasks/v1/tasks',
+        method: 'POST',
+        body: (body) => {
+          sent = JSON.parse(body);
+          return true;
+        },
+      })
+      .reply(201, { id: 't-1', displayId: '3-12', title: 'Posting fails' });
+
+    const data = {
+      title: 'Posting fails',
+      projectId: PROJECT,
+      type: 'CALMDEF',
+      priorityId: 20,
+      classificationId: 'FUNCT',
+      subClassifications: ['FUNCT_BUG'],
+      dueDate: '2026-11-30',
+      description: '<p>Steps to reproduce</p>',
+    };
+    const audit: CreateAuditEntry[] = [];
+    const result = await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'task', data },
+      (entry) => audit.push(entry),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual(data);
+    expect(audit).toMatchObject([{ resource: 'task', id: 't-1', displayId: '3-12' }]);
+  });
+
+  it('POSTs a comment below its task, with the task id in the path and not in the body', async () => {
+    let sent: unknown;
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: `/api/calm-tasks/v1/tasks/${PROJECT}/comments`,
+        method: 'POST',
+        body: (body) => {
+          sent = JSON.parse(body);
+          return true;
+        },
+      })
+      .reply(201, { id: 'c-1', text: '<p>Fixed in QA</p>' });
+
+    const audit: CreateAuditEntry[] = [];
+    const result = await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'task_comment', data: { taskId: PROJECT, text: '<p>Fixed in QA</p>' } },
+      (entry) => audit.push(entry),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual({ text: '<p>Fixed in QA</p>' });
+    expect(audit).toMatchObject([
+      { resource: 'task_comment', id: 'c-1', fields: ['taskId', 'text'] },
+    ]);
+  });
+
+  // No intercepts below: a request that slipped through would fail the call as NETWORK, and the
+  // assertions on the message would not match.
+  it.each([
+    ['a task without a type', { title: 'x', projectId: PROJECT }, 'type'],
+    [
+      'a task type calmcp does not create',
+      { title: 'x', projectId: PROJECT, type: 'CALMQGATE' },
+      'type',
+    ],
+    [
+      'a sub-task without its parent',
+      { title: 'x', projectId: PROJECT, type: 'CALMST' },
+      'parentId',
+    ],
+    [
+      'effort on a sub-task',
+      { title: 'x', projectId: PROJECT, type: 'CALMST', parentId: PROJECT, effort: 2 },
+      'effort',
+    ],
+    [
+      'a risk field on a defect',
+      { title: 'x', projectId: PROJECT, type: 'CALMDEF', impact: 3 },
+      'risks (CALMRISK) only',
+    ],
+    [
+      'a classification of another task type',
+      { title: 'x', projectId: PROJECT, type: 'CALMUS', classificationId: 'FUNCT' },
+      'CALMUS takes one of: US_GAP',
+    ],
+    [
+      'a classification on a task type that has none',
+      { title: 'x', projectId: PROJECT, type: 'CALMTASK', classificationId: 'FUNCT' },
+      'takes no classification',
+    ],
+    [
+      'a sub-classification under the wrong classification',
+      {
+        title: 'x',
+        projectId: PROJECT,
+        type: 'CALMDEF',
+        classificationId: 'TECH',
+        subClassifications: ['FUNCT_BUG'],
+      },
+      'FUNCT_BUG not valid under TECH',
+    ],
+    [
+      'a sub-classification without a classification',
+      { title: 'x', projectId: PROJECT, type: 'CALMDEF', subClassifications: ['FUNCT_BUG'] },
+      'needs a classificationId',
+    ],
+    [
+      'test classifications on a defect',
+      { title: 'x', projectId: PROJECT, type: 'CALMDEF', testClassifications: ['REGRESSION'] },
+      'testClassifications',
+    ],
+    [
+      'a due date that is not YYYY-MM-DD',
+      { title: 'x', projectId: PROJECT, type: 'CALMTASK', dueDate: '30.11.2026' },
+      'dueDate',
+    ],
+    [
+      'the source field, which calmcp leaves at MANUAL',
+      { title: 'x', projectId: PROJECT, type: 'CALMTASK', source: 'EXTERNAL' },
+      'source',
+    ],
+  ])('refuses %s before sending anything', async (_, data, message) => {
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'task',
+      data,
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain(message);
+  });
+
+  it('refuses active content in a comment before sending anything', async () => {
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'task_comment',
+      data: { taskId: PROJECT, text: '<p onclick="steal()">Done</p>' },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('text:');
+  });
+
+  it('refuses a comment whose task id is not a uuid, so nothing lands in another path', async () => {
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'task_comment',
+      data: { taskId: '../projects', text: 'x' },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('taskId');
+  });
+
   it('surfaces an OData error from the service', async () => {
     agent
       .get(ORIGIN)
@@ -336,10 +490,12 @@ describe('handleCalmCreate', () => {
 });
 
 describe('create registry', () => {
-  it('covers documents, features and the five library entry types, and nothing else', () => {
+  it('covers documents, features, tasks, comments and the five library entry types, and nothing else', () => {
     expect([...CREATE_RESOURCE_NAMES].sort()).toEqual([
       'document',
       'feature',
+      'task',
+      'task_comment',
       'xlib_application',
       'xlib_configuration',
       'xlib_configuration_activity',
@@ -348,15 +504,13 @@ describe('create registry', () => {
     ]);
   });
 
-  it('names the same entity sets calm_get reads, so a created uuid can be fetched back', () => {
+  it('names the same collections calm_get reads, so a created id can be fetched back', () => {
     for (const [name, def] of Object.entries(CREATE_RESOURCES)) {
       const get = GET_RESOURCES[name];
-      if (!get) continue; // configuration activities have no calm_get resource yet
-      expect(get.kind).toBe('odata');
-      if (get.kind === 'odata') {
-        expect(get.service).toBe(def.service);
-        expect(get.entitySet).toBe(def.entitySet);
-      }
+      if (!get) continue; // configuration activities and comments have no calm_get resource
+      expect(get.service).toBe(def.service);
+      if (get.kind === 'odata') expect(get.entitySet).toBe(def.entitySet);
+      else expect(get.build('x')).toBe(`/${def.entitySet}/x`);
     }
   });
 

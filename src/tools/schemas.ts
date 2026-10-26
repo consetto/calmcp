@@ -230,8 +230,9 @@ export const calmCreateShape = {
   resource: z
     .enum(toEnumValues(CREATE_RESOURCE_NAMES))
     .describe(
-      'What to create: "document", "feature" or a library entry (xlib_application, ' +
-        'xlib_configuration, xlib_configuration_activity, xlib_development, xlib_interface). ' +
+      'What to create: "document", "feature", "task" (incl. user story, defect), "task_comment" ' +
+        'or a library entry (xlib_application, xlib_configuration, xlib_configuration_activity, ' +
+        'xlib_development, xlib_interface). ' +
         'calm_resources({ topic: "<resource>" }) lists the fields',
     ),
   data: z
@@ -239,6 +240,8 @@ export const calmCreateShape = {
     .describe(
       'The new entity. A document needs title and projectId (uuid), optionally content (HTML). ' +
         'A feature needs title and projectId, optionally description (HTML). ' +
+        'A task needs title, projectId and type (CALMDEF defect, CALMUS user story, ...). ' +
+        'A task_comment needs taskId and text. ' +
         'A library entry needs title. Related links and assignments (toURLReferences, ' +
         'toLibraryAssignments, ...) can be included and are created in the same call. Unknown ' +
         'fields are rejected, never dropped',

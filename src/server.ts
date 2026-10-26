@@ -42,10 +42,11 @@ const UPDATE_INSTRUCTIONS =
 
 /** Extra instructions when the operator enabled `calm_create`. */
 const WRITE_INSTRUCTIONS =
-  ' Write access is enabled for creating only: calm_create adds a new document or a new library ' +
-  'entry (cross-library application, configuration, configuration activity, development, ' +
-  'interface). Nothing is ever updated or deleted. Before creating, check with calm_list ' +
-  'whether an equivalent entry already exists, and confirm the target project with the user.';
+  ' Write access is enabled for creating only: calm_create adds a new document, feature, task ' +
+  '(incl. user story, defect), comment on a task, or library entry (cross-library application, ' +
+  'configuration, configuration activity, development, interface). Nothing is ever updated or ' +
+  'deleted. Before creating, check with calm_list whether an equivalent entry already exists, ' +
+  'and confirm the target project with the user.';
 
 /**
  * Create the shared Cloud ALM client container for the current configuration.

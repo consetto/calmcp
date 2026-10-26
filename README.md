@@ -8,7 +8,7 @@ through four consolidated, intent-based tools, runs over **stdio** locally or **
 remotely, and deploys to **SAP BTP Cloud Foundry**.
 
 > calmcp is read-only by default: it never changes or deletes data in SAP Cloud ALM. An operator
-> can opt in to **creating** documents, features and library entries with
+> can opt in to **creating** documents, features, tasks, task comments and library entries with
 > `CALM_WRITE_ENABLED=true` ([Write access](#write-access-opt-in)), and separately to **changing
 > fields of existing features** with `CALM_UPDATE_ENABLED=true`
 > ([Update access](#update-access-opt-in)). Nothing is ever deleted.
@@ -26,7 +26,7 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
 | `calm_get` | Fetch a single entity by id (a feature also by display id, e.g. `6-123`). |
 | `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Providers span the whole tenant, so `count_only`/`group_by` here answer "how many across all projects". It aggregates but does **not** sort: `$orderby` is silently ignored by the service, so it is not offered. |
 | `calm_resources` | Discovery: the catalog of resources/providers, per-provider analytics dimensions and measures, the task type/status/priority code lists, and worked recipes. With write or update access on, also the fields `calm_create` and `calm_update` accept, per resource by `topic`. |
-| `calm_create` | **Only when `CALM_WRITE_ENABLED=true`.** Create a new document, feature or library entry (cross-library application, configuration, configuration activity, development, interface). Never changes or deletes. See [Write access](#write-access-opt-in). |
+| `calm_create` | **Only when `CALM_WRITE_ENABLED=true`.** Create a new document, feature, task (incl. user story, defect, requirement, sub-task, risk), task comment or library entry (cross-library application, configuration, configuration activity, development, interface). Never changes or deletes. See [Write access](#write-access-opt-in). |
 | `calm_update` | **Only when `CALM_UPDATE_ENABLED=true`.** Change fields of an existing feature, guarded against overwriting concurrent edits and losing images. See [Update access](#update-access-opt-in). |
 
 ### Worked examples
@@ -171,6 +171,8 @@ extra tool is registered:
 | --- | --- | --- |
 | `calm_create` | `document` | `POST /calm-documents/v1/Documents` |
 | | `feature` | `POST /calm-features/v1/Features` |
+| | `task` | `POST /calm-tasks/v1/tasks` |
+| | `task_comment` | `POST /calm-tasks/v1/tasks/{taskId}/comments` |
 | | `xlib_application` | `POST /calm-crosslibraryapplications/v1/Applications` |
 | | `xlib_configuration` | `POST /calm-crosslibraryconfigurations/v1/Configurations` |
 | | `xlib_configuration_activity` | `POST /calm-crosslibraryconfigurations/v1/ConfigurationActivities` |
@@ -180,7 +182,8 @@ extra tool is registered:
 What it does and does not do:
 
 - **Create only.** `calm_create` never changes or deletes an existing record. Calling it twice
-  makes two entries. Changing fields of a feature is the separate
+  makes two entries. A `task_comment` adds a comment to an existing task and leaves the task as
+  it is. Changing fields of a feature is the separate
   [`calm_update`](#update-access-opt-in).
 - **Document images are not copied.** The Documents API returns a document body without its images
   (see [docs/UPDATES.md](docs/UPDATES.md)); `calm_get` and `calm_list` flag such documents with
@@ -188,11 +191,18 @@ What it does and does not do:
 - **Strict payloads.** Each resource's fields are transcribed from the `*-create` schemas in the
   OpenAPI specs and validated before any request is sent. An unknown field is an error, not
   something silently dropped. `calm_resources({ topic: "document" })` returns the field list.
+- **Task rules checked first.** Rules the Tasks spec states only in prose are checked before
+  sending: a sub-task (`CALMST`) needs `parentId`, risk fields apply to risks only, and a
+  classification and its sub-classifications must fit the task type. calmcp creates project tasks,
+  user stories, sub-tasks, requirements, defects and risks, but not roadmap tasks, quality gates or
+  checklist items, which come from templates and the project setup. Cloud ALM sets a new task's
+  start date to today and, when no `timeboxId` is given, assigns it to a timebox itself.
 - **Deep create.** Links (`toURLReferences`) and assignments (`toLibraryAssignments`,
   `toProcessHierarchyAssignments`, `toTaskAssignments`, …) can be included in the same `data`
   object and are created together with the entity, exactly as the OData API allows.
 - **Scopes.** The OAuth2 client (or the BTP destination) needs `calm-api.documents.write` for
-  documents, `calm-api.features.write` for features and `calm-api.lib.write` for library entries,
+  documents, `calm-api.features.write` for features, `calm-api.tasks.write` for tasks and task
+  comments, and `calm-api.lib.write` for library entries,
   in addition to the read scopes.
 - **Writer scope on HTTP.** On the HTTP transport the switch alone is not enough: `calm_create` is
   offered only to callers whose XSUAA token carries the `Writer` scope (role collection

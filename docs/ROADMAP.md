@@ -9,11 +9,14 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 | --- | --- | --- |
 | Feature create, `calm_update` for features, `imagesOmitted` on document reads | #24 (draft) | Test against a real tenant: create, update, image guard, conflict, `null` clears, HTML check against real document HTML |
 | Audit log for `calm_create` | #26 (draft, stacked on #24) | Merge after #24 |
+| Create tasks (incl. user stories, defects, requirements, sub-tasks, risks) and task comments | `create-tasks` (draft) | Review; tested on a real tenant |
 
 ## Next
 
-- **Create tasks, defects and user stories.** The most common write people ask for; the Tasks API
-  supports it. Needs the HTML check for descriptions and the required fields per task type.
+- **`project_name` for `calm_create`**, resolved like `calm_list` does, for documents, features and
+  tasks.
+- **Links between existing objects** (additive only): task to feature, document or process node,
+  task to user story, URL references, test case to requirement.
 - **`calm_update` for tasks** (status, assignee, sprint), after #24 proved itself on a tenant. First
   sample whether task descriptions hold images; the Tasks REST API has no server-side filter.
 - **Text search** on task titles (case-insensitive, applied while paging, like the timebox filter).
