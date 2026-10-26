@@ -233,6 +233,8 @@ where images live.
 
 Every call goes through the same checks, in order:
 
+- **Display id or uuid.** `id` takes the uuid or the display id (e.g. `6-132`). A display id is
+  resolved to the uuid first; one that matches no feature, or more than one, is refused.
 - **Allowlist.** Only the fields above; anything else, such as `projectId`, is an error. No link or
   assignment lists, whose update semantics the API does not state. `null` clears `scopeId`,
   `responsibleId`, `releaseId` or `workstreamId` (not yet verified against a tenant).

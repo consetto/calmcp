@@ -18,7 +18,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
-import { isGuid } from '../calm/odata.js';
+import { isGuid, odataString } from '../calm/odata.js';
 import { ApiError, describeError } from '../errors.js';
 import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from './result.js';
 import { droppedImages, imageKeys, unsafeHtml } from './richText.js';
@@ -72,12 +72,6 @@ export async function handleCalmUpdate(
       `Unknown resource '${args.resource}'. Use calm_resources to list what calm_update accepts.`,
     );
   }
-  if (!isGuid(args.id)) {
-    return errorResult(
-      `'${args.id}' is not a uuid. calm_update takes the uuid; calm_get({ resource: ` +
-        `'${args.resource}', id: '${args.id}' }) returns it together with ${def.modifiedField}.`,
-    );
-  }
 
   const parsed = def.schema.safeParse(args.changes);
   if (!parsed.success) {
@@ -88,9 +82,13 @@ export async function handleCalmUpdate(
     return errorResult('changes is empty: name at least one field to change.');
   }
 
+  let id: string;
   let current: Record_;
   try {
-    current = (await clients.getOData(def.service, def.entitySet, args.id)) as Record_;
+    const resolved = isGuid(args.id) ? args.id : await uuidOf(clients, def, args.resource, args.id);
+    if (typeof resolved !== 'string') return resolved;
+    id = resolved;
+    current = (await clients.getOData(def.service, def.entitySet, id)) as Record_;
   } catch (error) {
     return errorResultFrom(error);
   }
@@ -114,7 +112,7 @@ export async function handleCalmUpdate(
     return jsonResult({
       updated: false,
       message: 'Nothing to change: every field already holds the requested value.',
-      uuid: args.id,
+      uuid: id,
       displayId: current.displayId,
       [def.modifiedField]: modifiedBefore,
     });
@@ -125,7 +123,7 @@ export async function handleCalmUpdate(
     imageProblems(def, current, changes, args.remove_images ?? []);
   if (refused) return errorResult(refused);
 
-  const entry = { resource: args.resource, id: args.id, displayId: current.displayId };
+  const entry = { resource: args.resource, id, displayId: current.displayId };
   const describe = (after?: Record_) =>
     Object.fromEntries(
       fields.map((field) => [
@@ -140,7 +138,7 @@ export async function handleCalmUpdate(
     );
 
   try {
-    await clients.updateOData(def.service, def.entitySet, args.id, changes);
+    await clients.updateOData(def.service, def.entitySet, id, changes);
   } catch (error) {
     if (!outcomeUnknown(error)) return errorResultFrom(error);
     audit({ ...entry, outcome: 'unknown', changes: describe(), modifiedBefore });
@@ -156,7 +154,7 @@ export async function handleCalmUpdate(
   // Cloud ALM accepted the change: from here on the result says so, whatever happens next.
   let after: Record_ | undefined;
   try {
-    after = (await clients.getOData(def.service, def.entitySet, args.id)) as Record_;
+    after = (await clients.getOData(def.service, def.entitySet, id)) as Record_;
   } catch {
     after = undefined;
   }
@@ -172,7 +170,7 @@ export async function handleCalmUpdate(
   return jsonResult({
     updated: true,
     resource: args.resource,
-    uuid: args.id,
+    uuid: id,
     displayId: current.displayId,
     ...(after
       ? { [def.modifiedField]: after[def.modifiedField] }
@@ -183,6 +181,39 @@ export async function handleCalmUpdate(
         }),
     changes: changeDetails,
   });
+}
+
+/**
+ * The uuid of the object with this display id (e.g. `6-132`), or an error result when no object or
+ * more than one carries it. Two are fetched so that a duplicate is refused, never guessed between.
+ */
+async function uuidOf(
+  clients: CalmClients,
+  def: UpdateResource,
+  resource: string,
+  displayId: string,
+): Promise<string | CallToolResult> {
+  const { value } = await clients.listOData(def.service, def.entitySet, {
+    filter: `displayId eq ${odataString(displayId)}`,
+    select: 'uuid,displayId',
+    top: 2,
+  });
+  const uuids = (value as { uuid?: unknown }[]).map((row) => row.uuid);
+  if (uuids.length === 0) {
+    return errorResult(
+      `No ${resource} has the display id '${displayId}'. Pass its uuid or display id as ` +
+        'calm_get returns it.',
+      'NOT_FOUND',
+    );
+  }
+  const [uuid] = uuids;
+  if (uuids.length > 1 || typeof uuid !== 'string' || !isGuid(uuid)) {
+    return errorResult(
+      `The display id '${displayId}' does not name exactly one ${resource}. Pass its uuid, as ` +
+        'calm_get returns it.',
+    );
+  }
+  return uuid;
 }
 
 /** Whether a failed PATCH may still have been applied: no answer, or a server-side failure. */

@@ -84,9 +84,68 @@ describe('handleCalmUpdate', () => {
     expect(errorOf(result).message).toContain('CALM_UPDATE_ENABLED');
   });
 
-  it('asks for the uuid when given a display id', async () => {
+  const lookup = (rows: unknown[]) =>
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith('/api/calm-features/v1/Features?') &&
+          new URLSearchParams(path.split('?')[1]).get('$filter') === "displayId eq '6-132'",
+      })
+      .reply(200, { value: rows });
+
+  it('resolves a display id to the uuid, and updates and reports that uuid', async () => {
+    lookup([{ uuid: ID, displayId: '6-132' }]);
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    let patched = false;
+    agent
+      .get(ORIGIN)
+      .intercept({ path: FEATURE, method: 'PATCH' })
+      .reply(200, () => {
+        patched = true;
+        return {};
+      });
+    agent
+      .get(ORIGIN)
+      .intercept({ path: FEATURE })
+      .reply(200, { ...stored, title: 'New', modifiedAt: '2026-10-01T00:00:00Z' });
+
+    const audit: UpdateAuditEntry[] = [];
+    const result = await handleCalmUpdate(
+      clients(),
+      { ...call({ title: 'New' }), id: '6-132' },
+      (entry) => audit.push(entry),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(patched).toBe(true);
+    expect(parse(result)).toMatchObject({ updated: true, uuid: ID, displayId: '6-132' });
+    expect(audit).toMatchObject([{ id: ID, outcome: 'applied' }]);
+  });
+
+  it('refuses a display id that names no feature, before any PATCH', async () => {
+    lookup([]);
     const result = await handleCalmUpdate(clients(), { ...call({ title: 'x' }), id: '6-132' });
-    expect(errorOf(result).message).toContain('calm_get');
+    expect(errorOf(result)).toMatchObject({ error: 'NOT_FOUND' });
+    expect(errorOf(result).message).toContain("'6-132'");
+  });
+
+  it('refuses a display id that names more than one feature, never picking one', async () => {
+    lookup([
+      { uuid: ID, displayId: '6-132' },
+      { uuid: '00000000-0000-0000-0000-000000000001', displayId: '6-132' },
+    ]);
+    const result = await handleCalmUpdate(clients(), { ...call({ title: 'x' }), id: '6-132' });
+    expect(result.isError).toBe(true);
+    expect(errorOf(result).message).toContain('does not name exactly one feature');
+  });
+
+  it('checks the changes before looking up a display id', async () => {
+    // No intercept: a lookup would fail the call as NETWORK instead.
+    const result = await handleCalmUpdate(clients(), {
+      ...call({ projectId: ID }),
+      id: '6-132',
+    });
+    expect(errorOf(result)).toMatchObject({ error: 'INVALID_ARGUMENT' });
   });
 
   it('rejects fields outside the allowlist, such as moving the feature to another project', async () => {
