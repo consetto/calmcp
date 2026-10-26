@@ -145,7 +145,19 @@ describe('handleCalmCreate', () => {
       data,
     });
     expect(result.isError).toBeFalsy();
-    expect(parse(result)).toMatchObject({ uuid: 'd-1', displayId: '12-1', title: 'Design' });
+    expect(parse(result)).toEqual({
+      created: true,
+      resource: 'document',
+      uuid: 'd-1',
+      displayId: '12-1',
+      set: {
+        title: 'Design',
+        projectId: PROJECT,
+        content: { length: 11, images: 0 },
+        documentTypeCode: 'SD',
+        toURLReferences: { items: 1 },
+      },
+    });
   });
 
   it('audits a created entity with its id and the fields set, not their values', async () => {
@@ -316,7 +328,7 @@ describe('handleCalmCreate', () => {
         data: { title: resource },
       });
       expect(result.isError).toBeFalsy();
-      expect(parse(result)).toEqual({ uuid: resource });
+      expect(parse(result)).toMatchObject({ created: true, resource, uuid: resource });
     }
   });
 
@@ -472,6 +484,48 @@ describe('handleCalmCreate', () => {
     });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('taskId');
+  });
+
+  it('answers with the key and the fields set, not the whole entity', async () => {
+    agent.get(ORIGIN).intercept({ path: '/api/calm-tasks/v1/tasks', method: 'POST' }).reply(201, {
+      id: 't-2',
+      displayId: '3-13',
+      title: 'Posting fails',
+      projectId: PROJECT,
+      type: 'CALMDEF',
+      priorityId: 30,
+      description: '<p>Steps</p>',
+      startDate: '2026-10-26',
+      customField1: null,
+      tags: [],
+    });
+
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'task',
+      data: {
+        title: 'Posting fails',
+        projectId: PROJECT,
+        type: 'CALMDEF',
+        priorityId: 20,
+        description: '<p>Steps</p>',
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    // Cloud ALM stored another priority than was sent: the answer says so.
+    expect(parse(result)).toEqual({
+      created: true,
+      resource: 'task',
+      id: 't-2',
+      displayId: '3-13',
+      set: {
+        title: 'Posting fails',
+        projectId: PROJECT,
+        type: 'CALMDEF',
+        priorityId: 30,
+        description: { length: 12, images: 0 },
+      },
+      storedDiffersFromSent: ['priorityId'],
+    });
   });
 
   it('surfaces an OData error from the service', async () => {
