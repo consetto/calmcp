@@ -37,16 +37,16 @@
   },
   "dependencies": {
     "@arc-mcp/xsuaa-auth": "1.2.0",
-    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@sap-cloud-sdk/connectivity": "^4.7.0",
     "commander": "^15.0.0",
     "cors": "^2.8.5",
-    "dotenv": "^18.0.8",
+    "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
     "pino": "^10.4.0",
-    "undici": "^8.12.2",
+    "undici": "^8.12.3",
     "zod": "^4.6.7"
   },
   "devDependencies": {
