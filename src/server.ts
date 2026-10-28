@@ -22,9 +22,9 @@ const SERVER_NAME = 'calmcp';
 /** Server version advertised to MCP clients. */
 const SERVER_VERSION = '0.9.4';
 
-/** Instructions shown to MCP clients on connect (read-only deployment). */
+/** Instructions shown to MCP clients on connect, after the opening that names the access level. */
 const INSTRUCTIONS =
-  'Read-only access to SAP Cloud ALM (tasks/defects, projects, features, documents, test ' +
+  ' to SAP Cloud ALM (tasks/defects, projects, features, documents, test ' +
   'management, process hierarchy, analytics, status events, landscape, cross-library). Start with ' +
   'calm_resources to discover resources, providers and worked recipes. Use calm_list/calm_get for ' +
   'entities (calm_list sorts via orderby) and calm_analytics for tenant-wide aggregates; ' +
@@ -42,11 +42,12 @@ const UPDATE_INSTRUCTIONS =
 
 /** Extra instructions when the operator enabled `calm_create`. */
 const WRITE_INSTRUCTIONS =
-  ' Write access is enabled for creating only: calm_create adds a new document, feature, task ' +
-  '(incl. user story, defect), comment on a task, or library entry (cross-library application, ' +
-  'configuration, configuration activity, development, interface). Nothing is ever updated or ' +
-  'deleted. Before creating, check with calm_list whether an equivalent entry already exists, ' +
-  'and confirm the target project with the user.';
+  ' Write access is enabled for adding: calm_create adds a new document, feature, task (incl. ' +
+  'user story, defect), comment on a task, library entry, or a link between existing objects ' +
+  '(task to feature, document, process node or task; a URL on a task or feature; test case to ' +
+  'user story). calm_create never changes or deletes an existing object. Before creating, check ' +
+  'with calm_list whether an equivalent entry already exists, and confirm the target project ' +
+  'with the user.';
 
 /**
  * Create the shared Cloud ALM client container for the current configuration.
@@ -86,6 +87,7 @@ export function buildMcpServer(
     caller: callerName(authInfo),
   };
   const instructions =
+    (access.write || access.update ? 'Access' : 'Read-only access') +
     INSTRUCTIONS +
     (access.write ? WRITE_INSTRUCTIONS : '') +
     (access.update ? UPDATE_INSTRUCTIONS : '');
@@ -94,7 +96,7 @@ export function buildMcpServer(
   return server;
 }
 
-/** Who is calling, for the update audit log: the XSUAA user, else the OAuth client, else local. */
+/** Who is calling, for the audit log of writes: the XSUAA user, else the OAuth client, else local. */
 function callerName(authInfo?: AuthInfo): string {
   if (!authInfo) return 'local';
   const { userName, email } = (authInfo.extra ?? {}) as { userName?: unknown; email?: unknown };

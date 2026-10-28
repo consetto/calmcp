@@ -53,13 +53,15 @@ describe('tool registration', () => {
     const { names, instructions } = await listTools(false);
     expect(names).toEqual(['calm_analytics', 'calm_get', 'calm_list', 'calm_resources']);
     expect(instructions).not.toContain('calm_create');
+    expect(instructions).toMatch(/^Read-only access to SAP Cloud ALM/);
   });
 
   it('adds calm_create, and says so in the instructions, when write access is on', async () => {
     const { names, instructions } = await listTools(true);
     expect(names).toContain('calm_create');
     expect(instructions).toContain('calm_create');
-    expect(instructions).toContain('Nothing is ever updated or deleted');
+    expect(instructions).toContain('calm_create never changes or deletes an existing object');
+    expect(instructions).toMatch(/^Access to SAP Cloud ALM/);
   });
 });
 
@@ -814,6 +816,17 @@ describe('calm_resources and write access', () => {
         create: { fields: unknown[] };
       };
       expect(focused.create.fields.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('gives each create resource an example with all its required fields', () => {
+    for (const name of CREATE_RESOURCE_NAMES) {
+      const focused = parse(handleCalmResources({ topic: name }, { writeEnabled: true })) as {
+        create: { example: string; fields: { name: string; required: boolean }[] };
+      };
+      for (const field of focused.create.fields.filter((f) => f.required)) {
+        expect(focused.create.example, name).toContain(`${field.name}: `);
+      }
     }
   });
 

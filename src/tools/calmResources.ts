@@ -42,8 +42,8 @@ export interface CalmResourcesOptions {
 /** What the catalog says about creating when the operator left calmcp read-only. */
 const WRITE_DISABLED_NOTE =
   'Write access is off: this deployment is read-only and offers no calm_create tool. An operator ' +
-  'can enable create-only access for documents, features, tasks, task comments and library ' +
-  'entries with CALM_WRITE_ENABLED=true.';
+  'can enable create-only access for documents, features, tasks, task comments, library entries ' +
+  'and links between existing objects with CALM_WRITE_ENABLED=true.';
 
 /** Describe one `calm_create` resource with the fields its payload accepts. */
 function describeCreateResource(name: string, def: CreateResource) {
@@ -54,10 +54,21 @@ function describeCreateResource(name: string, def: CreateResource) {
     entitySet: def.entitySet,
     description: def.description,
     fields: describeObject(def.schema),
-    example: `calm_create({ resource: '${name}', data: { title: '...'${
-      name === 'document' ? ", projectId: '<project uuid>'" : ''
-    } } })`,
+    example: `calm_create({ resource: '${name}', data: { ${requiredFields(def)} } })`,
   };
+}
+
+/** The required fields of a create payload with placeholder values, for the catalog's example. */
+function requiredFields(def: CreateResource): string {
+  return describeObject(def.schema)
+    .filter((field) => field.required)
+    .map((field) => {
+      const value =
+        field.values?.[0] ??
+        (field.name.endsWith('Id') ? '<uuid>' : field.name === 'url' ? 'https://...' : '...');
+      return `${field.name}: ${typeof value === 'number' ? value : `'${value}'`}`;
+    })
+    .join(', ');
 }
 
 /** Describe one `calm_update` resource with the fields a caller may change. */
