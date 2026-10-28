@@ -50,17 +50,17 @@ export class ConfigError extends CalmError {
   }
 }
 
+/** Authentication / token acquisition failed. */
+export class AuthError extends CalmError {
+  override readonly name = 'AuthError';
+}
+
 /**
  * Cloud ALM answered with a body calmcp cannot read as what it asked for (e.g. a list page that is
  * no list). Refused rather than guessed at: a guess would be a plausible but wrong number.
  */
 export class UnexpectedResponseError extends CalmError {
   override readonly name = 'UnexpectedResponseError';
-}
-
-/** Authentication / token acquisition failed. */
-export class AuthError extends CalmError {
-  override readonly name = 'AuthError';
 }
 
 /**
