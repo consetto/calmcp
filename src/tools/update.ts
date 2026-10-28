@@ -27,7 +27,7 @@ export interface UpdateResource {
 }
 
 /** Fields of a feature that `calm_update` may change. */
-export const featureUpdateSchema = z
+const featureUpdateSchema = z
   .object({
     title: featureEditableFields.title.optional(),
     description: featureEditableFields.description.optional(),

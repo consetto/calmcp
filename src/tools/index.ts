@@ -1,6 +1,7 @@
 // Registers the MCP tools on an `McpServer`, wiring each to its handler and the shared Cloud ALM
 // client container. The four read tools are always present; `calm_create` and `calm_update` are
-// registered only when the caller may use them (operator switch plus, over HTTP, the Writer scope). Tool calls and (truncated) results are traced via the logger.
+// registered only when the caller may use them (operator switch plus, over HTTP, the Writer
+// scope). Tool calls and (truncated) results are traced via the logger.
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';

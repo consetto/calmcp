@@ -88,7 +88,7 @@ function parseAttributes(text: string): Map<string, string> {
 }
 
 /** Every `<img>` tag's `src`, exactly as written (with `&amp;` decoded), in order. */
-export function imageSources(html: unknown): string[] {
+function imageSources(html: unknown): string[] {
   if (typeof html !== 'string') return [];
   return tags(html)
     .filter((tag) => tag.name === 'img')

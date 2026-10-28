@@ -1,8 +1,8 @@
 // Unified error types for the calmcp SAP Cloud ALM MCP server.
 //
 // A small TypeScript class hierarchy covering configuration, authentication and API failures.
-// The MCP SDK surfaces thrown errors to the client, so each error carries a stable,
-// human-readable message.
+// Tool handlers turn them into error results with `describeError` (code, retryable, message), so
+// each error carries a stable, human-readable message.
 
 /**
  * Base class for every error raised inside calmcp.
@@ -240,9 +240,6 @@ function describeApiError(error: ApiError, message: string): ErrorInfo {
  * @returns A human-readable message; never throws.
  */
 export function errorMessage(error: unknown): string {
-  if (error instanceof CalmError) {
-    return error.message;
-  }
   if (error instanceof Error) {
     return error.message;
   }

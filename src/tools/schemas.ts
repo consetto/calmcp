@@ -1,4 +1,4 @@
-// Zod input schemas (raw shapes) for the four MCP tools. The MCP SDK turns these into the JSON
+// Zod input schemas (raw shapes) for the six MCP tools (four read tools, calm_create, calm_update). The MCP SDK turns these into the JSON
 // Schema advertised to clients and validates incoming arguments against them.
 
 import { z } from 'zod';
@@ -249,6 +249,7 @@ export const calmCreateShape = {
     ),
 };
 
+/** Input shape for `calm_update` (registered only when update access is enabled). */
 export const calmUpdateShape = {
   resource: z
     .enum(toEnumValues(UPDATE_RESOURCE_NAMES))

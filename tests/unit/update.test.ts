@@ -65,6 +65,8 @@ describe('handleCalmUpdate', () => {
     setGlobalDispatcher(agent);
   });
   afterEach(async () => {
+    // A leftover interceptor is a request the code stopped making.
+    agent.assertNoPendingInterceptors();
     await agent.close();
   });
 
@@ -412,6 +414,8 @@ describe('calm_update audit log', () => {
     setGlobalDispatcher(agent);
   });
   afterEach(async () => {
+    // A leftover interceptor is a request the code stopped making.
+    agent.assertNoPendingInterceptors();
     await agent.close();
   });
 

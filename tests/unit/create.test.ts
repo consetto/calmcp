@@ -73,6 +73,8 @@ describe('handleCalmCreate', () => {
     setGlobalDispatcher(agent);
   });
   afterEach(async () => {
+    // A leftover interceptor is a request the code stopped making.
+    agent.assertNoPendingInterceptors();
     await agent.close();
   });
 
@@ -604,6 +606,8 @@ describe('calm_create links', () => {
     setGlobalDispatcher(agent);
   });
   afterEach(async () => {
+    // A leftover interceptor is a request the code stopped making.
+    agent.assertNoPendingInterceptors();
     await agent.close();
   });
 

@@ -19,7 +19,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { isGuid } from '../calm/odata.js';
-import { describeError } from '../errors.js';
+import { ConfigError, describeError } from '../errors.js';
 import { uuidByDisplayId } from './displayId.js';
 import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from './result.js';
 import { droppedImages, imageKeys, unsafeHtml } from './richText.js';
@@ -62,12 +62,7 @@ export async function handleCalmUpdate(
   audit: (entry: UpdateAuditEntry) => void = () => {},
 ): Promise<CallToolResult> {
   // The tool is not registered without the switch; this guards a stale client holding its name.
-  if (!clients.updateEnabled) {
-    return errorResult(
-      'Update access is disabled: calmcp changes existing objects only when ' +
-        'CALM_UPDATE_ENABLED=true is set.',
-    );
-  }
+  if (!clients.updateEnabled) return errorResultFrom(ConfigError.updateDisabled());
   const def = UPDATE_RESOURCES[args.resource];
   if (!def) {
     return errorResult(
