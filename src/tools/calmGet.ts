@@ -4,7 +4,8 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
-import { isGuid, odataString } from '../calm/odata.js';
+import { isGuid } from '../calm/odata.js';
+import { uuidByDisplayId } from './displayId.js';
 import { flagOmittedImages, returnsDocumentBodies } from './documentImages.js';
 import { GET_RESOURCES } from './registry.js';
 import { errorResult, errorResultFrom, jsonResult } from './result.js';
@@ -59,23 +60,17 @@ export async function handleCalmGet(
       return await respond(await clients.getRest(def.service, def.build(args.id)));
     }
 
-    // OData entity: resolve a feature display id to its uuid when the id is not a UUID.
+    // OData entity: resolve a feature display id to its uuid when the id is not a UUID, with the
+    // same lookup calm_create and calm_update use, then read the entity by its key.
     if (def.allowDisplayId && !isGuid(args.id)) {
-      const collection = await clients.listOData(def.service, def.entitySet, {
-        filter: `displayId eq ${odataString(args.id)}`,
-        top: 1,
-      });
-      const first = collection.value[0] as { uuid?: string } | undefined;
-      if (!first) {
-        return errorResult(`No ${args.resource} found with display id '${args.id}'`, 'NOT_FOUND');
-      }
-      // If an expand was requested, re-fetch by uuid to include the navigations.
-      if (args.expand && first.uuid) {
-        return await respond(
-          await clients.getOData(def.service, def.entitySet, first.uuid, args.expand),
-        );
-      }
-      return await respond(first);
+      const uuid = await uuidByDisplayId(
+        clients,
+        def.service,
+        def.entitySet,
+        args.resource,
+        args.id,
+      );
+      return await respond(await clients.getOData(def.service, def.entitySet, uuid, args.expand));
     }
 
     return await respond(await clients.getOData(def.service, def.entitySet, args.id, args.expand));

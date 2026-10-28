@@ -16,6 +16,7 @@ import { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { isGuid, odataString } from '../calm/odata.js';
 import type { ServiceName } from '../config.js';
+import { LookupError } from '../errors.js';
 import { DISPLAY_ID } from './displayId.js';
 
 // ---------------------------------------------------------------------------------------------
@@ -825,11 +826,24 @@ export const testCaseTaskLinkSchema = z
   })
   .strict();
 
-/** Whether a link with this URL is already on the object; Cloud ALM would store a second one. */
+/**
+ * Whether a link with this URL is already on the object; Cloud ALM would store a second one. An
+ * answer in an unknown shape is refused, not read as "no links": that would create the duplicate.
+ */
 async function urlTaken(rows: Promise<unknown>, url: unknown): Promise<boolean> {
-  const list = (await rows) as { url?: unknown }[] | { value?: { url?: unknown }[] };
-  const entries = Array.isArray(list) ? list : (list.value ?? []);
-  return entries.some((entry) => entry.url === url);
+  const list = await rows;
+  const entries = Array.isArray(list)
+    ? list
+    : Array.isArray((list as { value?: unknown } | undefined)?.value)
+      ? (list as { value: unknown[] }).value
+      : undefined;
+  if (!entries) {
+    throw new LookupError(
+      'Cloud ALM answered the check for existing links in an unknown shape, so nothing was sent.',
+      'UPSTREAM_ERROR',
+    );
+  }
+  return entries.some((entry) => (entry as { url?: unknown } | null)?.url === url);
 }
 
 // ---------------------------------------------------------------------------------------------

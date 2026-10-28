@@ -87,11 +87,9 @@ export async function handleCalmUpdate(
   let id: string;
   let current: Record_;
   try {
-    const resolved = isGuid(args.id)
+    id = isGuid(args.id)
       ? args.id
       : await uuidByDisplayId(clients, def.service, def.entitySet, args.resource, args.id);
-    if (typeof resolved !== 'string') return resolved;
-    id = resolved;
     current = (await clients.getOData(def.service, def.entitySet, id)) as Record_;
   } catch (error) {
     return errorResultFrom(error);
