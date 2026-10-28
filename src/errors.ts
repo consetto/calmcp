@@ -74,12 +74,16 @@ export class ApiError extends CalmError {
   /** What to do next, when the request site knows better than the status alone. */
   readonly hint?: string;
 
+  /** The response body was larger than calmcp reads; it was not parsed. */
+  readonly tooLarge?: boolean;
+
   constructor(message: string, status: number, details: ApiErrorDetails = {}) {
     super(message);
     this.status = status;
     this.transport = details.transport;
     this.retryAfterSeconds = details.retryAfterSeconds;
     this.hint = details.hint;
+    this.tooLarge = details.tooLarge;
   }
 
   /** A non-success HTTP response that was not a structured OData error. */
@@ -103,6 +107,7 @@ export interface ApiErrorDetails {
   transport?: ApiError['transport'];
   retryAfterSeconds?: number;
   hint?: string;
+  tooLarge?: boolean;
 }
 
 /** Characters of an upstream body kept in an error message. */
@@ -134,6 +139,7 @@ export type ErrorCode =
   | 'CONFLICT'
   | 'RATE_LIMITED'
   | 'UPSTREAM_ERROR'
+  | 'RESPONSE_TOO_LARGE'
   | 'TIMEOUT'
   | 'NETWORK'
   | 'CANCELLED'
@@ -177,6 +183,15 @@ export function describeError(error: unknown): ErrorInfo {
 /** Map an HTTP status (or a transport failure) to a code. */
 function describeApiError(error: ApiError, message: string): ErrorInfo {
   const { status } = error;
+  if (error.tooLarge) {
+    return {
+      error: 'RESPONSE_TOO_LARGE',
+      retryable: false,
+      status,
+      message,
+      hint: 'Ask for less: a smaller top, a filter, select or fields, or count_only/group_by.',
+    };
+  }
   if (status === 0) {
     if (error.transport === 'cancelled') return { error: 'CANCELLED', retryable: false, message };
     if (error.transport === 'timeout') return { error: 'TIMEOUT', retryable: true, message };

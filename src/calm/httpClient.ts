@@ -30,6 +30,13 @@ const MAX_BODY_LOG_CHARS = 500;
  */
 const MAX_RETRY_WAIT_SECONDS = 5;
 
+/**
+ * Largest response body calmcp reads (after decompression). A list asked for without limits can be
+ * tens of MB; parsing it would take several times that in memory, only for the result to be
+ * withheld as over the response budget. Larger answers are refused before parsing.
+ */
+const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+
 /** Statuses that mean "try again shortly" rather than "this request is wrong". */
 const RETRYABLE_STATUSES = new Set([429, 503]);
 
@@ -47,7 +54,8 @@ interface ODataErrorBody {
 }
 
 /**
- * HTTP client for one Cloud ALM service. Exposes GET for reads and POST for creating new entities.
+ * HTTP client for one Cloud ALM service. Exposes GET for reads, and POST and PATCH for the opt-in
+ * write tools.
  */
 export class CalmHttpClient {
   private readonly auth: AuthProvider;
@@ -112,8 +120,9 @@ export class CalmHttpClient {
    * Perform one request with auth resolved, mapping transport failures to `ApiError`.
    *
    * A GET answered with 429/503 is retried once, after the service's `Retry-After` (at most
-   * {@link MAX_RETRY_WAIT_SECONDS}). A POST never is: the create may have happened, and a second
-   * attempt would make a duplicate entry.
+   * {@link MAX_RETRY_WAIT_SECONDS}). A POST or PATCH never is: the write may have happened, and a
+   * second attempt would make a duplicate entry. A 401 is retried once with a fresh token, for any
+   * method: Cloud ALM refused the request before processing it.
    */
   private async request<T>(
     method: HttpMethod,
@@ -122,34 +131,47 @@ export class CalmHttpClient {
     body?: unknown,
   ): Promise<T> {
     const cancel = currentSignal();
-    for (let attempt = 0; ; attempt += 1) {
+    let throttleRetried = false;
+    let tokenRenewed = false;
+    for (;;) {
       const { baseUrl, headers } = await this.auth.authorize();
       const url = `${baseUrl}${SERVICE_PATHS[this.service]}${endpoint}${query}`;
       this.options.logger.debug({ url }, `${method} request`);
 
-      const response = await this.send(url, method, headers, body, cancel);
+      const { response, timeout } = await this.send(url, method, headers, body, cancel);
+      if (response.status === 401 && !tokenRenewed && this.auth.invalidate) {
+        this.options.logger.debug({ url }, 'token refused; retrying with a new one');
+        tokenRenewed = true;
+        this.auth.invalidate();
+        await response.body?.cancel();
+        continue;
+      }
       const wait = retryWait(response);
-      if (method === 'GET' && attempt === 0 && wait !== undefined) {
+      if (method === 'GET' && !throttleRetried && wait !== undefined) {
         this.options.logger.debug({ url, status: response.status, wait }, 'retrying throttled GET');
+        throttleRetried = true;
         await response.body?.cancel();
         await sleep(wait * 1000, cancel);
         continue;
       }
-      return this.handleResponse<T>(response, url, method);
+      return this.handleResponse<T>(response, url, method, { timeout, cancel });
     }
   }
 
-  /** Issue the fetch, turning a request that never got a response into an `ApiError` (status 0). */
+  /**
+   * Issue the fetch, turning a request that never got a response into an `ApiError` (status 0).
+   * The timeout signal is returned with the response: it also ends a body still being read.
+   */
   private async send(
     url: string,
     method: HttpMethod,
     headers: Record<string, string>,
     body: unknown,
     cancel: AbortSignal | undefined,
-  ): Promise<Response> {
+  ): Promise<{ response: Response; timeout: AbortSignal }> {
     const timeout = AbortSignal.timeout(this.options.timeoutMs);
     try {
-      return await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: {
           ...headers,
@@ -159,6 +181,7 @@ export class CalmHttpClient {
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: cancel ? AbortSignal.any([timeout, cancel]) : timeout,
       });
+      return { response, timeout };
     } catch (error) {
       const transport = cancel?.aborted ? 'cancelled' : timeout.aborted ? 'timeout' : 'network';
       throw new ApiError(`HTTP request error: ${(error as Error).message}`, 0, { transport });
@@ -166,8 +189,13 @@ export class CalmHttpClient {
   }
 
   /** Parse a successful body, or convert a failure into the most specific `ApiError`. */
-  private async handleResponse<T>(response: Response, url: string, method: HttpMethod): Promise<T> {
-    const body = await response.text();
+  private async handleResponse<T>(
+    response: Response,
+    url: string,
+    method: HttpMethod,
+    signals: { timeout: AbortSignal; cancel: AbortSignal | undefined },
+  ): Promise<T> {
+    const body = await readBody(response, signals);
 
     if (response.ok) {
       if (this.options.logger.isLevelEnabled('debug')) {
@@ -200,6 +228,52 @@ export class CalmHttpClient {
       hint: response.status === 403 ? forbiddenHint(this.service, method) : undefined,
     });
   }
+}
+
+/**
+ * The response body as text, read up to {@link MAX_RESPONSE_BYTES}. A body cut off by the timeout
+ * or the caller is a transport failure (status 0), like a request that got no answer.
+ */
+async function readBody(
+  response: Response,
+  signals: { timeout: AbortSignal; cancel: AbortSignal | undefined },
+): Promise<string> {
+  const tooLarge = () =>
+    new ApiError(
+      `The response is larger than the ${MAX_RESPONSE_BYTES / 1024 / 1024} MB calmcp reads.`,
+      response.status,
+      { tooLarge: true },
+    );
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
+    await response.body?.cancel();
+    throw tooLarge();
+  }
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw tooLarge();
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    const transport = signals.cancel?.aborted
+      ? 'cancelled'
+      : signals.timeout.aborted
+        ? 'timeout'
+        : 'network';
+    throw new ApiError(`HTTP response error: ${(error as Error).message}`, 0, { transport });
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
 /** Seconds a response asks the caller to wait (`Retry-After` as seconds or an HTTP date). */

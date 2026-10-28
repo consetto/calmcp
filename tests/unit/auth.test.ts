@@ -67,6 +67,49 @@ describe('ClientCredentialsAuthProvider', () => {
       expect(second.headers).toEqual({ Authorization: 'Bearer tok-abc' });
     });
 
+    it('fetches one token for calls that need one at the same time', async () => {
+      // Intercept exactly once: a second token request would find no interceptor and fail.
+      agent
+        .get('https://acme.authentication.eu10.hana.ondemand.com')
+        .intercept({ path: '/oauth/token', method: 'POST' })
+        .reply(200, { access_token: 'tok-1', expires_in: 3600 })
+        .delay(20);
+      const provider = new ClientCredentialsAuthProvider(oauthConfig(), logger);
+      const all = await Promise.all([
+        provider.authorize(),
+        provider.authorize(),
+        provider.authorize(),
+      ]);
+      expect(all.map((ctx) => ctx.headers.Authorization)).toEqual([
+        'Bearer tok-1',
+        'Bearer tok-1',
+        'Bearer tok-1',
+      ]);
+    });
+
+    it('fetches a new token after invalidate', async () => {
+      const pool = agent.get('https://acme.authentication.eu10.hana.ondemand.com');
+      pool
+        .intercept({ path: '/oauth/token', method: 'POST' })
+        .reply(200, { access_token: 'tok-1', expires_in: 3600 });
+      pool
+        .intercept({ path: '/oauth/token', method: 'POST' })
+        .reply(200, { access_token: 'tok-2', expires_in: 3600 });
+      const provider = new ClientCredentialsAuthProvider(oauthConfig(), logger);
+      await provider.authorize();
+      provider.invalidate();
+      expect((await provider.authorize()).headers.Authorization).toBe('Bearer tok-2');
+    });
+
+    it('throws AuthError when the token response cannot be read', async () => {
+      agent
+        .get('https://acme.authentication.eu10.hana.ondemand.com')
+        .intercept({ path: '/oauth/token', method: 'POST' })
+        .reply(200, '<html>maintenance</html>');
+      const provider = new ClientCredentialsAuthProvider(oauthConfig(), logger);
+      await expect(provider.authorize()).rejects.toThrow(/Token response/);
+    });
+
     it('throws AuthError on a failed token request', async () => {
       agent
         .get('https://acme.authentication.eu10.hana.ondemand.com')
