@@ -15,8 +15,6 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 
 - **`project_name` for `calm_create`**, resolved like `calm_list` does, for documents, features and
   tasks.
-- **Links between existing objects** (additive only): task to feature, document or process node,
-  task to user story, URL references, test case to requirement.
 - **`calm_update` for tasks** (status, assignee, sprint), after #24 proved itself on a tenant. First
   sample whether task descriptions hold images; the Tasks REST API has no server-side filter.
 - **Text search** on task titles (case-insensitive, applied while paging, like the timebox filter).

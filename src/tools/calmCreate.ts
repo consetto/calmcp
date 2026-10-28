@@ -1,14 +1,17 @@
 // `calm_create` — create a new SAP Cloud ALM document, feature, task, task comment or library
-// entry. Registered only when write access is enabled (`CALM_WRITE_ENABLED=true`); see
-// `tools/index.ts`.
+// entry, or a link between existing objects. Registered only when write access is enabled
+// (`CALM_WRITE_ENABLED=true`); see `tools/index.ts`.
 //
-// Create is the whole write surface. The tool never updates or deletes: an existing document's
-// HTML (with its embedded images) cannot be damaged by anything this file does.
+// The tool never updates or deletes: an existing document's HTML (with its embedded images) cannot
+// be damaged by anything this file does. A link is a new object of its own; the two objects it
+// connects are left as they are.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
-import { CREATE_RESOURCES } from './create.js';
+import { isGuid } from '../calm/odata.js';
+import { CREATE_RESOURCES, type CreateResource } from './create.js';
+import { uuidByDisplayId } from './displayId.js';
 import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from './result.js';
 import { imageKeys, unsafeHtml } from './richText.js';
 import type { calmCreateShape } from './schemas.js';
@@ -70,7 +73,23 @@ export async function handleCalmCreate(
     );
   }
 
-  const { collection, body } = target(def.entitySet, parsed.data);
+  let data: Record<string, unknown>;
+  try {
+    const resolved = await resolveDisplayIds(clients, def, parsed.data);
+    if ('refused' in resolved) return resolved.refused;
+    data = resolved.data;
+    if (def.exists && (await def.exists(clients, data))) {
+      return errorResult(
+        `An equal ${args.resource} already exists, and Cloud ALM would store a second one. ` +
+          'calm_create only adds: nothing was sent.',
+        'CONFLICT',
+      );
+    }
+  } catch (error) {
+    return errorResultFrom(error);
+  }
+
+  const { collection, body } = target(def.entitySet, data, def.sendAs);
   try {
     const created = await clients.create(def.service, collection, body);
     // OData entities carry `uuid`; REST items (tasks, comments) carry `id`.
@@ -85,19 +104,47 @@ export async function handleCalmCreate(
       displayId,
       fields: Object.keys(parsed.data),
     });
-    return jsonResult(createdSummary(args.resource, def.textFields, parsed.data, created));
+    return jsonResult(createdSummary(args.resource, def.textFields, data, created));
   } catch (error) {
     return errorResultFrom(error);
   }
 }
 
 /**
+ * The payload with each display id replaced by the uuid it names, or the error result when one
+ * names no object or several.
+ */
+async function resolveDisplayIds(
+  clients: CalmClients,
+  def: CreateResource,
+  payload: Record<string, unknown>,
+): Promise<{ data: Record<string, unknown> } | { refused: CallToolResult }> {
+  const data = { ...payload };
+  for (const [field, lookup] of Object.entries(def.displayIds ?? {})) {
+    const value = data[field];
+    if (typeof value !== 'string' || isGuid(value)) continue;
+    const uuid = await uuidByDisplayId(
+      clients,
+      lookup.service,
+      lookup.entitySet,
+      lookup.noun,
+      value,
+    );
+    if (typeof uuid !== 'string') return { refused: uuid };
+    data[field] = uuid;
+  }
+  return { data };
+}
+
+/**
  * Where the POST goes and what it carries: each `{field}` in the collection is replaced by that
- * payload field (a validated uuid) and the field is left out of the body.
+ * payload field (a validated uuid) and the field is left out of the body. Fields in `sendAs` go
+ * out under the spec's name.
  */
 function target(
   collection: string,
   data: Record<string, unknown>,
+  sendAs: Record<string, string> = {},
 ): { collection: string; body: Record<string, unknown> } {
   const body = { ...data };
   const path = collection.replace(/\{(\w+)\}/g, (_, field: string) => {
@@ -105,6 +152,11 @@ function target(
     delete body[field];
     return encodeURIComponent(value);
   });
+  for (const [field, name] of Object.entries(sendAs)) {
+    if (!(field in body)) continue;
+    body[name] = body[field];
+    delete body[field];
+  }
   return { collection: path, body };
 }
 

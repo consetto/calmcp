@@ -18,8 +18,9 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
-import { isGuid, odataString } from '../calm/odata.js';
+import { isGuid } from '../calm/odata.js';
 import { ApiError, describeError } from '../errors.js';
+import { uuidByDisplayId } from './displayId.js';
 import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from './result.js';
 import { droppedImages, imageKeys, unsafeHtml } from './richText.js';
 import type { calmUpdateShape } from './schemas.js';
@@ -85,7 +86,9 @@ export async function handleCalmUpdate(
   let id: string;
   let current: Record_;
   try {
-    const resolved = isGuid(args.id) ? args.id : await uuidOf(clients, def, args.resource, args.id);
+    const resolved = isGuid(args.id)
+      ? args.id
+      : await uuidByDisplayId(clients, def.service, def.entitySet, args.resource, args.id);
     if (typeof resolved !== 'string') return resolved;
     id = resolved;
     current = (await clients.getOData(def.service, def.entitySet, id)) as Record_;
@@ -181,39 +184,6 @@ export async function handleCalmUpdate(
         }),
     changes: changeDetails,
   });
-}
-
-/**
- * The uuid of the object with this display id (e.g. `6-132`), or an error result when no object or
- * more than one carries it. Two are fetched so that a duplicate is refused, never guessed between.
- */
-async function uuidOf(
-  clients: CalmClients,
-  def: UpdateResource,
-  resource: string,
-  displayId: string,
-): Promise<string | CallToolResult> {
-  const { value } = await clients.listOData(def.service, def.entitySet, {
-    filter: `displayId eq ${odataString(displayId)}`,
-    select: 'uuid,displayId',
-    top: 2,
-  });
-  const uuids = (value as { uuid?: unknown }[]).map((row) => row.uuid);
-  if (uuids.length === 0) {
-    return errorResult(
-      `No ${resource} has the display id '${displayId}'. Pass its uuid or display id as ` +
-        'calm_get returns it.',
-      'NOT_FOUND',
-    );
-  }
-  const [uuid] = uuids;
-  if (uuids.length > 1 || typeof uuid !== 'string' || !isGuid(uuid)) {
-    return errorResult(
-      `The display id '${displayId}' does not name exactly one ${resource}. Pass its uuid, as ` +
-        'calm_get returns it.',
-    );
-  }
-  return uuid;
 }
 
 /** Whether a failed PATCH may still have been applied: no answer, or a server-side failure. */

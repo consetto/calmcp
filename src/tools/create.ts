@@ -1,18 +1,22 @@
 // Create registry: the resources `calm_create` can add to SAP Cloud ALM, each with the strict payload
 // schema transcribed from the `*-create` request bodies in `YAML/CALM_SD.yaml`,
-// `YAML/CALM_CDM_ODATA.yaml`, `YAML/CALM_TKM.yaml` and the four `YAML/CALM_XLIB_*.yaml` specs.
+// `YAML/CALM_CDM_ODATA.yaml`, `YAML/CALM_TKM.yaml`, `YAML/CALM_TM.yaml` and the four
+// `YAML/CALM_XLIB_*.yaml` specs.
 //
-// Scope is deliberately narrow: new documents, features, tasks, task comments and library entries
+// Scope is deliberately narrow: new documents, features, tasks, task comments, library entries
 // (cross-library applications, configurations, configuration activities, developments,
-// interfaces). Nothing here
-// changes or deletes an existing record; changing fields of a feature is `calm_update`
+// interfaces) and links between existing objects. Nothing here changes or deletes an existing
+// record; changing fields of a feature is `calm_update`
 // (`update.ts`), behind its own switch. Documents cannot be changed through the API at all.
 //
 // Every schema is `.strict()`: an unknown property is an error, not something silently dropped,
 // because a caller who typed `projectID` would otherwise get a document in no project at all.
 
 import { z } from 'zod';
+import type { CalmClients } from '../calm/index.js';
+import { isGuid, odataString } from '../calm/odata.js';
 import type { ServiceName } from '../config.js';
+import { DISPLAY_ID } from './displayId.js';
 
 // ---------------------------------------------------------------------------------------------
 // Shared fragments
@@ -729,6 +733,106 @@ export const taskCommentCreateSchema = z
   .strict();
 
 // ---------------------------------------------------------------------------------------------
+// Links between existing objects (CALM_TKM.yaml — POST /tasks/{id}/featureAssignments,
+// /documentAssignments, /hierarchyNodeAssignments, /tasks/{taskId}/relations, /references;
+// CALM_CDM_ODATA.yaml — POST /Features/{uuid}/toURLReferences; CALM_TM.yaml — POST
+// /TaskAssignments)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The uuid of an object, or its display id where calmcp can resolve one (features, documents,
+ * process hierarchy nodes, manual test cases). Tasks have no display id lookup in their API.
+ */
+const uuidOrDisplayId = z.string().refine((value) => isGuid(value) || DISPLAY_ID.test(value), {
+  message: 'must be a uuid or a display id such as 6-132',
+});
+
+const linkTaskId = uuid.describe('UUID of the task (incl. defect, user story); calm_list tasks');
+
+export const taskFeatureLinkSchema = z
+  .object({
+    taskId: linkTaskId,
+    featureId: uuidOrDisplayId.describe('UUID or display id (e.g. 6-132) of the feature'),
+  })
+  .strict();
+
+export const taskDocumentLinkSchema = z
+  .object({
+    taskId: linkTaskId,
+    documentId: uuidOrDisplayId.describe('UUID or display id (e.g. 7-1) of the document'),
+  })
+  .strict();
+
+export const taskProcessLinkSchema = z
+  .object({
+    taskId: linkTaskId,
+    hierarchyNodeId: uuidOrDisplayId.describe(
+      'UUID or display id (e.g. 14-2) of the process hierarchy node',
+    ),
+  })
+  .strict();
+
+/**
+ * Relation types a caller may create. The code names what `relationTaskId` is to `taskId`, as the
+ * Cloud ALM UI shows it (checked on a tenant): 2 predecessor, 12 successor, 1 peer. The spec's
+ * description calls the successor 20, which Cloud ALM refuses; its enum's 12 is right. Child (0)
+ * and parent (10) are accepted by Cloud ALM between any two tasks, but build a hierarchy beside the
+ * sub-tasks, so they are left out: a sub-task is a `task` with `parentId`.
+ */
+export const taskRelationSchema = z
+  .object({
+    taskId: uuid.describe('UUID of the task, defect or user story the relation is added to'),
+    type: z
+      .enum(['2', '12', '1'])
+      .describe(
+        "What relationTaskId is to taskId: '2' its predecessor, '12' its successor, '1' a peer " +
+          '(project task and user story only). Sub-tasks are created as task with parentId',
+      ),
+    relationTaskId: uuid.describe('UUID of the related task, defect or user story'),
+  })
+  .strict()
+  .refine((relation) => relation.taskId !== relation.relationTaskId, {
+    path: ['relationTaskId'],
+    message: 'a task cannot be related to itself',
+  });
+
+/** A link on a task. The spec allows https only. */
+export const taskReferenceSchema = z
+  .object({
+    taskId: linkTaskId,
+    name: z.string().min(1).max(500).describe('Display name of the link'),
+    url: z
+      .string()
+      .max(2048)
+      .regex(/^https:\/\/\S+$/i, 'must be an https:// URL')
+      .describe('Target URL, starting with https://'),
+  })
+  .strict();
+
+export const featureUrlReferenceSchema = z
+  .object({
+    featureId: uuidOrDisplayId.describe('UUID or display id (e.g. 6-132) of the feature'),
+    ...urlReference.shape,
+  })
+  .strict();
+
+export const testCaseTaskLinkSchema = z
+  .object({
+    testCaseId: uuidOrDisplayId.describe(
+      'UUID of the manual or automated test case, or display id of a manual one',
+    ),
+    taskId: uuid.describe('UUID of the user story or requirement the test case covers'),
+  })
+  .strict();
+
+/** Whether a link with this URL is already on the object; Cloud ALM would store a second one. */
+async function urlTaken(rows: Promise<unknown>, url: unknown): Promise<boolean> {
+  const list = (await rows) as { url?: unknown }[] | { value?: { url?: unknown }[] };
+  const entries = Array.isArray(list) ? list : (list.value ?? []);
+  return entries.some((entry) => entry.url === url);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------------------------
 
@@ -745,6 +849,15 @@ export interface CreateResource {
   /** Fields Cloud ALM may render as HTML, checked for active content before sending. */
   textFields: string[];
   description: string;
+  /** Payload fields that also take a display id, and the OData entity set it is looked up in. */
+  displayIds?: Record<string, { service: ServiceName; entitySet: string; noun: string }>;
+  /** Payload fields the spec names differently, sent under the spec's name. */
+  sendAs?: Record<string, string>;
+  /**
+   * Whether an equal link already exists. Only for links Cloud ALM stores twice when asked twice;
+   * it refuses duplicate assignments and relations itself.
+   */
+  exists?: (clients: CalmClients, data: Record<string, unknown>) => Promise<boolean>;
 }
 
 /** Resources creatable via `calm_create`, keyed by the public `resource` value. */
@@ -819,6 +932,90 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     schema: xlibInterfaceCreateSchema,
     textFields: ['description'],
     description: 'A new cross-library interface (OData, RFC, SOAP, REST, MCP server, ...)',
+  },
+  task_feature_link: {
+    service: 'tasks',
+    entitySet: 'tasks/{taskId}/featureAssignments',
+    schema: taskFeatureLinkSchema,
+    textFields: [],
+    displayIds: { featureId: { service: 'features', entitySet: 'Features', noun: 'feature' } },
+    description: 'Link an existing feature to an existing task, defect or user story',
+  },
+  task_document_link: {
+    service: 'tasks',
+    entitySet: 'tasks/{taskId}/documentAssignments',
+    schema: taskDocumentLinkSchema,
+    textFields: [],
+    displayIds: {
+      documentId: { service: 'documents', entitySet: 'Documents', noun: 'document' },
+    },
+    description: 'Link an existing document to an existing task, defect or user story',
+  },
+  task_process_link: {
+    service: 'tasks',
+    entitySet: 'tasks/{taskId}/hierarchyNodeAssignments',
+    schema: taskProcessLinkSchema,
+    textFields: [],
+    displayIds: {
+      hierarchyNodeId: {
+        service: 'processhierarchy',
+        entitySet: 'HierarchyNodes',
+        noun: 'process hierarchy node',
+      },
+    },
+    description: 'Link an existing process hierarchy node to an existing task or user story',
+  },
+  task_relation: {
+    service: 'tasks',
+    entitySet: 'tasks/{taskId}/relations',
+    schema: taskRelationSchema,
+    textFields: [],
+    description:
+      'Relate two existing tasks, defects or user stories as predecessor, successor or peer',
+  },
+  task_reference: {
+    service: 'tasks',
+    entitySet: 'tasks/{taskId}/references',
+    schema: taskReferenceSchema,
+    textFields: [],
+    exists: (clients, data) =>
+      urlTaken(
+        clients.getRest('tasks', `/tasks/${encodeURIComponent(String(data.taskId))}/references`),
+        data.url,
+      ),
+    description: 'Add a link (name and https URL) to an existing task, defect or user story',
+  },
+  feature_url_reference: {
+    service: 'features',
+    entitySet: 'Features/{featureId}/toURLReferences',
+    schema: featureUrlReferenceSchema,
+    textFields: [],
+    displayIds: { featureId: { service: 'features', entitySet: 'Features', noun: 'feature' } },
+    // parent_uuid is an Edm.String in the Features API, so the uuid is quoted.
+    exists: (clients, data) =>
+      urlTaken(
+        clients.listOData('features', 'URLReferences', {
+          filter: `parent_uuid eq ${odataString(String(data.featureId))}`,
+          select: 'url',
+        }),
+        data.url,
+      ),
+    description: 'Add a link (name and URL) to an existing feature',
+  },
+  test_case_task_link: {
+    service: 'testmanagement',
+    entitySet: 'TaskAssignments',
+    schema: testCaseTaskLinkSchema,
+    textFields: [],
+    displayIds: {
+      testCaseId: {
+        service: 'testmanagement',
+        entitySet: 'ManualTestCases',
+        noun: 'manual test case',
+      },
+    },
+    sendAs: { testCaseId: 'parentTestCase_ID' },
+    description: 'Link an existing test case to the user story or requirement it covers',
   },
 };
 
