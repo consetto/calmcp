@@ -8,13 +8,10 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 | Item | Where | Open before merging |
 | --- | --- | --- |
 | Transports of features, both directions (`feature_transports`, `feature_transport_references`, recipe) | #51 | Review; the test tenant has no transports, so a filled row is checked against the spec only |
+| Links between existing objects in `calm_create` (task to feature, document, process node or task; URLs on tasks and features; test case to user story) | #53 | Tenant test of `task_process_link` and `test_case_task_link` once the API instance has the scopes |
 
 ## Next
 
-- **Links between existing objects** (additive only): task to feature, document or process node,
-  task to task or user story (relations), URL references on tasks and features, test case to
-  requirement or user story. All are POSTs that create a link object (Tasks, Features and Test
-  Cases APIs).
 - **`calm_update` for tasks** (status, assignee, sprint, priority), reusing the feature guards.
   First sample whether task descriptions hold images; the Tasks REST API has no server-side filter.
 - **`project_name` for `calm_create`**, resolved like `calm_list` does, for documents, features and
