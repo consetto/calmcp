@@ -254,7 +254,7 @@ export const calmUpdateShape = {
     .describe(
       'What to change: "feature". calm_resources({ topic: "<resource>" }) lists the fields',
     ),
-  id: z.string().min(1).describe('uuid of the object, as calm_get returns it'),
+  id: z.string().min(1).describe('uuid or display id (e.g. "6-132") of the object'),
   changes: z
     .record(z.string(), z.unknown())
     .describe(
