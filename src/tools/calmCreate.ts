@@ -10,7 +10,7 @@ import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { CREATE_RESOURCES } from './create.js';
 import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from './result.js';
-import { unsafeHtml } from './richText.js';
+import { imageKeys, unsafeHtml } from './richText.js';
 import type { calmCreateShape } from './schemas.js';
 
 /** Arguments accepted by the `calm_create` tool. */
@@ -85,7 +85,7 @@ export async function handleCalmCreate(
       displayId,
       fields: Object.keys(parsed.data),
     });
-    return jsonResult(created);
+    return jsonResult(createdSummary(args.resource, def.textFields, parsed.data, created));
   } catch (error) {
     return errorResultFrom(error);
   }
@@ -106,4 +106,45 @@ function target(
     return encodeURIComponent(value);
   });
   return { collection: path, body };
+}
+
+/**
+ * The answer to a create: the new key and display id, and each field the caller set as Cloud ALM
+ * stored it, instead of the whole entity (a task comes back with some 70 fields, most of them null).
+ * Rich text is shown as length and image count, a list as its number of items. A field stored with
+ * another value than was sent is named, so a silent change by Cloud ALM is not passed off as done.
+ */
+function createdSummary(
+  resource: string,
+  textFields: string[],
+  sent: Record<string, unknown>,
+  created: unknown,
+): Record<string, unknown> {
+  const stored = (created !== null && typeof created === 'object' ? created : {}) as Record<
+    string,
+    unknown
+  >;
+  const summary = (field: string, value: unknown) =>
+    Array.isArray(value)
+      ? { items: value.length }
+      : textFields.includes(field) && typeof value === 'string'
+        ? { length: value.length, images: imageKeys(value).length }
+        : value;
+  const fields = Object.keys(sent);
+  const differs = fields.filter(
+    (field) =>
+      field in stored &&
+      !Array.isArray(sent[field]) &&
+      JSON.stringify(stored[field]) !== JSON.stringify(sent[field]),
+  );
+  return {
+    created: true,
+    resource,
+    ...('uuid' in stored ? { uuid: stored.uuid } : { id: stored.id }),
+    displayId: stored.displayId,
+    set: Object.fromEntries(
+      fields.map((field) => [field, summary(field, field in stored ? stored[field] : sent[field])]),
+    ),
+    ...(differs.length > 0 ? { storedDiffersFromSent: differs } : {}),
+  };
 }
