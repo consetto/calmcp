@@ -6,6 +6,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import pino from 'pino';
 import { MockAgent, setGlobalDispatcher } from 'undici';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -82,6 +83,22 @@ describe('handleCalmUpdate', () => {
     const result = await handleCalmUpdate(makeClients(), call({ title: 'x' }));
     expect(result.isError).toBe(true);
     expect(errorOf(result).message).toContain('CALM_UPDATE_ENABLED');
+  });
+
+  it('treats a PATCH Cloud ALM accepted with an unreadable answer as applied', async () => {
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
+    agent.get(ORIGIN).intercept({ path: FEATURE, method: 'PATCH' }).reply(200, 'ok, not JSON');
+    agent
+      .get(ORIGIN)
+      .intercept({ path: FEATURE })
+      .reply(200, { ...stored, title: 'Renamed', modifiedAt: '2026-10-28T10:00:00Z' });
+    const audit: unknown[] = [];
+    const result = await handleCalmUpdate(clients(), call({ title: 'Renamed' }), (entry) =>
+      audit.push(entry),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(parse(result)).toMatchObject({ updated: true });
+    expect(audit).toMatchObject([{ outcome: 'applied' }]);
   });
 
   const lookup = (rows: unknown[]) =>
@@ -464,6 +481,30 @@ describe('who gets calm_update', () => {
     expect(await toolNames({ updateEnabled: true }, caller(['Viewer', 'Writer']))).toContain(
       'calm_update',
     );
+  });
+
+  it('answers a handler failure in the JSON error format', async () => {
+    const agent = new MockAgent();
+    agent.disableNetConnect();
+    setGlobalDispatcher(agent);
+    // An empty body where the feature should be makes the handler throw on reading it.
+    agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, '');
+    const server = buildMcpServer(makeClients({ updateEnabled: true }), pino({ level: 'silent' }));
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'update-test', version: '1' });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    const result = (await client.callTool({
+      name: 'calm_update',
+      arguments: {
+        resource: 'feature',
+        id: ID,
+        changes: { title: 'x' },
+        expected_modified_at: MODIFIED,
+      },
+    })) as CallToolResult;
+    await agent.close();
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result))).toMatchObject({ error: 'INTERNAL', retryable: false });
   });
 
   it('reads CALM_UPDATE_ENABLED, off by default', () => {

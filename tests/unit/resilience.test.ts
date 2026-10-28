@@ -62,7 +62,8 @@ describe('throttling and cancellation', () => {
       data: { title: 't', projectId: '11111111-1111-1111-1111-111111111111' },
     });
     // A second POST would find no interceptor and fail differently; UPSTREAM_ERROR proves one call.
-    expect(parse(result)).toMatchObject({ error: 'UPSTREAM_ERROR', status: 503 });
+    // The create may have been applied, so the result must not invite a retry either.
+    expect(parse(result)).toMatchObject({ error: 'UPSTREAM_ERROR', retryable: false });
   });
 
   it('stops before requesting when the call is already cancelled', async () => {

@@ -10,11 +10,13 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { isGuid } from '../calm/odata.js';
+import { describeError } from '../errors.js';
 import { CREATE_RESOURCES, type CreateResource } from './create.js';
 import { uuidByDisplayId } from './displayId.js';
 import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from './result.js';
 import { imageKeys, unsafeHtml } from './richText.js';
 import type { calmCreateShape } from './schemas.js';
+import { acceptedUnreadable, outcomeUnknown } from './writeOutcome.js';
 
 /** Arguments accepted by the `calm_create` tool. */
 export type CalmCreateArgs = z.infer<z.ZodObject<typeof calmCreateShape>>;
@@ -27,6 +29,8 @@ export interface CreateAuditEntry {
   displayId: unknown;
   /** The payload fields the caller set (names only; values may be long or personal). */
   fields: string[];
+  /** `applied` when Cloud ALM confirmed the create, `unknown` when it may or may not have. */
+  outcome: 'applied' | 'unknown';
 }
 
 /**
@@ -90,23 +94,49 @@ export async function handleCalmCreate(
   }
 
   const { collection, body } = target(def.entitySet, data, def.sendAs);
+  const entry = { resource: args.resource, fields: Object.keys(parsed.data) };
+  let created: unknown;
   try {
-    const created = await clients.create(def.service, collection, body);
-    // OData entities carry `uuid`; REST items (tasks, comments) carry `id`.
-    const { uuid, id, displayId } = (created ?? {}) as {
-      uuid?: unknown;
-      id?: unknown;
-      displayId?: unknown;
-    };
-    audit({
-      resource: args.resource,
-      id: uuid ?? id,
-      displayId,
-      fields: Object.keys(parsed.data),
-    });
-    return jsonResult(createdSummary(args.resource, def.textFields, data, created));
+    created = await clients.create(def.service, collection, body);
   } catch (error) {
-    return errorResultFrom(error);
+    if (acceptedUnreadable(error)) {
+      audit({ ...entry, id: undefined, displayId: undefined, outcome: 'applied' });
+      return jsonResult({
+        created: true,
+        resource: args.resource,
+        note:
+          'Cloud ALM accepted the create, but its answer could not be read, so the new key is ' +
+          'unknown. Find the new entry with calm_list; do not create it again.',
+      });
+    }
+    if (!outcomeUnknown(error)) return errorResultFrom(error);
+    audit({ ...entry, id: undefined, displayId: undefined, outcome: 'unknown' });
+    const info = describeError(error);
+    return errorResult(
+      `${info.message}\nThe ${args.resource} may or may not have been created. Do not repeat ` +
+        'the call blindly: check with calm_list whether it exists first.',
+      info.error,
+    );
+  }
+
+  // Cloud ALM created the entry: from here on the result says so, whatever happens next.
+  // OData entities carry `uuid`; REST items (tasks, comments, links) carry `id`.
+  const { uuid, id, displayId } = (created ?? {}) as {
+    uuid?: unknown;
+    id?: unknown;
+    displayId?: unknown;
+  };
+  audit({ ...entry, id: uuid ?? id, displayId, outcome: 'applied' });
+  try {
+    return jsonResult(createdSummary(args.resource, def.textFields, data, created));
+  } catch {
+    return jsonResult({
+      created: true,
+      resource: args.resource,
+      ...(uuid !== undefined ? { uuid } : { id }),
+      displayId,
+      note: 'Created. The answer could not be summarised; calm_get returns the entry.',
+    });
   }
 }
 

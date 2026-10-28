@@ -109,9 +109,18 @@ export function imageKeys(html: unknown): string[] {
     const imageId = src.startsWith(IMAGE_SERVICE_PATH)
       ? /[?&]imageId=([^&#]+)/i.exec(src)?.[1]
       : undefined;
-    return imageId ? `imageId:${decodeURIComponent(imageId).toLowerCase()}` : `src:${src}`;
+    return imageId ? `imageId:${decodeId(imageId).toLowerCase()}` : `src:${src}`;
   });
   return [...new Set(keys)];
+}
+
+/** An image id with its percent escapes decoded, or as written when an escape is malformed. */
+function decodeId(imageId: string): string {
+  try {
+    return decodeURIComponent(imageId);
+  } catch {
+    return imageId;
+  }
 }
 
 /**

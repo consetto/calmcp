@@ -19,13 +19,14 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { isGuid } from '../calm/odata.js';
-import { ApiError, describeError } from '../errors.js';
+import { describeError } from '../errors.js';
 import { uuidByDisplayId } from './displayId.js';
 import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from './result.js';
 import { droppedImages, imageKeys, unsafeHtml } from './richText.js';
 import type { calmUpdateShape } from './schemas.js';
 import type { Record_ } from './shape.js';
 import { UPDATE_RESOURCES, type UpdateResource } from './update.js';
+import { acceptedUnreadable, outcomeUnknown } from './writeOutcome.js';
 
 /** Arguments accepted by the `calm_update` tool. */
 export type CalmUpdateArgs = z.infer<z.ZodObject<typeof calmUpdateShape>>;
@@ -143,15 +144,18 @@ export async function handleCalmUpdate(
   try {
     await clients.updateOData(def.service, def.entitySet, id, changes);
   } catch (error) {
-    if (!outcomeUnknown(error)) return errorResultFrom(error);
-    audit({ ...entry, outcome: 'unknown', changes: describe(), modifiedBefore });
-    const info = describeError(error);
-    return errorResult(
-      `${info.message}\nThe update may or may not have been applied. Do not repeat it blindly: ` +
-        `read the ${args.resource} with calm_get; if its ${def.modifiedField} is no longer ` +
-        `${JSON.stringify(modifiedBefore)}, the change (or another one) was saved.`,
-      info.error,
-    );
+    // A 2xx whose body could not be read was applied: carry on to the read-back below.
+    if (!acceptedUnreadable(error)) {
+      if (!outcomeUnknown(error)) return errorResultFrom(error);
+      audit({ ...entry, outcome: 'unknown', changes: describe(), modifiedBefore });
+      const info = describeError(error);
+      return errorResult(
+        `${info.message}\nThe update may or may not have been applied. Do not repeat it blindly: ` +
+          `read the ${args.resource} with calm_get; if its ${def.modifiedField} is no longer ` +
+          `${JSON.stringify(modifiedBefore)}, the change (or another one) was saved.`,
+        info.error,
+      );
+    }
   }
 
   // Cloud ALM accepted the change: from here on the result says so, whatever happens next.
@@ -184,11 +188,6 @@ export async function handleCalmUpdate(
         }),
     changes: changeDetails,
   });
-}
-
-/** Whether a failed PATCH may still have been applied: no answer, or a server-side failure. */
-function outcomeUnknown(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 0 || error.status >= 500);
 }
 
 /** Equal as JSON values; Cloud ALM returns the same scalars it accepts. */
