@@ -178,7 +178,7 @@ function registerCreate(
   server.registerTool(
     'calm_create',
     {
-      title: 'Create a SAP Cloud ALM document, feature or library entry',
+      title: 'Create a SAP Cloud ALM document, feature, task, comment or library entry',
       // Adds a record but never overwrites one; a repeat call creates a second entry.
       annotations: {
         readOnlyHint: false,
@@ -187,8 +187,9 @@ function registerCreate(
         openWorldHint: true,
       },
       description:
-        'Create a NEW SAP Cloud ALM document, feature, or library entry (cross-library ' +
-        'application, configuration, configuration activity, development or interface). It never ' +
+        'Create a NEW SAP Cloud ALM document, feature, task (user story, defect, requirement, ' +
+        'sub-task, risk), comment on a task, or library entry (cross-library application, ' +
+        'configuration, configuration activity, development or interface). It never ' +
         'changes or deletes an existing object, so calling it twice makes two entries. ' +
         'Pass "resource" and a "data" object; calm_resources({ topic: "<resource>" }) lists the ' +
         'fields. Links and assignments can be included in "data" and are created with the entity. ' +

@@ -5,7 +5,7 @@
 //   - `listOData`   — GET an OData entity set with system query options.
 //   - `getOData`    — GET a single OData entity by key, optionally expanding navigations.
 //   - `getRest`     — GET a REST endpoint with a prebuilt query string.
-//   - `createOData` — POST a new OData entity (only when write access is enabled).
+//   - `create`      — POST a new OData entity or REST item (only when write access is enabled).
 //   - `updateOData` — PATCH fields of an existing OData entity (only when update access is enabled).
 //
 // Keeping the per-resource knowledge in the registry (see `tools/registry.ts`) keeps these
@@ -27,7 +27,7 @@ export class CalmClients {
 
   /**
    * Whether creating entities is allowed (`CALM_WRITE_ENABLED`). Read by the tool layer to decide
-   * whether to register `calm_create`, and enforced again in {@link createOData} so no code path
+   * whether to register `calm_create`, and enforced again in {@link create} so no code path
    * can write while the operator left calmcp read-only.
    */
   readonly writeEnabled: boolean;
@@ -104,22 +104,22 @@ export class CalmClients {
   }
 
   /**
-   * POST a new OData entity.
+   * POST a new OData entity or REST item.
    *
    * It creates; it never touches an existing entity. Changing one is {@link updateOData}, behind its
    * own switch.
    *
    * @param service - The owning service.
-   * @param entitySet - The entity set name (e.g. "Documents").
+   * @param collection - The entity set (e.g. "Documents") or REST path (e.g. "tasks/<id>/comments").
    * @param body - The create payload, already validated by the tool layer.
    * @returns The created entity as parsed JSON.
    * @throws {ConfigError} When write access is disabled.
    */
-  async createOData(service: ServiceName, entitySet: string, body: unknown): Promise<unknown> {
+  async create(service: ServiceName, collection: string, body: unknown): Promise<unknown> {
     if (!this.writeEnabled) {
       throw ConfigError.writeDisabled();
     }
-    return this.clients[service].post(`/${entitySet}`, body);
+    return this.clients[service].post(`/${collection}`, body);
   }
 
   /**

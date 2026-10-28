@@ -1,9 +1,10 @@
 // Create registry: the resources `calm_create` can add to SAP Cloud ALM, each with the strict payload
 // schema transcribed from the `*-create` request bodies in `YAML/CALM_SD.yaml`,
-// `YAML/CALM_CDM_ODATA.yaml` and the four `YAML/CALM_XLIB_*.yaml` specs.
+// `YAML/CALM_CDM_ODATA.yaml`, `YAML/CALM_TKM.yaml` and the four `YAML/CALM_XLIB_*.yaml` specs.
 //
-// Scope is deliberately narrow: new documents, features and library entries (cross-library
-// applications, configurations, configuration activities, developments, interfaces). Nothing here
+// Scope is deliberately narrow: new documents, features, tasks, task comments and library entries
+// (cross-library applications, configurations, configuration activities, developments,
+// interfaces). Nothing here
 // changes or deletes an existing record; changing fields of a feature is `calm_update`
 // (`update.ts`), behind its own switch. Documents cannot be changed through the API at all.
 //
@@ -486,12 +487,258 @@ export const featureCreateSchema = z
   .strict();
 
 // ---------------------------------------------------------------------------------------------
+// Tasks (CALM_TKM.yaml — POST /tasks, schema TaskCreationRequest; POST /tasks/{taskId}/comments,
+// schema CommentCreationRequest)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Task types a caller may create. Roadmap tasks (`CALMTMPL`), quality gates (`CALMQGATE`) and
+ * checklist items (`CALMCHKLI`) come from templates and the project setup, not from a model.
+ */
+const TASK_TYPES = ['CALMTASK', 'CALMUS', 'CALMST', 'CALMREQU', 'CALMDEF', 'CALMRISK'] as const;
+
+/** Classification codes, each valid for one task type only (see `ClassificationId` in the spec). */
+const TASK_CLASSIFICATIONS = {
+  CALMUS: ['US_GAP', 'US_WRICEF', 'US_FIT', 'US_NOFUNC'],
+  CALMREQU: ['REQ_GAP', 'REQ_WRICEF', 'REQ_FIT', 'REQ_NOFUNC'],
+  CALMDEF: ['FUNCT', 'TECH', 'USAB', 'DOCU', 'SCOP', 'HAND'],
+} as const;
+
+/** Sub-classification codes per classification (see `SubClassification` in the spec). */
+const TASK_SUB_CLASSIFICATIONS: Record<string, readonly string[]> = {
+  US_GAP: [
+    'US_EXT_CONF_NO_ALIGN',
+    'US_ROADMAP',
+    'US_EXT_PROCESS',
+    'US_EXT_NON_PROCESS',
+    'US_MACHINE_LEARNING',
+  ],
+  US_WRICEF: [
+    'US_WORKFLOW',
+    'US_REPORT',
+    'US_INTERFACE',
+    'US_CONVERSION',
+    'US_ENHANCEMENT',
+    'US_FORM',
+  ],
+  US_FIT: ['US_SAP_CONTENT', 'US_SOFTWARE_VENDOR', 'US_EXT_CONF_ALIGNED'],
+  REQ_GAP: [
+    'REQ_EXT_CONF_NOALIGN',
+    'REQ_ROADMAP',
+    'REQ_EXT_PROCESS',
+    'REQ_EXT_NON_PROCESS',
+    'REQ_MACHINE_LEARNING',
+  ],
+  REQ_WRICEF: [
+    'REQ_WORKFLOW',
+    'REQ_REPORT',
+    'REQ_INTERFACE',
+    'REQ_CONVERSION',
+    'REQ_ENHANCEMENT',
+    'REQ_FORM',
+  ],
+  REQ_FIT: ['REQ_SAP_CONTENT', 'REQ_SOFTWARE_VENDOR', 'REQ_EXT_CONF_ALIGNED'],
+  FUNCT: ['FUNCT_BUG', 'FUNCT_MISS', 'FUNCT_CONFIG_ERR'],
+  TECH: ['TECH_DEF', 'TECH_PERFORMANCE', 'TECH_AUTH', 'TECH_CONF'],
+  USAB: ['USAB_NAV', 'USAB_TRANS', 'USAB_CONN'],
+  DOCU: ['DOCU_ERROR', 'DOCU_TEST_CASE', 'DOCU_KNOWLEDGE_GAP'],
+  SCOP: ['SCOP_CHANGE_REQU', 'SCOP_ENHANCEMENT', 'SCOP_CONSULT_REQU'],
+  HAND: ['HAND_NOT_REPRODUCE', 'HAND_DUPLICATE', 'HAND_WORKING_INTEN', 'HAND_USER_ERROR'],
+};
+
+/** Fields the spec allows on risks (`CALMRISK`) only. */
+const RISK_FIELDS = ['owner', 'impact', 'probability', 'mitigationStrategyId', 'categoryId'];
+
+/** ISO date (YYYY-MM-DD), as the Tasks API expects for start and due dates. */
+const isoDate = z.iso.date();
+
+/** A task's external reference: the identifier field is called `id`, as on features. */
+const taskExternalReference = z
+  .object({
+    id: z.string().min(1).max(255).describe('Identifier in the external system'),
+    name: z.string().min(1).max(255).describe('Name of the external system'),
+    url: httpUrl(1000).optional().describe('URL pointing into the external system'),
+  })
+  .strict();
+
+/**
+ * New task, user story, sub-task, requirement, defect or risk. Left out of the spec's request body:
+ * `source` (calmcp's tasks are MANUAL, the default), `externalIntegration` (set by integrations),
+ * `answer` (checklist items only) and the tenant-specific `customField1..20`.
+ */
+export const taskCreateSchema = z
+  .object({
+    title: z.string().min(1).max(180).describe('Task title'),
+    projectId: uuid.describe('UUID of the project the task belongs to'),
+    type: z
+      .enum(TASK_TYPES)
+      .describe(
+        'Task type: CALMTASK project task, CALMUS user story, CALMST sub-task (needs parentId), ' +
+          'CALMREQU requirement, CALMDEF defect, CALMRISK risk',
+      ),
+    description: z.string().max(500_000).optional().describe('HTML rich-text description'),
+    parentId: uuid
+      .optional()
+      .describe('UUID of the parent task; required for a sub-task, and not itself a sub-task'),
+    priorityId: z
+      .union([z.literal(10), z.literal(20), z.literal(30), z.literal(40)])
+      .optional()
+      .describe('Priority: 10 very high, 20 high, 30 medium, 40 low'),
+    assigneeId: z.string().min(1).max(255).optional().describe('User id of the assignee'),
+    reviewerId: z.string().min(1).max(255).optional().describe('User id of the reviewer'),
+    startDate: isoDate.optional().describe('Start date, YYYY-MM-DD'),
+    dueDate: isoDate.optional().describe('Planned completion date, YYYY-MM-DD'),
+    timeboxId: uuid.optional().describe('UUID of the timebox (sprint); calm_list timeboxes'),
+    releaseId: uuid.optional().describe('UUID of the release'),
+    scopeId: uuid.optional().describe('UUID of the process scope'),
+    deliverableId: uuid.optional().describe('UUID of the deliverable; calm_list deliverables'),
+    workstream: z
+      .string()
+      .max(500)
+      .optional()
+      .describe('Workstream ids, comma separated, e.g. "WS001,WS002"; calm_list workstreams'),
+    assignedRoleId: uuid.optional().describe("UUID of the task's responsible role"),
+    responsibleTeamId: uuid.optional().describe("UUID of the task's responsible team"),
+    responsibleUserType: z
+      .enum(['EMPLO', 'SAP', 'PRTNR', 'OTHER'])
+      .optional()
+      .describe('Kind of responsible user: EMPLO employee, SAP, PRTNR partner, OTHER'),
+    involvedParties: z
+      .string()
+      .max(500)
+      .optional()
+      .describe('User ids of involved parties, comma separated'),
+    storyPoints: z.number().int().min(0).optional().describe('Story points, 0 or more'),
+    effort: z
+      .number()
+      .min(0)
+      .max(100_000)
+      .optional()
+      .describe('Effort in hours (decimal); not for sub-tasks'),
+    externalId: z.string().min(1).max(128).optional().describe('Identifier in an external system'),
+    classificationId: z
+      .enum([
+        ...TASK_CLASSIFICATIONS.CALMUS,
+        ...TASK_CLASSIFICATIONS.CALMREQU,
+        ...TASK_CLASSIFICATIONS.CALMDEF,
+      ])
+      .optional()
+      .describe(
+        'Classification: US_* for user stories, REQ_* for requirements, FUNCT, TECH, USAB, DOCU, ' +
+          'SCOP or HAND for defects',
+      ),
+    subClassifications: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        'Sub-classifications of the classification, e.g. US_REPORT under US_WRICEF or ' +
+          'FUNCT_BUG under FUNCT',
+      ),
+    testClassifications: z
+      .array(
+        z.enum([
+          'ACCEPTANCE',
+          'INTEGRATION',
+          'SCENARIO',
+          'FUNCTIONAL',
+          'REGRESSION',
+          'SECURITY',
+          'PERFORMANCE',
+          'USABILITY',
+        ]),
+      )
+      .optional()
+      .describe('Test classifications; user stories and requirements only'),
+    owner: z.string().min(1).max(255).optional().describe('Risks only: email address of the owner'),
+    impact: z.number().int().min(1).max(5).optional().describe('Risks only: impact 1 to 5'),
+    probability: z
+      .number()
+      .int()
+      .min(1)
+      .max(5)
+      .optional()
+      .describe('Risks only: probability 1 to 5'),
+    mitigationStrategyId: z
+      .enum(['AVOID', 'REDUCE', 'TRANSFER', 'ACCEPT', 'MONITOR'])
+      .optional()
+      .describe('Risks only: mitigation strategy'),
+    categoryId: z
+      .enum(['COMP', 'EXT', 'FIN', 'ORG', 'IT', 'PM'])
+      .optional()
+      .describe('Risks only: category'),
+    externalReferences: z
+      .array(taskExternalReference)
+      .optional()
+      .describe('External system identifiers to attach'),
+  })
+  .strict()
+  // The spec states these rules in prose. Cloud ALM may or may not enforce them; checking here means
+  // a mistyped combination is refused before anything is created, never stored half-right.
+  .superRefine((task, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: 'custom', path: [path], message });
+    if (task.type === 'CALMST' && task.parentId === undefined) {
+      issue('parentId', 'a sub-task (CALMST) needs the parentId of the task it belongs to');
+    }
+    if (task.type === 'CALMST' && task.effort !== undefined) {
+      issue('effort', 'a sub-task (CALMST) carries no effort');
+    }
+    if (task.type !== 'CALMRISK') {
+      for (const field of RISK_FIELDS.filter((f) => f in task)) {
+        issue(field, `${field} applies to risks (CALMRISK) only`);
+      }
+    }
+    if (task.classificationId !== undefined) {
+      const allowed = (TASK_CLASSIFICATIONS as Record<string, readonly string[]>)[task.type];
+      if (!allowed?.includes(task.classificationId)) {
+        issue(
+          'classificationId',
+          allowed
+            ? `${task.type} takes one of: ${allowed.join(', ')}`
+            : `${task.type} takes no classification; user stories, requirements and defects do`,
+        );
+      }
+    }
+    if (task.subClassifications !== undefined) {
+      const allowed = TASK_SUB_CLASSIFICATIONS[task.classificationId ?? ''] ?? [];
+      const wrong = task.subClassifications.filter((code) => !allowed.includes(code));
+      if (wrong.length > 0) {
+        issue(
+          'subClassifications',
+          allowed.length > 0
+            ? `${wrong.join(', ')} not valid under ${task.classificationId}; use: ${allowed.join(', ')}`
+            : `needs a classificationId that has sub-classifications (${Object.keys(TASK_SUB_CLASSIFICATIONS).join(', ')})`,
+        );
+      }
+    }
+    if (
+      task.testClassifications !== undefined &&
+      task.type !== 'CALMUS' &&
+      task.type !== 'CALMREQU'
+    ) {
+      issue('testClassifications', 'applies to user stories (CALMUS) and requirements only');
+    }
+  });
+
+/** A comment on an existing task. `taskId` goes into the path, `text` is the body. */
+export const taskCommentCreateSchema = z
+  .object({
+    taskId: uuid.describe('UUID of the task (incl. defect, user story) to comment on'),
+    text: z.string().min(1).max(100_000).describe('The comment; HTML formatting is allowed'),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------------------------
 
-/** A `calm_create` resource: one OData entity set plus the strict schema of its create payload. */
+/** A `calm_create` resource: one collection plus the strict schema of its create payload. */
 export interface CreateResource {
   service: ServiceName;
+  /**
+   * The collection the POST goes to: an OData entity set, or a REST path below the service. A
+   * `{field}` in it names a payload field that is moved into the path instead of the body.
+   */
   entitySet: string;
   /** Strict payload schema; unknown properties are rejected. */
   schema: z.ZodObject<z.ZodRawShape>;
@@ -519,6 +766,22 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     description:
       'A new feature in a project, with optional HTML description, status, priority and links ' +
       'created in the same call',
+  },
+  task: {
+    service: 'tasks',
+    entitySet: 'tasks',
+    schema: taskCreateSchema,
+    textFields: ['description'],
+    description:
+      'A new task in a project: project task, user story, sub-task, requirement, defect or risk, ' +
+      'with optional HTML description, assignee, priority, dates and sprint',
+  },
+  task_comment: {
+    service: 'tasks',
+    entitySet: 'tasks/{taskId}/comments',
+    schema: taskCommentCreateSchema,
+    textFields: ['text'],
+    description: 'A new comment on an existing task, defect or user story',
   },
   xlib_application: {
     service: 'xlibApplications',

@@ -1,5 +1,6 @@
-// `calm_create` — create a new SAP Cloud ALM document or library entry. Registered only when write
-// access is enabled (`CALM_WRITE_ENABLED=true`); see `tools/index.ts`.
+// `calm_create` — create a new SAP Cloud ALM document, feature, task, task comment or library
+// entry. Registered only when write access is enabled (`CALM_WRITE_ENABLED=true`); see
+// `tools/index.ts`.
 //
 // Create is the whole write surface. The tool never updates or deletes: an existing document's
 // HTML (with its embedded images) cannot be damaged by anything this file does.
@@ -69,12 +70,40 @@ export async function handleCalmCreate(
     );
   }
 
+  const { collection, body } = target(def.entitySet, parsed.data);
   try {
-    const created = await clients.createOData(def.service, def.entitySet, parsed.data);
-    const { uuid, displayId } = (created ?? {}) as { uuid?: unknown; displayId?: unknown };
-    audit({ resource: args.resource, id: uuid, displayId, fields: Object.keys(parsed.data) });
+    const created = await clients.create(def.service, collection, body);
+    // OData entities carry `uuid`; REST items (tasks, comments) carry `id`.
+    const { uuid, id, displayId } = (created ?? {}) as {
+      uuid?: unknown;
+      id?: unknown;
+      displayId?: unknown;
+    };
+    audit({
+      resource: args.resource,
+      id: uuid ?? id,
+      displayId,
+      fields: Object.keys(parsed.data),
+    });
     return jsonResult(created);
   } catch (error) {
     return errorResultFrom(error);
   }
+}
+
+/**
+ * Where the POST goes and what it carries: each `{field}` in the collection is replaced by that
+ * payload field (a validated uuid) and the field is left out of the body.
+ */
+function target(
+  collection: string,
+  data: Record<string, unknown>,
+): { collection: string; body: Record<string, unknown> } {
+  const body = { ...data };
+  const path = collection.replace(/\{(\w+)\}/g, (_, field: string) => {
+    const value = String(body[field]);
+    delete body[field];
+    return encodeURIComponent(value);
+  });
+  return { collection: path, body };
 }

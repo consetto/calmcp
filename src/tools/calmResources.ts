@@ -42,7 +42,8 @@ export interface CalmResourcesOptions {
 /** What the catalog says about creating when the operator left calmcp read-only. */
 const WRITE_DISABLED_NOTE =
   'Write access is off: this deployment is read-only and offers no calm_create tool. An operator ' +
-  'can enable create-only access for documents and library entries with CALM_WRITE_ENABLED=true.';
+  'can enable create-only access for documents, features, tasks, task comments and library ' +
+  'entries with CALM_WRITE_ENABLED=true.';
 
 /** Describe one `calm_create` resource with the fields its payload accepts. */
 function describeCreateResource(name: string, def: CreateResource) {
