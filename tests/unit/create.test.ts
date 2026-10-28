@@ -217,15 +217,16 @@ describe('handleCalmCreate', () => {
     expect(audit).toMatchObject([{ outcome: 'applied' }]);
   });
 
-  it('answers a successful create as created even when an image id cannot be decoded', async () => {
-    const description = '<p>x</p><img src="/ui/imageServiceAPI/v1/getImage?imageId=%E0%A4%A">';
+  it('answers a successful create as created even when the stored answer cannot be summarised', async () => {
+    // The text sent is clean; Cloud ALM's answer holds an image id whose escape does not decode.
+    const stored = '<p>x</p><img src="/ui/imageServiceAPI/v1/getImage?imageId=%E0%A4%A">';
     agent
       .get(ORIGIN)
       .intercept({ path: '/api/calm-features/v1/Features', method: 'POST' })
-      .reply(201, { uuid: 'f-1', displayId: '6-1', description });
+      .reply(201, { uuid: 'f-1', displayId: '6-1', description: stored });
     const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
       resource: 'feature',
-      data: { title: 'x', projectId: PROJECT, description },
+      data: { title: 'x', projectId: PROJECT, description: '<p>x</p>' },
     });
     expect(result.isError).toBeFalsy();
     expect(parse(result)).toMatchObject({ created: true, uuid: 'f-1' });
