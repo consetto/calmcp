@@ -26,3 +26,5 @@ jobs:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
           deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.1, LGPL-3.0
+          # node-forge is "BSD-3-Clause OR GPL-2.0"; calmcp uses it under BSD-3-Clause.
+          allow-dependencies-licenses: pkg:npm/node-forge
