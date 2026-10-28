@@ -22,6 +22,14 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 - **Text search** on task titles (case-insensitive, applied while paging, like the timebox filter).
 - **Several ids in one `calm_get`**, e.g. all features of a defect in one call.
 
+## Watch
+
+- **Fit and Gap sub-classifications are being discontinued.** The Cloud ALM Tasks app announces
+  (seen 2026-10-28) that sub-classifications under Fit and Gap will be deleted from requirements
+  and user stories in an upcoming release; the classifications stay. When the Tasks spec drops
+  them, remove the `US_FIT`/`US_GAP`/`REQ_FIT`/`REQ_GAP` sub-classification lists from `task`
+  create (`src/tools/create.ts`).
+
 ## More reads
 
 - **Test execution history**: `/testcases/executionhistory` and `/testdatavariants` (Test
