@@ -90,4 +90,18 @@ export const RECIPES: Recipe[] = [
       "2) calm_get({ resource: 'feature', id: '<featureId>' }) for each feature you need details on",
     ],
   },
+  {
+    question:
+      'Which transports belong to feature 6-132, and which feature carries transport K900123?',
+    steps: [
+      "Feature to transports: calm_list({ resource: 'features', filter: \"displayId eq '6-132'\", " +
+        "select: 'displayId,title', expand: 'toTransports,toTransportReferences' })",
+      "Transport to feature: calm_list({ resource: 'feature_transports', filter: \"id eq " +
+        "'K900123'\", expand: 'parent' }); repeat on feature_transport_references, which holds " +
+        'transports referenced by hand rather than assigned by the transport integration.',
+      'A transport carries only its id and the feature uuid (parent_uuid). Its status and import ' +
+        'history are not part of the Features API, so do not infer from it whether a transport ' +
+        'reached production.',
+    ],
+  },
 ];
