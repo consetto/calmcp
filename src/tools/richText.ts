@@ -7,44 +7,62 @@
 //   - adding active content: calmcp reads text written by other people, so an instruction planted in
 //     one object can make a model write `<script>`, an `onerror=` handler, a `javascript:` link or a
 //     tracking pixel (`<img src="https://elsewhere/…">`) into another, where every user who opens it
-//     runs or loads it. Whether Cloud ALM's UI sanitises such HTML is not documented; calmcp refuses
-//     it before sending rather than rely on that.
+//     runs or loads it. Cloud ALM's server strips some of this (scripts, handlers, srcset, media
+//     elements) but keeps images from other hosts and CSS `url(...)`, and its UI loads both (checked
+//     on a tenant, 2026-10-28). calmcp therefore checks against an allowlist: only the elements and
+//     attributes of plain formatted text, and only links and images that load nothing elsewhere.
 
 /** Where Cloud ALM's own image service serves the images of rich-text fields (same origin). */
 const IMAGE_SERVICE_PATH = '/ui/imageServiceAPI/';
 
-/** Elements that run code, load other documents or styles, or submit data. */
+/**
+ * The elements of formatted text: what Cloud ALM's editor (TinyMCE) and SAP's templates write.
+ * Anything else, including every element that runs code, loads a document or takes input, is
+ * refused by name.
+ */
+const ALLOWED_ELEMENTS = new Set([
+  ...['p', 'br', 'hr', 'div', 'span', 'font', 'b', 'strong', 'i', 'em', 'u', 's', 'strike'],
+  ...['del', 'ins', 'sub', 'sup', 'small', 'big', 'mark', 'code', 'pre', 'kbd', 'samp', 'var'],
+  ...['blockquote', 'q', 'cite', 'abbr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li'],
+  ...['dl', 'dt', 'dd', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption'],
+  ...['colgroup', 'col', 'a', 'img', 'figure', 'figcaption'],
+]);
+
+/** Attributes any allowed element may carry; none of them makes the browser load anything. */
+const GLOBAL_ATTRIBUTES = new Set([
+  ...['style', 'class', 'id', 'title', 'lang', 'dir', 'align', 'valign', 'width', 'height'],
+]);
+
+/** Attributes allowed on one element only. `href` and `src` are checked further below. */
+const ELEMENT_ATTRIBUTES: Record<string, readonly string[]> = {
+  a: ['href', 'target', 'rel', 'name'],
+  img: ['src', 'alt', 'border'],
+  table: ['border', 'cellpadding', 'cellspacing', 'summary', 'bgcolor'],
+  tr: ['bgcolor'],
+  td: ['colspan', 'rowspan', 'headers', 'scope', 'nowrap', 'bgcolor'],
+  th: ['colspan', 'rowspan', 'headers', 'scope', 'nowrap', 'bgcolor'],
+  col: ['span'],
+  colgroup: ['span'],
+  ol: ['start', 'type', 'reversed'],
+  ul: ['type'],
+  li: ['value', 'type'],
+  font: ['color', 'face', 'size'],
+};
+
+/** Elements that run code, load other documents or styles, or submit data: searched for again in
+ * the raw text, in case the parser could not read the tag. */
 const FORBIDDEN_ELEMENTS = [
-  'script',
-  'iframe',
-  'frame',
-  'frameset',
-  'object',
-  'embed',
-  'applet',
-  'style',
-  'link',
-  'meta',
-  'base',
-  'form',
-  'input',
-  'button',
-  'textarea',
-  'select',
-  'svg',
-  'math',
+  ...['script', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'style', 'link'],
+  ...['meta', 'base', 'form', 'input', 'button', 'textarea', 'select', 'svg', 'math', 'video'],
+  ...['audio', 'source', 'picture', 'track', 'template', 'portal'],
 ];
 
-/** Attributes holding a URL the browser follows or loads. */
-const URL_ATTRIBUTES = [
-  'href',
-  'src',
-  'action',
-  'formaction',
-  'xlink:href',
-  'poster',
-  'background',
-];
+/** Link targets: http(s), mailto, or a path within Cloud ALM. */
+const LINK_SCHEME = /^(https?|mailto):/i;
+
+/** Anything in a style value that loads a resource or could hide one (escapes, comments). */
+const STYLE_LOADS =
+  /\\|\/\*|url\s*\(|image(-set)?\s*\(|cross-fade\s*\(|element\s*\(|src\s*\(|expression\s*\(|@import|binding|behavior/i;
 
 /**
  * One tag: closing slash, element name, and the raw attribute text. Quoted values may contain `>`,
@@ -61,30 +79,37 @@ interface Tag {
   name: string;
   /** Attribute values by lower-case name; for a repeated name the first wins, as in a browser. */
   attributes: Map<string, string>;
+  /** False when the attribute text could not be read to its end, e.g. after a stray `=`. */
+  complete: boolean;
 }
 
 /** Every tag in `html`, parsed. */
 function tags(html: string): Tag[] {
   return [...html.matchAll(TAG)].map(([, , name = '', rest = '']) => ({
     name: name.toLowerCase(),
-    attributes: parseAttributes(rest),
+    ...parseAttributes(rest),
   }));
 }
 
-/** Tokenise an attribute string left to right, so a value is never searched for another attribute. */
-function parseAttributes(text: string): Map<string, string> {
+/**
+ * Tokenise an attribute string left to right, so a value is never searched for another attribute.
+ * Where the tokenizer stops early a browser would read on, so the tag is reported as incomplete.
+ */
+function parseAttributes(text: string): { attributes: Map<string, string>; complete: boolean } {
   const attributes = new Map<string, string>();
   ATTRIBUTE.lastIndex = 0;
   while (ATTRIBUTE.lastIndex < text.length) {
     const before = ATTRIBUTE.lastIndex;
     const match = ATTRIBUTE.exec(text);
-    if (!match || ATTRIBUTE.lastIndex === before) break;
+    if (!match || ATTRIBUTE.lastIndex === before) {
+      return { attributes, complete: text.slice(before).trim() === '' };
+    }
     const name = match[1]?.toLowerCase();
     if (name && !attributes.has(name)) {
       attributes.set(name, match[2] ?? match[3] ?? match[4] ?? '');
     }
   }
-  return attributes;
+  return { attributes, complete: true };
 }
 
 /** Every `<img>` tag's `src`, exactly as written (with `&amp;` decoded), in order. */
@@ -142,19 +167,42 @@ export function unsafeHtml(html: unknown, current?: unknown): string[] {
   if (typeof html !== 'string') return [];
   const problems = new Set<string>();
   const parsed = tags(html);
+  const existingSources = new Set(imageSources(current));
 
   for (const tag of parsed) {
-    if (FORBIDDEN_ELEMENTS.includes(tag.name))
+    if (!ALLOWED_ELEMENTS.has(tag.name)) {
       problems.add(`<${tag.name}> elements are not allowed`);
+      continue;
+    }
+    if (!tag.complete) {
+      problems.add(`a <${tag.name}> tag could not be read to its end; remove stray "=" or quotes`);
+    }
     for (const [name, value] of tag.attributes) {
       if (name.startsWith('on')) {
         problems.add(`event handler attributes such as ${name}= are not allowed`);
-      }
-      if (URL_ATTRIBUTES.includes(name) && UNSAFE_SCHEME.test(normalizedUrl(value))) {
-        problems.add(`${name} URLs with javascript:, vbscript: or data: are not allowed`);
-      }
-      if (name === 'style' && /url\s*\(|expression\s*\(/i.test(decodeEntities(value))) {
-        problems.add('inline styles may not load URLs (url(...) or expression(...))');
+      } else if (
+        !GLOBAL_ATTRIBUTES.has(name) &&
+        !ELEMENT_ATTRIBUTES[tag.name]?.includes(name) &&
+        !name.startsWith('data-')
+      ) {
+        problems.add(`the ${name} attribute is not allowed on <${tag.name}>`);
+      } else if (name === 'style' && STYLE_LOADS.test(decodeEntities(value))) {
+        problems.add(
+          'inline styles may not load anything: no url(), image-set(), @import, CSS escapes or ' +
+            'comments',
+        );
+      } else if (name === 'href') {
+        const url = normalizedUrl(value);
+        if (/^[a-z][a-z0-9+.-]*:/i.test(url) && !LINK_SCHEME.test(url)) {
+          problems.add('links must be http(s), mailto or a path within Cloud ALM');
+        }
+      } else if (tag.name === 'img' && name === 'src') {
+        const src = value.replace(/&amp;/g, '&');
+        if (!existingSources.has(src) && !isImageServicePath(src)) {
+          problems.add(
+            `images must come from Cloud ALM's image service (${IMAGE_SERVICE_PATH}…), not "${src}"`,
+          );
+        }
       }
     }
   }
@@ -177,20 +225,23 @@ export function unsafeHtml(html: unknown, current?: unknown): string[] {
       'a tag could not be read (unterminated quote or stray "<"); write "&lt;" for a literal "<"',
     );
   }
-
-  const existingSources = new Set(imageSources(current));
-  for (const src of imageSources(html)) {
-    if (!src.startsWith(IMAGE_SERVICE_PATH) && !existingSources.has(src)) {
-      problems.add(
-        `images must come from Cloud ALM's image service (${IMAGE_SERVICE_PATH}…), not "${src}"`,
-      );
-    }
-  }
   return [...problems];
 }
 
-/** A URL scheme that runs code or embeds a document. */
-const UNSAFE_SCHEME = /^(javascript|vbscript|data):/i;
+/**
+ * Whether `src` names an image of Cloud ALM's image service on the same host, after the browser's
+ * own resolution of `../` and `%2e%2e`, and with an image id that decodes.
+ */
+function isImageServicePath(src: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(src, 'https://tenant.invalid');
+    decodeURIComponent(url.search);
+  } catch {
+    return false;
+  }
+  return url.origin === 'https://tenant.invalid' && url.pathname.startsWith(IMAGE_SERVICE_PATH);
+}
 
 /** Decode the numeric and the few named entities that can disguise a scheme or a CSS function. */
 function decodeEntities(value: string): string {
