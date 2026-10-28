@@ -17,8 +17,9 @@
 // stay under that, since the budget is shared with every other client of the tenant.
 
 import type { CalmClients } from '../calm/index.js';
+import { UnexpectedResponseError } from '../errors.js';
 import type { ODataListResource, RestListResource } from './registry.js';
-import { locateRecords, type Record_ } from './shape.js';
+import type { Record_ } from './shape.js';
 
 /** Upstream page size used whenever calmcp pages a collection itself. */
 export const PAGE_SIZE = 500;
@@ -29,6 +30,13 @@ export const MAX_PAGES_RETURN = 10;
 /** Page cap when only a tally is kept and each page is discarded (20000 records). */
 export const MAX_PAGES_COUNT = 40;
 
+/**
+ * Time a count may spend paging. Pages are fetched one after another, so 40 pages of large tasks
+ * can take longer than the roughly 60 s an agent host waits for a tool; stopping here returns the
+ * tally so far, marked incomplete, instead of nothing.
+ */
+export const COUNT_TIME_BUDGET_MS = 40_000;
+
 /** Outcome of a paged fetch. */
 export interface PagedFetch {
   /** The accumulated records, or `[]` when an `onPage` callback consumed them instead. */
@@ -37,6 +45,8 @@ export interface PagedFetch {
   complete: boolean;
   /** Number of upstream requests issued. */
   pages: number;
+  /** Why an incomplete walk stopped: the page cap, or the time budget. */
+  stoppedBy?: 'pages' | 'time';
 }
 
 /** Options shared by both paged fetchers. */
@@ -48,6 +58,11 @@ export interface PagingOptions {
    * `records` comes back empty, so a large tally never materialises the records.
    */
   onPage?: (rows: Record_[]) => void;
+  /**
+   * Epoch milliseconds after which no further page is requested. The first page is always fetched;
+   * a walk stopped here is incomplete, like one stopped by the page cap.
+   */
+  deadline?: number;
 }
 
 /**
@@ -75,6 +90,8 @@ export async function fetchAllRest(
   let previousQuery: string | undefined;
 
   for (let page = 0; page < maxPages; page += 1) {
+    if (pastDeadline(page, options))
+      return { records: all, complete: false, pages: page, stoppedBy: 'time' };
     const { path, query } = def.build({
       ...params,
       limit: PAGE_SIZE,
@@ -91,12 +108,12 @@ export async function fetchAllRest(
     // the records in an OData-style `{ value: [...] }` envelope. Both shapes must page, or a
     // count silently walks zero records and reports a total of 0.
     const body = await clients.getRest(def.service, path, query);
-    const rows = locateRecords(body)?.records ?? [];
+    const rows = pageRows(body, def.service);
     collect(rows, all, options.onPage);
     if (rows.length < PAGE_SIZE) return { records: all, complete: true, pages: page + 1 };
   }
 
-  return { records: all, complete: false, pages: maxPages };
+  return { records: all, complete: false, pages: maxPages, stoppedBy: 'pages' };
 }
 
 /**
@@ -126,12 +143,14 @@ export async function fetchAllOData(
   let skip = 0;
 
   for (let page = 0; page < maxPages; page += 1) {
+    if (pastDeadline(page, options))
+      return { records: all, complete: false, pages: page, stoppedBy: 'time' };
     const body = await clients.listOData(service, entitySet, {
       ...query,
       top: PAGE_SIZE,
       skip,
     });
-    const rows = locateRecords(body)?.records ?? [];
+    const rows = pageRows(body, service);
     collect(rows, all, options.onPage);
     skip += rows.length;
     if (rows.length === 0 || (rows.length < PAGE_SIZE && !hasNextLink(body))) {
@@ -139,7 +158,7 @@ export async function fetchAllOData(
     }
   }
 
-  return { records: all, complete: false, pages: maxPages };
+  return { records: all, complete: false, pages: maxPages, stoppedBy: 'pages' };
 }
 
 /**
@@ -152,6 +171,34 @@ export function hasNextLink(body: unknown): boolean {
   if (typeof body !== 'object' || body === null) return false;
   const envelope = body as { '@odata.nextLink'?: unknown; '@nextLink'?: unknown };
   return Boolean(envelope['@odata.nextLink'] ?? envelope['@nextLink']);
+}
+
+/** Whether the time budget is spent; the first page is always fetched. */
+function pastDeadline(page: number, options: PagingOptions): boolean {
+  return page > 0 && options.deadline !== undefined && Date.now() >= options.deadline;
+}
+
+/**
+ * The records of one page: a bare array, an OData `{ value: [...] }` or a SCIM
+ * `{ Resources: [...] }` envelope. Anything else is refused. Read as a single record, an
+ * unexpected envelope would be counted as 1 and reported as complete.
+ */
+function pageRows(body: unknown, service: string): Record_[] {
+  const list = Array.isArray(body)
+    ? body
+    : typeof body === 'object' && body !== null
+      ? ((body as { value?: unknown; Resources?: unknown }).value ??
+        (body as { Resources?: unknown }).Resources)
+      : undefined;
+  if (!Array.isArray(list)) {
+    throw new UnexpectedResponseError(
+      `The ${service} service answered a list request with something that is not a list, so ` +
+        'calmcp did not count or return it.',
+    );
+  }
+  return list.filter(
+    (row): row is Record_ => typeof row === 'object' && row !== null && !Array.isArray(row),
+  );
 }
 
 /** Hand a page to the callback, or accumulate it when there is none. */

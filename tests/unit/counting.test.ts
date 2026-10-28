@@ -1,5 +1,5 @@
 import { MockAgent, setGlobalDispatcher } from 'undici';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleCalmAnalytics } from '../../src/tools/calmAnalytics.js';
 import { handleCalmList } from '../../src/tools/calmList.js';
 import { makeClients, ORIGIN, parse, textOf } from './helpers.js';
@@ -349,6 +349,65 @@ describe('counting via calm_list', () => {
     expect(body.total).toBe(20000);
     expect(body.complete).toBe(false);
     expect(body.note).toContain('higher');
+  });
+
+  it('stops at the time budget with what it counted, and says why', async () => {
+    // The clock jumps past the 40 s budget while the first page is answered; a second page would
+    // find no interceptor and fail the call as NETWORK.
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${TASKS}?projectId=p1&offset=0&limit=500` })
+      .reply(() => {
+        now += 50_000;
+        return { statusCode: 200, data: tasks(500) };
+      });
+    try {
+      const body = parse(
+        await handleCalmList(makeClients(), {
+          resource: 'tasks',
+          project_id: 'p1',
+          count_only: true,
+        }),
+      ) as CountBody & { stoppedBy?: string };
+      expect(body).toMatchObject({
+        total: 500,
+        complete: false,
+        stoppedBy: 'time',
+        pagesFetched: 1,
+      });
+      expect(body.note).toContain('Stopped after 40 s');
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('counts a SCIM resource that lists its records under Resources', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-landscape/v1/scim/v2/Groups?startIndex=1&count=500' })
+      .reply(200, { totalResults: 2, Resources: [{ id: 'g1' }, { id: 'g2' }] });
+    const body = parse(
+      await handleCalmList(makeClients(), {
+        resource: 'landscape_access_control_lists',
+        count_only: true,
+      }),
+    ) as CountBody;
+    expect(body).toMatchObject({ total: 2, complete: true });
+  });
+
+  it('refuses a page that is no list, instead of counting it as one record', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${TASKS}?projectId=p1&offset=0&limit=500` })
+      .reply(200, { items: tasks(3), total: 3 });
+    const result = await handleCalmList(makeClients(), {
+      resource: 'tasks',
+      project_id: 'p1',
+      count_only: true,
+    });
+    expect(parse(result)).toMatchObject({ error: 'UPSTREAM_ERROR', retryable: false });
   });
 
   it('counts a REST resource that wraps its records in an OData envelope', async () => {
