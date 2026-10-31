@@ -5,7 +5,7 @@
   "display_name": "calmcp - SAP Cloud ALM MCP Server",
   "version": "0.9.4",
   "description": "MCP server for SAP Cloud ALM. Query tasks, defects, projects, features, documents, tests, analytics and more from your Cloud ALM tenant. Read-only by default; optionally create documents and library entries.",
-  "long_description": "calmcp connects Claude to SAP Cloud ALM via its APIs, exposed through four consolidated, intent-based read tools: calm_list (query any collection), calm_get (fetch one entity), calm_analytics (sorted/aggregated queries) and calm_resources (discover resources, providers and recipes). Covers Tasks, Projects, Features, Documents, Process Hierarchy, Test Management, Analytics, BSM/Status Events, Landscape and Cross-Library objects. calmcp is read-only by default. Turning on 'Write Access' adds a fifth tool, calm_create, which only creates new documents, features, tasks (incl. user stories and defects), task comments and library entries (cross-library applications, configurations, configuration activities, developments, interfaces). It never updates or deletes existing Cloud ALM data.",
+  "long_description": "calmcp connects Claude to SAP Cloud ALM via its APIs, exposed through four consolidated, intent-based read tools: calm_list (query any collection), calm_get (fetch one entity), calm_analytics (sorted/aggregated queries) and calm_resources (discover resources, providers and recipes). Covers Tasks, Projects, Features, Documents, Process Hierarchy, Test Management, Analytics, BSM/Status Events, Landscape and Cross-Library objects. calmcp is read-only by default. Turning on 'Write Access' adds a fifth tool, calm_create, which only creates new documents, features, tasks (incl. user stories and defects), task comments, library entries (cross-library applications, configurations, configuration activities, developments, interfaces) and links between existing objects. It never updates or deletes existing Cloud ALM data.",
   "author": {
     "name": "consetto",
     "url": "https://github.com/consetto"
@@ -49,7 +49,7 @@
     },
     {
       "name": "calm_create",
-      "description": "Only with 'Write Access' on: create a new document, feature, task (incl. user story, defect), task comment or library entry (cross-library application, configuration, configuration activity, development, interface). Never changes or deletes."
+      "description": "Only with 'Write Access' on: create a new document, feature, task (incl. user story, defect), task comment or library entry (cross-library application, configuration, configuration activity, development, interface), or a link between existing objects. Never changes or deletes."
     },
     {
       "name": "calm_update",
@@ -116,7 +116,7 @@
     "calm_write_enabled": {
       "type": "boolean",
       "title": "Write Access (create documents, features, tasks and library entries)",
-      "description": "Off by default: calmcp is read-only. When on, Claude gets one extra tool, calm_create, that creates NEW documents, features, tasks, task comments and library entries only. Existing objects are never changed or deleted. The OAuth2 client needs the calm-api.documents.write, calm-api.features.write, calm-api.tasks.write and calm-api.lib.write scopes.",
+      "description": "Off by default: calmcp is read-only. When on, Claude gets one extra tool, calm_create, that creates NEW documents, features, tasks, task comments, library entries and links between existing objects only. Existing objects are never changed or deleted. The OAuth2 client needs the calm-api.documents.write, calm-api.features.write, calm-api.tasks.write, calm-api.testcases.write and calm-api.lib.write scopes.",
       "default": false,
       "required": false
     },

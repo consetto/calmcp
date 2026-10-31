@@ -230,10 +230,9 @@ export const calmCreateShape = {
   resource: z
     .enum(toEnumValues(CREATE_RESOURCE_NAMES))
     .describe(
-      'What to create: "document", "feature", "task" (incl. user story, defect), "task_comment" ' +
-        'or a library entry (xlib_application, xlib_configuration, xlib_configuration_activity, ' +
-        'xlib_development, xlib_interface). ' +
-        'calm_resources({ topic: "<resource>" }) lists the fields',
+      'What to create: an entity ("task" incl. user story and defect, "xlib_*" a library ' +
+        'entry) or a link between existing objects (*_link, task_relation, task_reference, ' +
+        'feature_url_reference). calm_resources({ topic: "<resource>" }) lists the fields',
     ),
   data: z
     .record(z.string(), z.unknown())
@@ -242,6 +241,8 @@ export const calmCreateShape = {
         'A feature needs title and projectId, optionally description (HTML). ' +
         'A task needs title, projectId and type (CALMDEF defect, CALMUS user story, ...). ' +
         'A task_comment needs taskId and text. ' +
+        'A link names the two objects by uuid (features, documents, process nodes and manual ' +
+        'test cases also by display id, e.g. 6-132; tasks by uuid only). ' +
         'A library entry needs title. Related links and assignments (toURLReferences, ' +
         'toLibraryAssignments, ...) can be included and are created in the same call. Unknown ' +
         'fields are rejected, never dropped',

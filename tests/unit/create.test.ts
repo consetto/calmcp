@@ -53,13 +53,15 @@ describe('tool registration', () => {
     const { names, instructions } = await listTools(false);
     expect(names).toEqual(['calm_analytics', 'calm_get', 'calm_list', 'calm_resources']);
     expect(instructions).not.toContain('calm_create');
+    expect(instructions).toMatch(/^Read-only access to SAP Cloud ALM/);
   });
 
   it('adds calm_create, and says so in the instructions, when write access is on', async () => {
     const { names, instructions } = await listTools(true);
     expect(names).toContain('calm_create');
     expect(instructions).toContain('calm_create');
-    expect(instructions).toContain('Nothing is ever updated or deleted');
+    expect(instructions).toContain('calm_create never changes or deletes an existing object');
+    expect(instructions).toMatch(/^Access to SAP Cloud ALM/);
   });
 });
 
@@ -543,13 +545,220 @@ describe('handleCalmCreate', () => {
   });
 });
 
+describe('calm_create links', () => {
+  const TASK = '22222222-2222-2222-2222-222222222222';
+  const OTHER = '33333333-3333-3333-3333-333333333333';
+  const FEATURE = '44444444-4444-4444-4444-444444444444';
+  const TASKS = '/api/calm-tasks/v1/tasks';
+  let agent: MockAgent;
+  beforeEach(() => {
+    agent = new MockAgent();
+    agent.disableNetConnect();
+    setGlobalDispatcher(agent);
+  });
+  afterEach(async () => {
+    await agent.close();
+  });
+
+  const create = (resource: string, data: Record<string, unknown>) =>
+    handleCalmCreate(makeClients({ writeEnabled: true }), { resource, data });
+  /** Intercept a POST and keep its body. */
+  const post = (path: string, reply: object) => {
+    const sent: unknown[] = [];
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path,
+        method: 'POST',
+        // The matcher may run more than once per request: keep the last body, not each call.
+        body: (body) => {
+          sent.splice(0, sent.length, JSON.parse(body));
+          return true;
+        },
+      })
+      .reply(201, reply);
+    return sent;
+  };
+  const featureLookup = (rows: unknown[]) =>
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith('/api/calm-features/v1/Features?') &&
+          new URLSearchParams(path.split('?')[1]).get('$filter') === "displayId eq '6-132'",
+      })
+      .reply(200, { value: rows });
+
+  it('links a feature to a task, with the task in the path and only the feature in the body', async () => {
+    const sent = post(`${TASKS}/${TASK}/featureAssignments`, { id: 'a-1', featureId: FEATURE });
+    const result = await create('task_feature_link', { taskId: TASK, featureId: FEATURE });
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual([{ featureId: FEATURE }]);
+    expect(parse(result)).toMatchObject({ created: true, id: 'a-1' });
+  });
+
+  it('resolves a feature display id to its uuid before linking', async () => {
+    featureLookup([{ uuid: FEATURE, displayId: '6-132' }]);
+    const sent = post(`${TASKS}/${TASK}/featureAssignments`, { id: 'a-1', featureId: FEATURE });
+    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-132' });
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual([{ featureId: FEATURE }]);
+  });
+
+  it('refuses a display id that names no feature, before any POST', async () => {
+    featureLookup([]);
+    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-132' });
+    expect(parse(result)).toMatchObject({ error: 'NOT_FOUND' });
+  });
+
+  it('refuses a display id that names two features, never picking one', async () => {
+    featureLookup([
+      { uuid: FEATURE, displayId: '6-132' },
+      { uuid: OTHER, displayId: '6-132' },
+    ]);
+    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-132' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('exactly one');
+  });
+
+  // No intercepts: a request that slipped through would fail as NETWORK, not with these messages.
+  it.each([
+    [
+      'a task display id, which the Tasks API cannot look up',
+      'task_feature_link',
+      { taskId: '3-15', featureId: FEATURE },
+      'taskId',
+    ],
+    [
+      'a feature id that is neither uuid nor display id',
+      'task_feature_link',
+      { taskId: TASK, featureId: '../x' },
+      'featureId',
+    ],
+    [
+      'a child relation, which builds a hierarchy beside the sub-tasks',
+      'task_relation',
+      { taskId: TASK, type: '0', relationTaskId: OTHER },
+      'type',
+    ],
+    [
+      'a parent relation',
+      'task_relation',
+      { taskId: TASK, type: '10', relationTaskId: OTHER },
+      'type',
+    ],
+    [
+      "the spec's successor code 20, which Cloud ALM refuses",
+      'task_relation',
+      { taskId: TASK, type: '20', relationTaskId: OTHER },
+      'type',
+    ],
+    [
+      'a relation of a task to itself',
+      'task_relation',
+      { taskId: TASK, type: '2', relationTaskId: TASK },
+      'itself',
+    ],
+    [
+      'an http reference on a task, which the spec does not allow',
+      'task_reference',
+      { taskId: TASK, name: 'x', url: 'http://example.com' },
+      'https',
+    ],
+    [
+      'a javascript: link on a feature',
+      'feature_url_reference',
+      { featureId: FEATURE, name: 'x', url: 'javascript:alert(1)' },
+      'url',
+    ],
+  ])('refuses %s before sending anything', async (_, resource, data, expected) => {
+    const result = await create(resource, data);
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain(expected);
+  });
+
+  it('relates two tasks with the type code as Cloud ALM shows it', async () => {
+    const sent = post(`${TASKS}/${TASK}/relations`, {
+      id: 'r-1',
+      type: '2',
+      relationTaskId: OTHER,
+    });
+    const result = await create('task_relation', {
+      taskId: TASK,
+      type: '2',
+      relationTaskId: OTHER,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual([{ type: '2', relationTaskId: OTHER }]);
+  });
+
+  it('refuses a task reference whose URL the task already has, without POSTing', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${TASKS}/${TASK}/references` })
+      .reply(200, [{ id: 'x', name: 'Spec', url: 'https://example.com/spec' }]);
+    const result = await create('task_reference', {
+      taskId: TASK,
+      name: 'Spec again',
+      url: 'https://example.com/spec',
+    });
+    expect(parse(result)).toMatchObject({ error: 'CONFLICT' });
+  });
+
+  it('adds a task reference whose URL is new', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${TASKS}/${TASK}/references` })
+      .reply(200, []);
+    const sent = post(`${TASKS}/${TASK}/references`, { id: 'ref-1' });
+    const result = await create('task_reference', {
+      taskId: TASK,
+      name: 'Spec',
+      url: 'https://example.com/spec',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual([{ name: 'Spec', url: 'https://example.com/spec' }]);
+  });
+
+  it('checks feature links with a quoted parent_uuid and refuses a URL already there', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith('/api/calm-features/v1/URLReferences?') &&
+          new URLSearchParams(path.split('?')[1]).get('$filter') === `parent_uuid eq '${FEATURE}'`,
+      })
+      .reply(200, { value: [{ url: 'https://example.com/spec' }] });
+    const result = await create('feature_url_reference', {
+      featureId: FEATURE,
+      name: 'Spec',
+      url: 'https://example.com/spec',
+    });
+    expect(parse(result)).toMatchObject({ error: 'CONFLICT' });
+  });
+
+  it('sends the test case under the name the Test Management spec uses', async () => {
+    const sent = post('/api/calm-testmanagement/v1/TaskAssignments', { uuid: 'ta-1' });
+    const result = await create('test_case_task_link', { testCaseId: OTHER, taskId: TASK });
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual([{ parentTestCase_ID: OTHER, taskId: TASK }]);
+  });
+});
+
 describe('create registry', () => {
-  it('covers documents, features, tasks, comments and the five library entry types, and nothing else', () => {
+  it('covers documents, features, tasks, comments, library entries and links, and nothing else', () => {
     expect([...CREATE_RESOURCE_NAMES].sort()).toEqual([
       'document',
       'feature',
+      'feature_url_reference',
       'task',
       'task_comment',
+      'task_document_link',
+      'task_feature_link',
+      'task_process_link',
+      'task_reference',
+      'task_relation',
+      'test_case_task_link',
       'xlib_application',
       'xlib_configuration',
       'xlib_configuration_activity',
@@ -607,6 +816,17 @@ describe('calm_resources and write access', () => {
         create: { fields: unknown[] };
       };
       expect(focused.create.fields.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('gives each create resource an example with all its required fields', () => {
+    for (const name of CREATE_RESOURCE_NAMES) {
+      const focused = parse(handleCalmResources({ topic: name }, { writeEnabled: true })) as {
+        create: { example: string; fields: { name: string; required: boolean }[] };
+      };
+      for (const field of focused.create.fields.filter((f) => f.required)) {
+        expect(focused.create.example, name).toContain(`${field.name}: `);
+      }
     }
   });
 

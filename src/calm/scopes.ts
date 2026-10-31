@@ -33,6 +33,7 @@ const WRITE_SCOPES: Partial<Record<ServiceName, string>> = {
   documents: 'calm-api.documents.write',
   features: 'calm-api.features.write',
   tasks: 'calm-api.tasks.write',
+  testmanagement: 'calm-api.testcases.write',
   xlibApplications: 'calm-api.lib.write',
   xlibConfigurations: 'calm-api.lib.write',
   xlibDevelopments: 'calm-api.lib.write',
