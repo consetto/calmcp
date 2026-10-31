@@ -86,6 +86,20 @@ describe('createHttpApp with API-key auth', () => {
     auth: { apiKeys: [{ key: 'super-secret-key', scopes: ['Viewer'] }] },
   });
 
+  it('answers a body that is not JSON with a JSON-RPC parse error, not a stack trace', async () => {
+    const res = await request(app)
+      .post('/mcp')
+      .set('Content-Type', 'application/json')
+      .send('{bad');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      jsonrpc: '2.0',
+      error: { code: -32700, message: 'Parse error' },
+      id: null,
+    });
+    expect(res.text).not.toMatch(/node_modules|SyntaxError|at /);
+  });
+
   it('rejects POST /mcp without a key (401)', async () => {
     const res = await request(app)
       .post('/mcp')

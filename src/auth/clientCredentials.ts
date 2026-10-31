@@ -30,6 +30,8 @@ export class ClientCredentialsAuthProvider implements AuthProvider {
   private readonly config: Config;
   private readonly logger: Logger;
   private cached?: CachedToken;
+  /** The token request in flight, shared by every call that needs a token meanwhile. */
+  private pending?: Promise<string>;
 
   /**
    * @param config - Validated configuration (sandbox or OAuth2).
@@ -55,12 +57,23 @@ export class ClientCredentialsAuthProvider implements AuthProvider {
     return { baseUrl, headers: { Authorization: `Bearer ${token}` } };
   }
 
-  /** Return a cached token if still valid, otherwise fetch a fresh one. */
+  /** @inheritdoc */
+  invalidate(): void {
+    this.cached = undefined;
+  }
+
+  /**
+   * Return a cached token if still valid, otherwise fetch a fresh one. Calls arriving while a fetch
+   * is running wait for it instead of starting their own.
+   */
   private async getToken(): Promise<string> {
     if (this.cached && Date.now() < this.cached.expiresAt) {
       return this.cached.token;
     }
-    return this.fetchToken();
+    this.pending ??= this.fetchToken().finally(() => {
+      this.pending = undefined;
+    });
+    return this.pending;
   }
 
   /** Perform the OAuth2 client-credentials grant and cache the result. */
@@ -99,7 +112,15 @@ export class ClientCredentialsAuthProvider implements AuthProvider {
       );
     }
 
-    const data = (await response.json()) as TokenResponse;
+    let data: TokenResponse;
+    try {
+      data = (await response.json()) as TokenResponse;
+    } catch (error) {
+      throw new AuthError(`Token response could not be read: ${(error as Error).message}`);
+    }
+    if (typeof data?.access_token !== 'string' || typeof data.expires_in !== 'number') {
+      throw new AuthError('Token response has no access_token and expires_in');
+    }
     // Treat the token as expired a configurable buffer before the server's stated expiry.
     const expiresAt = Date.now() + data.expires_in * 1000 - this.config.tokenBufferMs();
     this.cached = { token: data.access_token, expiresAt };

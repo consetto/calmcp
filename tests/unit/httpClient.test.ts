@@ -124,3 +124,77 @@ describe('parseErrorResponse', () => {
     expect(err.message).toContain('boom');
   });
 });
+
+describe('CalmHttpClient token renewal and body limit', () => {
+  let agent: MockAgent;
+
+  beforeEach(() => {
+    agent = new MockAgent();
+    agent.disableNetConnect();
+    setGlobalDispatcher(agent);
+  });
+
+  afterEach(async () => {
+    await agent.close();
+  });
+
+  /** An auth provider with a token cache, counting how often it was told to drop the token. */
+  class RenewingAuth implements AuthProvider {
+    invalidated = 0;
+    async authorize(): Promise<AuthContext> {
+      return {
+        baseUrl: `${ORIGIN}/api`,
+        headers: { Authorization: `Bearer token-${this.invalidated}` },
+      };
+    }
+    invalidate(): void {
+      this.invalidated += 1;
+    }
+  }
+  const renewingClient = (auth: AuthProvider) =>
+    new CalmHttpClient(auth, 'features', { timeoutMs: 5000, logger: createLogger(false) });
+
+  it('retries once with a new token when Cloud ALM refuses the cached one', async () => {
+    const pool = agent.get(ORIGIN);
+    pool
+      .intercept({
+        path: '/api/calm-features/v1/Features',
+        headers: { authorization: 'Bearer token-0' },
+      })
+      .reply(401, 'expired');
+    pool
+      .intercept({
+        path: '/api/calm-features/v1/Features',
+        headers: { authorization: 'Bearer token-1' },
+      })
+      .reply(200, { value: [] });
+    const auth = new RenewingAuth();
+    await expect(renewingClient(auth).get('/Features')).resolves.toEqual({ value: [] });
+    expect(auth.invalidated).toBe(1);
+  });
+
+  it('gives up after one renewal, so a wrong secret fails fast', async () => {
+    const pool = agent.get(ORIGIN);
+    pool.intercept({ path: '/api/calm-features/v1/Documents', method: 'POST' }).reply(401, 'no');
+    pool.intercept({ path: '/api/calm-features/v1/Documents', method: 'POST' }).reply(401, 'no');
+    const auth = new RenewingAuth();
+    const error = await renewingClient(auth)
+      .post('/Documents', { title: 'x' })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(401);
+    expect(auth.invalidated).toBe(1);
+  });
+
+  it('refuses a body larger than it reads, before parsing it', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-features/v1/Features' })
+      .reply(200, 'x'.repeat(33 * 1024 * 1024));
+    const error = await makeClient()
+      .get('/Features')
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).tooLarge).toBe(true);
+  });
+});

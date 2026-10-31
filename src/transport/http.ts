@@ -17,7 +17,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { localhostHostValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import cors from 'cors';
-import express, { type Express, type Request, type Response } from 'express';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import type { Logger } from 'pino';
@@ -184,6 +184,26 @@ export function createHttpApp(options: HttpAppOptions): Express {
   };
   app.get('/mcp', methodNotAllowed);
   app.delete('/mcp', methodNotAllowed);
+
+  // Errors raised by middleware (a body that is not JSON, one over the size limit) answer in
+  // JSON-RPC form. Express's default would send an HTML page with the stack trace and absolute
+  // paths whenever NODE_ENV is not production, to any caller, authenticated or not.
+  app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    const { status, type } = (error ?? {}) as { status?: unknown; type?: unknown };
+    const httpStatus = typeof status === 'number' && status >= 400 && status < 500 ? status : 500;
+    logger.warn({ status: httpStatus, type }, 'HTTP request refused');
+    if (type === 'entity.parse.failed') {
+      res.status(400).json(jsonRpcError(-32700, 'Parse error'));
+    } else if (httpStatus < 500) {
+      res.status(httpStatus).json(jsonRpcError(-32600, 'Invalid request'));
+    } else {
+      res.status(500).json(jsonRpcError(-32603, 'Internal server error'));
+    }
+  });
 
   return app;
 }
