@@ -180,8 +180,56 @@ describe('handleCalmCreate', () => {
         id: 'd-2',
         displayId: '12-2',
         fields: ['title', 'projectId', 'content'],
+        outcome: 'applied',
       },
     ]);
+  });
+
+  it('reports a create that met no answer as maybe applied, audits it, and never invites a retry', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .replyWithError(new Error('socket hang up'));
+    const audit: CreateAuditEntry[] = [];
+    const result = await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'document', data: { title: 'Design', projectId: PROJECT } },
+      (entry) => audit.push(entry),
+    );
+    expect(parse(result)).toMatchObject({ error: 'NETWORK', retryable: false });
+    expect(textOf(result)).toContain('may or may not have been created');
+    expect(audit).toMatchObject([{ resource: 'document', outcome: 'unknown' }]);
+  });
+
+  it('reports a create Cloud ALM accepted with an unreadable answer as created', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .reply(201, 'created, but not JSON');
+    const audit: CreateAuditEntry[] = [];
+    const result = await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'document', data: { title: 'Design', projectId: PROJECT } },
+      (entry) => audit.push(entry),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(parse(result)).toMatchObject({ created: true, resource: 'document' });
+    expect(audit).toMatchObject([{ outcome: 'applied' }]);
+  });
+
+  it('answers a successful create as created even when the stored answer cannot be summarised', async () => {
+    // The text sent is clean; Cloud ALM's answer holds an image id whose escape does not decode.
+    const stored = '<p>x</p><img src="/ui/imageServiceAPI/v1/getImage?imageId=%E0%A4%A">';
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-features/v1/Features', method: 'POST' })
+      .reply(201, { uuid: 'f-1', displayId: '6-1', description: stored });
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'feature',
+      data: { title: 'x', projectId: PROJECT, description: '<p>x</p>' },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(parse(result)).toMatchObject({ created: true, uuid: 'f-1' });
   });
 
   it('logs the audit entry with the caller when called through the server', async () => {

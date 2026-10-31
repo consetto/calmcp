@@ -15,6 +15,7 @@ import { type CalmGetArgs, handleCalmGet } from './calmGet.js';
 import { type CalmListArgs, handleCalmList } from './calmList.js';
 import { type CalmResourcesArgs, handleCalmResources } from './calmResources.js';
 import { type CalmUpdateArgs, handleCalmUpdate } from './calmUpdate.js';
+import { errorResultFrom } from './result.js';
 import {
   calmAnalyticsShape,
   calmCreateShape,
@@ -69,7 +70,13 @@ export function registerTools(
     <A>(tool: string, handler: (a: A) => CallToolResult | Promise<CallToolResult>) =>
     async (args: A, extra: { signal: AbortSignal }): Promise<CallToolResult> => {
       logToolCall(logger, tool, args);
-      const result = await runWithContext({ signal: extra.signal }, () => handler(args));
+      let result: CallToolResult;
+      try {
+        result = await runWithContext({ signal: extra.signal }, () => handler(args));
+      } catch (error) {
+        // A handler bug must still answer in the JSON error format, not as the SDK's plain text.
+        result = errorResultFrom(error);
+      }
       logToolResult(logger, tool, result);
       return result;
     };
