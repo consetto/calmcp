@@ -88,11 +88,11 @@ Consequences:
 
 ### Features: returned intact
 
-In the same tenant 76 of 297 features have an HTML description and 4 contain `<img`. For feature
-6-132 the API returns all nine image tags, in the form
+In the same tenant about a quarter of the features have an HTML description and a few contain
+`<img`. For a feature with images the API returns every image tag, in the form
 
 ```html
-<img src="/ui/imageServiceAPI/v1/getImage?imageId=4e4b35c0-4a3e-405c-9695-e64b6a9f3166" alt="sfw5_select" />
+<img src="/ui/imageServiceAPI/v1/getImage?imageId=00000000-0000-0000-0000-0000000000aa" alt="screenshot" />
 ```
 
 The image is stored in the image service; the description holds only a reference. Sending the same

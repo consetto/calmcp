@@ -33,11 +33,12 @@ describeLive('tools against a live backend', () => {
   });
 
   it('hints at the next page of a full OData page', async () => {
+    // An empty page comes back as {records: [], subject, note} instead of an OData body.
     const body = parse(await handleCalmList(makeClients(), { resource: 'features', top: 1 })) as {
-      value: unknown[];
+      value?: unknown[];
       nextPage?: unknown;
     };
-    if (body.value.length === 1) expect(body.nextPage).toEqual({ skip: 1 });
+    if (body.value?.length === 1) expect(body.nextPage).toEqual({ skip: 1 });
   });
 });
 

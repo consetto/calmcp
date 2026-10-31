@@ -46,6 +46,7 @@ modules:
         - "*.mcpb"
         - "*.log"
         - .env
+        - ".env.*"
         # Local, gitignored files: notes, assistant settings and scripts that may name tenants or
         # customers. A release build in CI never has them; a build on a workstation does.
         - "*.local.*"
