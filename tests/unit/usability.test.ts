@@ -154,11 +154,11 @@ describe('network-backed usability', () => {
       await handleCalmList(makeClients(), {
         resource: 'tasks',
         project_id: 'p1',
-        limit: 2,
-        offset: 4,
+        top: 2,
+        skip: 4,
       }),
     );
-    expect(body).toEqual({ records: [{ id: 'a' }, { id: 'b' }], nextPage: { offset: 6 } });
+    expect(body).toEqual({ records: [{ id: 'a' }, { id: 'b' }], nextPage: { skip: 6 } });
   });
 
   it('leaves a short last page as the service returned it', async () => {
@@ -167,7 +167,7 @@ describe('network-backed usability', () => {
       .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&limit=5' })
       .reply(200, [{ id: 'a' }]);
     const body = parse(
-      await handleCalmList(makeClients(), { resource: 'tasks', project_id: 'p1', limit: 5 }),
+      await handleCalmList(makeClients(), { resource: 'tasks', project_id: 'p1', top: 5 }),
     );
     expect(body).toEqual([{ id: 'a' }]);
   });

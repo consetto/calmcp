@@ -5,7 +5,8 @@ import type { ServiceName } from '../../config.js';
 
 /** Contextual parameters accepted by `calm_list` (in addition to the OData system options). */
 export interface ListParams {
-  // OData system query options (apply to `odata` resources).
+  // OData system query options (apply to `odata` resources). `top`/`skip` also page the REST
+  // resources: each build translates them into the service's own window (limit/offset, startIndex).
   filter?: string;
   select?: string;
   expand?: string;
@@ -13,7 +14,7 @@ export interface ListParams {
   top?: number;
   skip?: number;
   /** `$count` — return the total alongside the records (OData resources only). */
-  count?: boolean;
+  with_count?: boolean;
   // Counting options applied by calmcp itself; see `tools/counting.ts`.
   /** Return only the total, no records. Works for REST resources too, by paging. */
   count_only?: boolean;
@@ -39,8 +40,6 @@ export interface ListParams {
   sub_status?: string;
   assignee_id?: string;
   tags?: string[];
-  limit?: number;
-  offset?: number;
   /** Timebox (sprint/phase) id — applied by calmcp after fetching; see `tools/shape.ts`. */
   timebox_id?: string;
   /** Timebox name (e.g. "Sprint 5") — resolved against the project's timeboxes. */
@@ -49,8 +48,8 @@ export interface ListParams {
   project_name?: string;
   /** Comma-separated field projection applied by calmcp to the response records. */
   fields?: string;
-  /** Free-form REST filters for the Landscape and BSM services (e.g. objectType, serviceName). */
-  filters?: Record<string, string>;
+  /** Query parameters of the Landscape and BSM REST services (e.g. objectType, serviceName). */
+  rest_filters?: Record<string, string>;
 }
 
 /** A `calm_list` resource backed by an OData entity set (supports `$filter`/`$orderby`/etc.). */

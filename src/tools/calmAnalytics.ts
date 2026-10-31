@@ -80,7 +80,7 @@ export async function handleCalmAnalytics(
       select: args.select,
       top: args.top,
       skip: args.skip,
-      count: args.count,
+      count: args.with_count,
     });
     return jsonResult(data);
   } catch (error) {

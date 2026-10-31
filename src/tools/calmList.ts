@@ -104,7 +104,7 @@ async function listTasksInTimebox(
   }
 
   const matching = pickTimebox(await fetchAllTasks(clients, def, args), timeboxId);
-  return applyWindow(matching, args.offset, args.limit);
+  return applyWindow(matching, args.skip, args.top);
 }
 
 /**
@@ -152,12 +152,9 @@ function withNextPage(shaped: unknown, raw: unknown, args: CalmListArgs): unknow
   const located = locateRecords(shaped);
   const count = located?.records.length ?? 0;
   if (!located || count === 0) return shaped;
-  // Callers page with limit/offset (REST) or top/skip (OData and the process services).
-  const byLimit = args.limit !== undefined;
-  const size = byLimit ? args.limit : args.top;
-  const start = (byLimit ? args.offset : args.skip) ?? 0;
-  if (!(hasNextLink(raw) || count === size)) return shaped;
-  const nextPage = byLimit ? { offset: start + count } : { skip: start + count };
+  const start = args.skip ?? 0;
+  if (!(hasNextLink(raw) || count === args.top)) return shaped;
+  const nextPage = { skip: start + count };
   return Array.isArray(shaped)
     ? { records: shaped, nextPage }
     : { ...(shaped as object), nextPage };
@@ -318,10 +315,10 @@ function validateListArgs(def: ListResource, args: CalmListArgs): string | undef
       "first, or add group_by:'timeboxId' to get the per-sprint breakdown in one call."
     );
   }
-  // `count` rides along with the records via `$count`, which only an OData gateway offers. Saying
+  // `with_count` rides along with the records via `$count`, which only an OData gateway offers. Saying
   // so beats ignoring it: a silently dropped option is how a caller ends up trusting a number that
   // was never returned.
-  if (args.count === true && def.kind !== 'odata') {
+  if (args.with_count === true && def.kind !== 'odata') {
     return (
       `Resource '${args.resource}' is a REST endpoint with no server-side count. ` +
       'Use count_only:true instead, which counts by paging.'
@@ -370,7 +367,7 @@ async function fetchList(
       orderby: args.orderby,
       top: args.top,
       skip: args.skip,
-      count: args.count,
+      count: args.with_count,
     });
   }
   if (args.timebox_id !== undefined || args.timebox_name !== undefined) {

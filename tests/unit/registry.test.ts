@@ -22,9 +22,9 @@ const PARAMS: ListParams = {
   sub_status: 'DFC_NEW',
   assignee_id: 'u1',
   tags: ['a', 'b'],
-  limit: 50,
-  offset: 10,
-  filters: { objectType: 'TechnicalSystem' },
+  top: 50,
+  skip: 10,
+  rest_filters: { objectType: 'TechnicalSystem' },
 };
 
 describe('LIST_RESOURCES', () => {
@@ -137,13 +137,13 @@ describe('LIST_RESOURCES', () => {
   });
 
   it("lets a pager window win over the caller's $top/$skip on the process services", () => {
-    // calmcp pages with limit/offset; these services only read $top/$skip. Without the mapping the
-    // walk repeated page 0 forever and stopped after one request.
+    // calmcp pages with top/skip, which these services read as $top/$skip. Without the window on the
+    // query the walk repeated page 0 forever and stopped after one request.
     const { query } = (
       LIST_RESOURCES.solution_processes as {
         build: (p: ListParams) => { path: string; query: string };
       }
-    ).build({ top: 5, skip: 0, limit: 500, offset: 500 });
+    ).build({ top: 500, skip: 500 });
     expect(query).toBe('?$top=500&$skip=500');
   });
 
@@ -168,7 +168,9 @@ describe('readParams', () => {
 
   it('reports the contextual parameters of the tasks resource', () => {
     const params = readParams(rest('tasks'));
-    expect(params).toEqual(expect.arrayContaining(['project_id', 'task_type', 'ids', 'limit']));
+    expect(params).toEqual(
+      expect.arrayContaining(['project_id', 'task_type', 'ids', 'top', 'skip']),
+    );
     expect(params).not.toContain('orderby');
   });
 
@@ -190,11 +192,6 @@ describe('ignoredParams', () => {
     ).toEqual(['filter', 'select']);
   });
 
-  it('flags a parameter shadowed by another on the same request', () => {
-    // The process services put `limit` into $top, so a `top` passed next to it never goes out.
-    expect(ignoredParams(def('solution_processes'), { top: 5, limit: 10 })).toEqual(['top']);
-  });
-
   it('flags contextual parameters of another resource', () => {
     expect(ignoredParams(def('project_teams'), { project_id: 'p1', status: 'x' })).toEqual([
       'status',
@@ -203,12 +200,16 @@ describe('ignoredParams', () => {
 
   it('flags REST parameters passed to an OData resource', () => {
     expect(
-      ignoredParams(def('features'), { filter: "status eq 'x'", project_id: 'p1', limit: 5 }),
-    ).toEqual(['project_id', 'limit']);
+      ignoredParams(def('features'), {
+        filter: "status eq 'x'",
+        project_id: 'p1',
+        rest_filters: { a: 'b' },
+      }),
+    ).toEqual(['project_id', 'rest_filters']);
   });
 
   it('accepts a zero value the request still carries', () => {
-    expect(ignoredParams(def('tasks'), { project_id: 'p1', offset: 0 })).toEqual([]);
+    expect(ignoredParams(def('tasks'), { project_id: 'p1', skip: 0 })).toEqual([]);
   });
 });
 

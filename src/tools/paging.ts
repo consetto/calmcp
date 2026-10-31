@@ -68,14 +68,14 @@ export interface PagingOptions {
 /**
  * Page through a REST resource until a short page arrives or the cap is reached.
  *
- * Not every REST resource accepts `limit`/`offset`; those that do not return their whole
+ * Not every REST resource can be paged; those that do not return their whole
  * collection in one response. That case is detected by the built query being identical for two
  * consecutive pages, and the walk stops after the first page rather than requesting the same rows
  * again forever.
  *
  * @param clients - The Cloud ALM client container.
  * @param def - The REST resource definition.
- * @param params - The caller's parameters (its own `limit`/`offset` are overridden).
+ * @param params - The caller's parameters (its own `top`/`skip` are overridden).
  * @param options - Page cap and per-page callback.
  * @returns The records (or an empty list when `onPage` consumed them), plus completeness.
  */
@@ -94,11 +94,11 @@ export async function fetchAllRest(
       return { records: all, complete: false, pages: page, stoppedBy: 'time' };
     const { path, query } = def.build({
       ...params,
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
+      top: PAGE_SIZE,
+      skip: page * PAGE_SIZE,
     });
 
-    // The resource ignores limit/offset, so page 0 already held everything it will ever return.
+    // The resource ignores top/skip, so page 0 already held everything it will ever return.
     if (previousQuery !== undefined && query === previousQuery) {
       return { records: all, complete: true, pages: page };
     }

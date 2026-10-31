@@ -271,7 +271,7 @@ describe('counting via calm_analytics', () => {
       .reply(200, { '@count': 9, value: [{ id: 'a' }] });
 
     const body = parse(
-      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', top: 1, count: true }),
+      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', top: 1, with_count: true }),
     ) as Record<string, unknown>;
     expect(body['@count']).toBe(9);
   });
@@ -489,11 +489,11 @@ describe('counting via calm_list', () => {
     expect(textOf(result)).toContain('status');
   });
 
-  it('rejects count on a REST resource and points at count_only', async () => {
+  it('rejects with_count on a REST resource and points at count_only', async () => {
     const result = await handleCalmList(makeClients(), {
       resource: 'tasks',
       project_id: 'p1',
-      count: true,
+      with_count: true,
     });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('count_only');
