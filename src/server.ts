@@ -21,7 +21,7 @@ export const WRITER_SCOPE = 'Writer';
 /** Server name advertised to MCP clients. */
 const SERVER_NAME = 'calmcp';
 /** Server version advertised to MCP clients. */
-const SERVER_VERSION = '0.9.4';
+const SERVER_VERSION = '1.0.0';
 
 /** Instructions shown to MCP clients on connect, after the opening that names the access level. */
 const INSTRUCTIONS =

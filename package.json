@@ -1,6 +1,6 @@
 {
   "name": "calmcp",
-  "version": "0.9.4",
+  "version": "1.0.0",
   "description": "Model Context Protocol (MCP) server bridging AI assistants to SAP Cloud ALM. Read-only by default, with opt-in creates, links and feature updates. Deployable to SAP BTP Cloud Foundry.",
   "license": "MIT",
   "type": "module",
