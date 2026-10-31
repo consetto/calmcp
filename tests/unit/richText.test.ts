@@ -95,6 +95,32 @@ describe('unsafeHtml', () => {
     ['an unknown element', '<marquee>x</marquee>', '<marquee>'],
     ['an unknown attribute', '<p formaction="https://x.example">x</p>', 'formaction'],
     ['a link with another scheme', '<a href="file:///etc/passwd">x</a>', 'links must be'],
+    // Named entities a browser decodes before it loads anything (found in the 1.0 review).
+    [
+      'a host hidden behind &sol;',
+      '<img src="&sol;&sol;x.example/../../ui/imageServiceAPI/x">',
+      '&sol;',
+    ],
+    [
+      'a scheme hidden behind &colon;',
+      '<img src="https&colon;//x.example/../../../ui/imageServiceAPI/x">',
+      '&colon;',
+    ],
+    [
+      'a CSS escape hidden behind &bsol;',
+      '<p style="background:u&bsol;72l(https://x.example/p.png)">x</p>',
+      '&bsol;',
+    ],
+    [
+      'a host hidden behind numeric entities',
+      '<img src="&#47;&#47;x.example/../../ui/imageServiceAPI/x">',
+      'image service',
+    ],
+    [
+      'a scheme hidden behind a hex entity',
+      '<img src="https&#x3a;//x.example/../ui/imageServiceAPI/x">',
+      'image service',
+    ],
   ])('refuses %s', (_, html, expected) => {
     expect(unsafeHtml(html).join('\n')).toContain(expected);
   });
@@ -147,6 +173,25 @@ describe('unsafeHtml', () => {
     const problems = unsafeHtml('<p>x</p><img src=x onerror=alert(1) title="').join(' ');
     expect(problems).toContain('could not be read');
     expect(problems).toContain('onerror=');
+  });
+
+  it('keeps named entities in text and in alt or title', () => {
+    const html =
+      '<p title="caf&eacute;">Gr&ouml;&szlig;e <img alt="Gr&ouml;&szlig;e" ' +
+      'src="/ui/imageServiceAPI/v1/getImage?imageId=abc&amp;x=1"></p>';
+    expect(unsafeHtml(html)).toEqual([]);
+  });
+
+  it('decodes an out-of-range numeric entity instead of throwing', () => {
+    expect(() => unsafeHtml('<a href="&#x110000;x">a</a>')).not.toThrow();
+  });
+
+  it('reads crafted tag soup in linear time', () => {
+    const started = Date.now();
+    for (const html of ['<a'.repeat(100_000), `${'<a"'.repeat(50_000)}>`, "<a '".repeat(50_000)]) {
+      unsafeHtml(html);
+    }
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 
   it('does not take an image id from a foreign URL', () => {

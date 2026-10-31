@@ -294,24 +294,27 @@ export async function countAnalytics(
 
   // Breakdown: let the service aggregate, one request, one row per group.
   if (keys.length > 0 && measure) {
-    const { records, complete, pages } = await fetchAllOData(
+    const { records, complete, pages, stoppedBy } = await fetchAllOData(
       clients,
       'analytics',
       provider,
       { filter, select: [...keys, measure].join(',') },
-      { maxPages: MAX_PAGES_COUNT },
+      { maxPages: MAX_PAGES_COUNT, deadline: Date.now() + COUNT_TIME_BUDGET_MS },
     );
     const groups = toMeasuredGroups(records, keys, measure);
+    const total = groups.reduce((sum, group) => sum + group.count, 0);
+    const time = stoppedBy === 'time' ? { stoppedBy } : {};
     return {
       ...base,
-      total: groups.reduce((sum, group) => sum + group.count, 0),
+      total,
       complete,
       method: 'analytics-measure',
       unit: 'entities',
       pagesFetched: pages,
+      ...time,
       groupBy: keys,
       ...foldGroups(groups, request.groupLimit ?? DEFAULT_GROUP_LIMIT),
-      ...noteFor({ total: records.length, complete, method: 'analytics-measure' }, request),
+      ...noteFor({ total, complete, method: 'analytics-measure', ...time }, request),
     };
   }
 

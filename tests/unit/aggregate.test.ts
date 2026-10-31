@@ -91,9 +91,21 @@ describe('createGroupTally', () => {
     expect(tally.result()).toEqual(groupRecords(tasks, ['status']));
   });
 
-  it('validates the keys on the first non-empty page', () => {
+  it('refuses a key that appeared on no record', () => {
     const tally = createGroupTally(['nope']);
-    expect(() => tally.add([])).not.toThrow();
-    expect(() => tally.add(tasks)).toThrow(ShapeError);
+    tally.add([]);
+    tally.add(tasks);
+    expect(() => tally.result()).toThrow(ShapeError);
+  });
+
+  it('accepts a key that appears only on a later page', () => {
+    // Cloud ALM leaves out an empty attribute, so a whole page can lack a field others carry.
+    const tally = createGroupTally(['timeboxId']);
+    tally.add([{ id: 'a' }, { id: 'b' }]);
+    tally.add([{ id: 'c', timeboxId: 't1' }]);
+    expect(tally.result()).toMatchObject({
+      total: 3,
+      groups: expect.arrayContaining([{ value: 't1', count: 1 }]),
+    });
   });
 });

@@ -134,7 +134,8 @@ export class CalmHttpClient {
     let throttleRetried = false;
     let tokenRenewed = false;
     for (;;) {
-      const { baseUrl, headers } = await this.auth.authorize();
+      const context = await this.auth.authorize();
+      const { baseUrl, headers } = context;
       const url = `${baseUrl}${SERVICE_PATHS[this.service]}${endpoint}${query}`;
       this.options.logger.debug({ url }, `${method} request`);
 
@@ -142,7 +143,7 @@ export class CalmHttpClient {
       if (response.status === 401 && !tokenRenewed && this.auth.invalidate) {
         this.options.logger.debug({ url }, 'token refused; retrying with a new one');
         tokenRenewed = true;
-        this.auth.invalidate();
+        this.auth.invalidate(context);
         await response.body?.cancel();
         continue;
       }

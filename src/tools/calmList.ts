@@ -15,7 +15,13 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { CalmClients } from '../calm/index.js';
 import { countOData, countRest } from './counting.js';
 import { flagOmittedImages, returnsDocumentBodies } from './documentImages.js';
-import { fetchAllRest, hasNextLink, MAX_PAGES_RETURN, PAGE_SIZE } from './paging.js';
+import {
+  COUNT_TIME_BUDGET_MS,
+  fetchAllRest,
+  MAX_PAGES_RETURN,
+  PAGE_SIZE,
+  withNextPage,
+} from './paging.js';
 import {
   ignoredParams,
   LIST_RESOURCES,
@@ -55,10 +61,17 @@ async function fetchAllTasks(
   def: RestListResource,
   args: CalmListArgs,
 ): Promise<Record_[]> {
-  const { records, complete } = await fetchAllRest(clients, def, args, {
+  const { records, complete, stoppedBy } = await fetchAllRest(clients, def, args, {
     maxPages: MAX_PAGES_RETURN,
+    deadline: Date.now() + COUNT_TIME_BUDGET_MS,
   });
   if (complete) return records;
+  if (stoppedBy === 'time') {
+    throw new ShapeError(
+      `Reading the project's tasks for the timebox filter took longer than ` +
+        `${COUNT_TIME_BUDGET_MS / 1000} s. Narrow the query first (task_type, status, assignee_id).`,
+    );
+  }
 
   throw new ShapeError(
     `More than ${MAX_PAGES_RETURN * PAGE_SIZE} tasks match before the timebox filter. ` +
@@ -139,28 +152,6 @@ function querySubject(args: CalmListArgs): Record<string, string> {
 }
 
 /**
- * Add a `nextPage` hint naming the exact parameters for the following page, when this page is
- * full or the service announced more. Without it a caller has to work out the next offset itself,
- * and a wrong guess silently skips or repeats records.
- *
- * @param shaped - The response after field projection.
- * @param raw - The response as the service sent it (for its `@nextLink`).
- * @param args - Validated tool arguments.
- * @returns The response, with the hint when another page is likely.
- */
-function withNextPage(shaped: unknown, raw: unknown, args: CalmListArgs): unknown {
-  const located = locateRecords(shaped);
-  const count = located?.records.length ?? 0;
-  if (!located || count === 0) return shaped;
-  const start = args.skip ?? 0;
-  if (!(hasNextLink(raw) || count === args.top)) return shaped;
-  const nextPage = { skip: start + count };
-  return Array.isArray(shaped)
-    ? { records: shaped, nextPage }
-    : { ...(shaped as object), nextPage };
-}
-
-/**
  * Replace an empty collection by a note naming what was queried. A bare `[]` does not tell a
  * caller whether nothing exists at all or only nothing under this parent and these filters.
  */
@@ -227,14 +218,15 @@ export async function handleCalmList(
     if (call.count_only === true || call.group_by !== undefined) {
       return jsonResult(await countList(clients, def, call));
     }
-    const data = await fetchList(clients, def, call);
-    const projected = call.fields ? projectFields(data, call.fields) : data;
+    const paged = withDefaultPage(def, call);
+    const data = await fetchList(clients, def, paged);
+    const projected = paged.fields ? projectFields(data, paged.fields) : data;
     // Document bodies come back without their images; flag the ones that had any.
     const shaped =
       def.kind === 'odata' && returnsDocumentBodies(def)
         ? await flagOmittedImages(clients, data, projected)
         : projected;
-    return jsonResult(withEmptyNote(withNextPage(shaped, data, call), call));
+    return jsonResult(withEmptyNote(withNextPage(shaped, data, paged), paged));
   } catch (error) {
     return errorResultFrom(error);
   }
@@ -298,6 +290,14 @@ function validateListArgs(def: ListResource, args: CalmListArgs): string | undef
     return "timebox_id/timebox_name apply to resource 'tasks' only.";
   }
 
+  // Paging keys inside rest_filters would be overwritten by the window calmcp sends (top/skip),
+  // and the caller's value lost without a word.
+  const pagingKey = Object.keys(args.rest_filters ?? {}).find((key) =>
+    ['limit', 'offset', 'count', 'startindex'].includes(key.toLowerCase()),
+  );
+  if (pagingKey !== undefined) {
+    return `rest_filters may not set '${pagingKey}': page with top and skip instead.`;
+  }
   // A parameter the resource does not read would be dropped on the way out, and the answer would
   // come back unfiltered while looking filtered. Reject it and name what the resource does read.
   const ignored = ignoredParams(def, args);
@@ -308,6 +308,18 @@ function validateListArgs(def: ListResource, args: CalmListArgs): string | undef
   const counting = args.count_only === true || args.group_by !== undefined;
   if (counting && args.fields !== undefined) {
     return "'fields' projects records, but count_only/group_by return no records. Drop one of them.";
+  }
+  // A count walks the whole collection and returns no records, so a page window or a column list
+  // has nothing to apply to; ignoring them would answer a different question than the one asked.
+  const window = (['top', 'skip', 'select', 'with_count'] as const).filter(
+    (name) => args[name] !== undefined,
+  );
+  if (counting && window.length > 0) {
+    return (
+      `${window.join(', ')} ${window.length > 1 ? 'apply' : 'applies'} to listed records, but ` +
+      'count_only/group_by count the whole collection and return no records. Drop ' +
+      `${window.length > 1 ? 'them' : 'it'}.`
+    );
   }
   if (counting && byTimebox) {
     return (
@@ -354,6 +366,22 @@ function countList(clients: CalmClients, def: ListResource, args: CalmListArgs) 
 }
 
 /** Fetch the records of one page (or of one timebox) as the service returns them. */
+/**
+ * Give a pageable REST list an explicit page size when the caller named none.
+ *
+ * REST services cut a list at their own default page size (100 for landscape objects and projects,
+ * 1000 for status events) and never say so: no `@nextLink`, no total. Without a `top` calmcp could
+ * not tell a full page from the whole collection, and a 250-object landscape came back as exactly
+ * 100 records with nothing hinting at more. With {@link PAGE_SIZE} on the request, a full page is
+ * recognisable and gets its `nextPage` hint. A timebox query pages the whole project itself and
+ * keeps the caller's window.
+ */
+function withDefaultPage(def: ListResource, args: CalmListArgs): CalmListArgs {
+  if (def.kind !== 'rest' || args.top !== undefined) return args;
+  if (args.timebox_id !== undefined || args.timebox_name !== undefined) return args;
+  return readParams(def).includes('top') ? { ...args, top: PAGE_SIZE } : args;
+}
+
 async function fetchList(
   clients: CalmClients,
   def: ListResource,

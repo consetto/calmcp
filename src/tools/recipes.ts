@@ -66,9 +66,9 @@ export const RECIPES: Recipe[] = [
       "calm_list({ resource: 'tasks', project_id: '<uuid>', task_type: 'CALMDEF', status: " +
         "'CIPDFCTOPEN', fields: 'displayId,title,priority,assigneeName,dueDate' })",
       'Then sort the returned records by priority yourself. Nothing in Cloud ALM sorts these for ' +
-        'you: the Tasks REST endpoint has no sort parameter, and calm_analytics accepts $orderby ' +
-        'but ignores it, returning unsorted rows with a 200. Never present analytics output as ' +
-        'sorted.',
+        'you: the Tasks REST endpoint has no sort parameter, and calm_analytics does not sort ' +
+        '(the service ignores $orderby, so calmcp does not offer it). Never present analytics ' +
+        'output as sorted.',
       'Priority codes rank 10 Very High, 20 High, 30 Medium, 40 Low, so ascending code order is ' +
         'descending urgency.',
       "For how many rather than which: calm_analytics({ provider: 'Defects', group_by: " +

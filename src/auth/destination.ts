@@ -15,6 +15,8 @@ import type { AuthContext, AuthProvider } from './index.js';
 export class DestinationAuthProvider implements AuthProvider {
   private readonly destinationName: string;
   private readonly logger: Logger;
+  /** Set after a 401: the next lookup bypasses the Cloud SDK's destination and token cache. */
+  private bypassCache = false;
 
   /**
    * @param destinationName - Name of the bound Destination pointing at the Cloud ALM API.
@@ -29,7 +31,9 @@ export class DestinationAuthProvider implements AuthProvider {
   async authorize(): Promise<AuthContext> {
     this.logger.debug({ destination: this.destinationName }, 'resolving destination');
 
-    const destination = await getDestination({ destinationName: this.destinationName });
+    const useCache = !this.bypassCache;
+    this.bypassCache = false;
+    const destination = await getDestination({ destinationName: this.destinationName, useCache });
     if (!destination) {
       throw new AuthError(`Destination '${this.destinationName}' not found`);
     }
@@ -44,5 +48,13 @@ export class DestinationAuthProvider implements AuthProvider {
     // Strip any trailing slash so URL composition stays consistent.
     const baseUrl = destination.url.replace(/\/$/, '');
     return { baseUrl, headers };
+  }
+
+  /**
+   * After Cloud ALM refused a token (401), fetch the destination and its token afresh on the next
+   * request instead of reusing the Cloud SDK's cached ones, e.g. after the client secret was rotated.
+   */
+  invalidate(): void {
+    this.bypassCache = true;
   }
 }

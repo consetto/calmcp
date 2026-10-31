@@ -58,11 +58,16 @@ export interface GroupAccumulator {
   /**
    * Add a page of records.
    *
-   * @throws {ShapeError} When a group-by key exists on none of the records seen so far. Validation
-   *   happens on the first non-empty page, so a bad field name fails before the whole walk runs.
    */
   add(records: Record_[]): void;
-  /** The tally so far. */
+  /**
+   * The tally so far.
+   *
+   * @throws {ShapeError} When a group-by key appeared on none of the records added. Checked at the
+   *   end, not on the first page: Cloud ALM leaves an empty attribute out of a record instead of
+   *   sending null, so a field such as `timeboxId` can be missing from 500 records and present on
+   *   the next.
+   */
   result(): GroupTally;
 }
 
@@ -86,14 +91,15 @@ export function createGroupTally(
   const counts = new Map<string, number>();
   const multiValued = new Set<string>();
   let total = 0;
-  let validated = false;
+  const seen = new Set<string>();
+  const fieldNames = new Set<string>();
 
   return {
     add(records: Record_[]): void {
       if (records.length === 0) return;
-      if (!validated) {
-        assertKnownKeys(records, keys);
-        validated = true;
+      if (seen.size < keys.length) {
+        for (const name of collectFieldNames(records)) fieldNames.add(name);
+        for (const key of keys) if (fieldNames.has(key)) seen.add(key);
       }
       for (const record of records) {
         const perKey = keys.map((key) => {
@@ -110,6 +116,10 @@ export function createGroupTally(
     },
 
     result(): GroupTally {
+      const unknown = keys.filter((key) => !seen.has(key));
+      if (total > 0 && unknown.length > 0) {
+        throw new ShapeError(unknownFieldsMessage('group_by', unknown, [...fieldNames]));
+      }
       const sorted = [...counts.entries()].sort(
         ([aKey, aCount], [bKey, bCount]) => bCount - aCount || aKey.localeCompare(bKey),
       );
@@ -172,13 +182,6 @@ export function groupRecords(
 }
 
 /** Reject group-by keys that appear on none of the records. */
-function assertKnownKeys(records: Record_[], keys: string[]): void {
-  const available = collectFieldNames(records);
-  const unknown = keys.filter((key) => !available.includes(key));
-  if (unknown.length > 0) {
-    throw new ShapeError(unknownFieldsMessage('group_by', unknown, available));
-  }
-}
 
 /**
  * Render one scalar field value as its bucket label.

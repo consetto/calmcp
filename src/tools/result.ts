@@ -45,7 +45,8 @@ export function responseBudget(): number {
 const LIST_OVERSIZE_HINT =
   'For a total, re-run the SAME query with count_only:true. For a breakdown, add ' +
   'group_by:"status" (or any other field). To keep the records, add ' +
-  'fields:"displayId,title,status" and a smaller top/limit. Never count by listing: that is ' +
+  'fields:"displayId,title,status" (calm_list) or select (calm_analytics) and a smaller top. ' +
+  'Never count by listing: that is ' +
   'what produced this response.';
 
 /**

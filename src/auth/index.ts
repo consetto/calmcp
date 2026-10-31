@@ -35,8 +35,12 @@ export interface AuthProvider {
   /**
    * Forget a cached token, after Cloud ALM refused it (401) before its stated expiry, e.g. when
    * the client secret was rotated. Providers without a cache leave this out.
+   *
+   * @param refused - The context the refused request was sent with. A provider forgets its token
+   *   only when it is still the one refused, so a late 401 from a request that left before a renewal
+   *   does not throw away the fresh token.
    */
-  invalidate?(): void;
+  invalidate?(refused: AuthContext): void;
 }
 
 // Imports for the factory live below the interface so the public type stays at the top of the file.

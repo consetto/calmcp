@@ -79,3 +79,35 @@ export function mergeAnalyticsFilter(
 function mentionsControl(filter: string, name: string): boolean {
   return new RegExp(`\\b${name}\\b\\s+eq\\b`, 'i').test(filter);
 }
+
+/** Analytics properties that set the time window or the output format, not a dimension. */
+const CONTROL_PROPERTIES = ['period', 'resolution', 'timeZone', 'firstWeekDay', 'timestampFormat'];
+
+/**
+ * The value a `$filter` gives a control property (`period eq 'L4W'` gives `L4W`), if any.
+ *
+ * @param filter - The caller's `$filter`.
+ * @param name - The control property name.
+ * @returns The value, or undefined when the filter does not set it.
+ */
+export function controlValue(filter: string | undefined, name: string): string | undefined {
+  if (!filter) return undefined;
+  return new RegExp(`\\b${name}\\s+eq\\s+'((?:[^']|'')*)'`, 'i')
+    .exec(filter)?.[1]
+    ?.replace(/''/g, "'");
+}
+
+/**
+ * Whether a `$filter` constrains a dimension, rather than only setting control properties. A filter
+ * of controls alone selects no subset, so comparing it with the unfiltered window proves nothing.
+ *
+ * @param filter - The caller's `$filter`.
+ * @returns True when something besides control properties remains.
+ */
+export function filtersDimensions(filter: string | undefined): boolean {
+  if (!filter) return false;
+  const rest = filter
+    .replace(new RegExp(`\\b(${CONTROL_PROPERTIES.join('|')})\\s+eq\\s+'(?:[^']|'')*'`, 'gi'), '')
+    .replace(/\b(and)\b|[()\s]/gi, '');
+  return rest !== '';
+}
