@@ -161,6 +161,18 @@ describe('network-backed usability', () => {
     expect(body).toEqual({ records: [{ id: 'a' }, { id: 'b' }], nextPage: { skip: 6 } });
   });
 
+  it('sends a page size when the caller names none, so a full page announces the next', async () => {
+    // Landscape objects default to 100 per page and say nothing about more; without a page size of
+    // its own calmcp returned the first 100 as if they were all.
+    const page = Array.from({ length: 500 }, (_, i) => ({ id: `o${i}` }));
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-landscape/v1/landscapeObjects?limit=500' })
+      .reply(200, page);
+    const body = parse(await handleCalmList(makeClients(), { resource: 'landscape_objects' }));
+    expect(body).toMatchObject({ nextPage: { skip: 500 } });
+  });
+
   it('leaves a short last page as the service returned it', async () => {
     agent
       .get(ORIGIN)

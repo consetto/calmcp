@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { Config } from '../../src/config.js';
 import { buildMcpServer, createClients } from '../../src/server.js';
 import { createHttpApp, parseCorsOrigins } from '../../src/transport/http.js';
+import { redirectPatterns } from '../../src/transport/redirects.js';
 
 const logger = pino({ level: 'silent' });
 
@@ -257,5 +258,60 @@ describe('CORS origins', () => {
     });
     const res = await request(app).get('/health').set('Origin', 'https://evil.example.com');
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
+describe('OAuth redirect URIs', () => {
+  const app = createHttpApp({
+    buildServer: () => undefined as unknown as McpServer,
+    corsOrigins: false,
+    rateLimitPerMinute: 100,
+    logger,
+    auth: {
+      xsuaa: {
+        credentials: {
+          url: 'https://example.authentication.eu10.hana.ondemand.com',
+          clientid: 'sb-calmcp!t1',
+          clientsecret: 'xsuaa-secret',
+          xsappname: 'calmcp!t1',
+          uaadomain: 'authentication.eu10.hana.ondemand.com',
+        },
+        appUrl: 'https://calmcp.example.hana.ondemand.com',
+        clientIdPrefix: 'calmcp-',
+        scopesSupported: ['Viewer'],
+        requiredScopes: ['Viewer'],
+        redirectUriPatterns: redirectPatterns({}),
+        dcrRedirectUriPatterns: redirectPatterns({}),
+      },
+    },
+  });
+  const register = (uri: string) =>
+    request(app)
+      .post('/register')
+      .send({ redirect_uris: [uri], client_name: 'test', token_endpoint_auth_method: 'none' });
+
+  it('refuses a client registering a redirect to some other https host', async () => {
+    // Another BTP app included: the package default would accept it.
+    for (const uri of [
+      'https://evil.example/cb',
+      'https://other.cfapps.eu10.hana.ondemand.com/cb',
+    ]) {
+      expect((await register(uri)).status).toBe(400);
+    }
+  });
+
+  it('registers the known MCP clients', async () => {
+    for (const uri of [
+      'http://localhost:6274/oauth/callback',
+      'https://claude.ai/api/mcp/auth_callback',
+    ]) {
+      expect((await register(uri)).status).toBe(201);
+    }
+  });
+
+  it('adds the operator patterns', () => {
+    expect(
+      redirectPatterns({ CALM_OAUTH_REDIRECT_PATTERNS: ' https://my.example/cb , ' }),
+    ).toContain('https://my.example/cb');
   });
 });

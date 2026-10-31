@@ -34,7 +34,9 @@ describe('handleCalmList', () => {
   it('lists defects via the tasks resource with task_type=CALMDEF', async () => {
     agent
       .get(ORIGIN)
-      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMDEF&status=CIPDFCTOPEN' })
+      .intercept({
+        path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMDEF&status=CIPDFCTOPEN&limit=500',
+      })
       .reply(200, [{ id: 'd1', type: 'CALMDEF' }]);
 
     const result = await handleCalmList(makeClients(), {
@@ -73,7 +75,7 @@ describe('handleCalmList', () => {
   it('projects REST records to the requested fields', async () => {
     agent
       .get(ORIGIN)
-      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMUS' })
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMUS&limit=500' })
       .reply(200, [{ id: 'u1', displayId: '3-1', title: 'One', customField1: null }]);
 
     const result = await handleCalmList(makeClients(), {
@@ -88,7 +90,7 @@ describe('handleCalmList', () => {
   it('rejects an unknown name in fields instead of returning empty objects', async () => {
     agent
       .get(ORIGIN)
-      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1' })
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&limit=500' })
       .reply(200, [{ id: 'u1', displayId: '3-1' }]);
 
     const result = await handleCalmList(makeClients(), {
@@ -370,7 +372,7 @@ describe('handleCalmResources', () => {
     };
     const sorted = recipes.recipes.find((r) => /ordered by priority/i.test(r.question));
     expect(sorted?.steps.join(' ')).toContain('calm_list');
-    expect(sorted?.steps.join(' ')).toContain('ignores it');
+    expect(sorted?.steps.join(' ')).toContain('does not sort');
   });
 
   it('describes an analytics provider with its filterable dimensions and measures', () => {
@@ -517,7 +519,7 @@ describe('calm_list with project_name', () => {
     projectList();
     agent
       .get(ORIGIN)
-      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMDEF' })
+      .intercept({ path: '/api/calm-tasks/v1/tasks?projectId=p1&type=CALMDEF&limit=500' })
       .reply(200, [{ id: 't1', title: 'Defect' }]);
     const result = await handleCalmList(makeClients(), {
       resource: 'tasks',

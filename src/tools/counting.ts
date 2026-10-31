@@ -18,6 +18,7 @@
 import type { CalmClients } from '../calm/index.js';
 import { readODataCount } from '../calm/odata.js';
 import type { ServiceName } from '../config.js';
+import { ApiError } from '../errors.js';
 import {
   bucketOf,
   createGroupTally,
@@ -34,7 +35,7 @@ import {
   type PagingOptions,
 } from './paging.js';
 import type { ListParams, RestListResource } from './registry.js';
-import { parseFields, type Record_ } from './shape.js';
+import { parseFields, type Record_, ShapeError } from './shape.js';
 
 /** How a total was arrived at. */
 export type CountMethod =
@@ -135,9 +136,23 @@ export async function countOData(
     // The service answered without a count annotation. Fall through rather than report nothing.
   }
 
-  const tally = await pagedTally(keys, request.groupLimit, (options) =>
-    fetchAllOData(clients, service, entitySet, query, options),
-  );
+  // A breakdown needs only its own fields: selecting them keeps each page a few KB instead of 500
+  // whole entities. A field the entity set lacks then fails on the server, so say which one.
+  const select = keys.length > 0 ? keys.join(',') : undefined;
+  let tally: PagedTally;
+  try {
+    tally = await pagedTally(keys, request.groupLimit, (options) =>
+      fetchAllOData(clients, service, entitySet, { ...query, select }, options),
+    );
+  } catch (error) {
+    if (select && error instanceof ApiError && error.status === 400) {
+      throw new ShapeError(
+        `Cloud ALM refused group_by '${keys.join(',')}' on ${entitySet}: ${error.message}. ` +
+          'Use field names as calm_list returns them for this resource.',
+      );
+    }
+    throw error;
+  }
   return { subject: request.subject, filter: query.filter, ...tally, ...noteFor(tally, request) };
 }
 
@@ -294,24 +309,27 @@ export async function countAnalytics(
 
   // Breakdown: let the service aggregate, one request, one row per group.
   if (keys.length > 0 && measure) {
-    const { records, complete, pages } = await fetchAllOData(
+    const { records, complete, pages, stoppedBy } = await fetchAllOData(
       clients,
       'analytics',
       provider,
       { filter, select: [...keys, measure].join(',') },
-      { maxPages: MAX_PAGES_COUNT },
+      { maxPages: MAX_PAGES_COUNT, deadline: Date.now() + COUNT_TIME_BUDGET_MS },
     );
     const groups = toMeasuredGroups(records, keys, measure);
+    const total = groups.reduce((sum, group) => sum + group.count, 0);
+    const time = stoppedBy === 'time' ? { stoppedBy } : {};
     return {
       ...base,
-      total: groups.reduce((sum, group) => sum + group.count, 0),
+      total,
       complete,
       method: 'analytics-measure',
       unit: 'entities',
       pagesFetched: pages,
+      ...time,
       groupBy: keys,
       ...foldGroups(groups, request.groupLimit ?? DEFAULT_GROUP_LIMIT),
-      ...noteFor({ total: records.length, complete, method: 'analytics-measure' }, request),
+      ...noteFor({ total, complete, method: 'analytics-measure', ...time }, request),
     };
   }
 

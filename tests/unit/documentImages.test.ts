@@ -5,6 +5,7 @@ import { MockAgent, setGlobalDispatcher } from 'undici';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { handleCalmGet } from '../../src/tools/calmGet.js';
 import { handleCalmList } from '../../src/tools/calmList.js';
+import { configureResults } from '../../src/tools/result.js';
 import { makeClients, ORIGIN, parse } from './helpers.js';
 
 const A = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
@@ -108,6 +109,24 @@ describe('documents whose images the API leaves out', () => {
     ) as { value: Record<string, unknown>[] };
     expect(body.value[0]).not.toHaveProperty('imagesOmitted');
     expect(body.value[1]).toMatchObject({ displayId: '7-2', imagesOmitted: true });
+  });
+
+  it('skips the check when the list is too large to hand over anyway', async () => {
+    // No interceptor for the image check: a lookup would fail the call as NETWORK.
+    configureResults({ maxBytes: 200 });
+    try {
+      agent
+        .get(ORIGIN)
+        .intercept({ path: isListRequest })
+        .reply(200, {
+          value: [{ uuid: A, displayId: '7-1', content: `<p>${'x'.repeat(500)}</p>` }],
+        });
+      const result = await handleCalmList(makeClients(), { resource: 'documents' });
+      expect(result.isError).toBeFalsy();
+      expect(parse(result)).toMatchObject({ reason: 'RESPONSE_TOO_LARGE' });
+    } finally {
+      configureResults({ maxBytes: 100_000 });
+    }
   });
 
   it('skips the check when fields leaves content out', async () => {

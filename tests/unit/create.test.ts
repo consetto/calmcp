@@ -203,6 +203,22 @@ describe('handleCalmCreate', () => {
     expect(audit).toMatchObject([{ resource: 'document', outcome: 'unknown' }]);
   });
 
+  it('reports a create a gateway answered with 408 as maybe applied, never retryable', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .reply(408, 'Request Timeout');
+    const audit: CreateAuditEntry[] = [];
+    const result = await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'document', data: { title: 'Design', projectId: PROJECT } },
+      (entry) => audit.push(entry),
+    );
+    expect(parse(result)).toMatchObject({ retryable: false });
+    expect(textOf(result)).toContain('may or may not have been created');
+    expect(audit).toMatchObject([{ resource: 'document', outcome: 'unknown' }]);
+  });
+
   it('reports a create Cloud ALM accepted with an unreadable answer as created', async () => {
     agent
       .get(ORIGIN)

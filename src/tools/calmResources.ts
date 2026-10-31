@@ -87,8 +87,8 @@ function describeUpdateResource(name: string, def: UpdateResource) {
         'update is refused if the object changed since.',
       `A change to ${def.richTextFields.join(', ')} that drops an <img> tag is refused unless ` +
         'remove_images names that image (the refusal lists the keys).',
-      `${def.richTextFields.join(', ')} may not contain scripts, event handlers, ` +
-        "javascript:/data: URLs or images from outside Cloud ALM's image service.",
+      `${def.richTextFields.join(', ')} may contain only formatted-text HTML: no scripts, ` +
+        "event handlers, foreign URLs, or images from outside Cloud ALM's image service.",
       'Fields already holding the requested value are not sent.',
     ],
     example:

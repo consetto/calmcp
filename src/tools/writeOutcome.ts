@@ -4,9 +4,14 @@
 
 import { ApiError } from '../errors.js';
 
-/** Whether a failed write may still have been applied: no answer, or a server-side failure. */
+/**
+ * Whether a failed write may still have been applied: no answer, a server-side failure, or a 408
+ * from a gateway that stopped waiting while Cloud ALM may have gone on processing.
+ */
 export function outcomeUnknown(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 0 || error.status >= 500);
+  return (
+    error instanceof ApiError && (error.status === 0 || error.status === 408 || error.status >= 500)
+  );
 }
 
 /** Whether Cloud ALM accepted the write (2xx) but its answer could not be read. */

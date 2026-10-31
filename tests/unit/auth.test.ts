@@ -96,8 +96,23 @@ describe('ClientCredentialsAuthProvider', () => {
         .intercept({ path: '/oauth/token', method: 'POST' })
         .reply(200, { access_token: 'tok-2', expires_in: 3600 });
       const provider = new ClientCredentialsAuthProvider(oauthConfig(), logger);
-      await provider.authorize();
-      provider.invalidate();
+      provider.invalidate(await provider.authorize());
+      expect((await provider.authorize()).headers.Authorization).toBe('Bearer tok-2');
+    });
+
+    it('keeps a renewed token when a late 401 reports the old one', async () => {
+      const pool = agent.get('https://acme.authentication.eu10.hana.ondemand.com');
+      pool
+        .intercept({ path: '/oauth/token', method: 'POST' })
+        .reply(200, { access_token: 'tok-1', expires_in: 3600 });
+      pool
+        .intercept({ path: '/oauth/token', method: 'POST' })
+        .reply(200, { access_token: 'tok-2', expires_in: 3600 });
+      const provider = new ClientCredentialsAuthProvider(oauthConfig(), logger);
+      const old = await provider.authorize();
+      provider.invalidate(old);
+      await provider.authorize(); // tok-2
+      provider.invalidate(old); // a second request sent with tok-1 is refused late
       expect((await provider.authorize()).headers.Authorization).toBe('Bearer tok-2');
     });
 

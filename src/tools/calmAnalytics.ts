@@ -17,12 +17,15 @@ import type { CalmClients } from '../calm/index.js';
 import {
   COUNT_PERIOD,
   COUNT_RESOLUTION,
+  controlValue,
+  filtersDimensions,
   mergeAnalyticsFilter,
   PROVIDERS_WITHOUT_RESOLUTION,
 } from './analyticsFilter.js';
 import { ANALYTICS_PROVIDER_FIELDS } from './constants.js';
 import { countAnalytics } from './counting.js';
-import { errorResultFrom, jsonResult } from './result.js';
+import { withNextPage } from './paging.js';
+import { errorResult, errorResultFrom, jsonResult } from './result.js';
 import type { calmAnalyticsShape } from './schemas.js';
 
 /** Caveat attached to every analytics count, so a snapshot is never quoted as a live number. */
@@ -48,6 +51,18 @@ export async function handleCalmAnalytics(
     ? undefined
     : COUNT_RESOLUTION;
 
+  // A count returns no rows, so a row window or a column list would be ignored without a word.
+  const window = (['top', 'skip', 'select', 'with_count'] as const).filter(
+    (name) => args[name] !== undefined,
+  );
+  if (counting && window.length > 0) {
+    return errorResult(
+      `${window.join(', ')} ${window.length > 1 ? 'apply' : 'applies'} to returned rows, but ` +
+        'count_only/group_by return a total. Drop ' +
+        `${window.length > 1 ? 'them' : 'it'}.`,
+    );
+  }
+
   try {
     // Counting pins the window so the row count equals the entity count; a plain query keeps the
     // service defaults unless the caller asked for a specific window.
@@ -59,10 +74,12 @@ export async function handleCalmAnalytics(
     if (counting) {
       // The same window with the caller's dimension filter removed. Comparing against it is how a
       // filter the service dropped is caught; see `filterWarning` in `counting.ts`.
-      const baseline = args.filter
+      // It must cover the caller's window: one the filter sets itself (`period eq 'L4W'`) included.
+      const baseline = filtersDimensions(args.filter)
         ? mergeAnalyticsFilter(undefined, {
-            period: args.period ?? COUNT_PERIOD,
-            resolution: args.resolution ?? countResolution,
+            period: args.period ?? controlValue(args.filter, 'period') ?? COUNT_PERIOD,
+            resolution:
+              args.resolution ?? controlValue(args.filter, 'resolution') ?? countResolution,
           })
         : undefined;
 
@@ -90,7 +107,7 @@ export async function handleCalmAnalytics(
       skip: args.skip,
       count: args.with_count,
     });
-    return jsonResult(data);
+    return jsonResult(withNextPage(data, data, args));
   } catch (error) {
     return errorResultFrom(error);
   }

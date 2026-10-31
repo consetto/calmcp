@@ -9,6 +9,7 @@ import { Config } from './config.js';
 import { createLogger } from './logging.js';
 import { buildMcpServer, createClients, VIEWER_SCOPE, WRITER_SCOPE } from './server.js';
 import { createHttpApp, parseCorsOrigins } from './transport/http.js';
+import { redirectPatterns } from './transport/redirects.js';
 import { startStdio } from './transport/stdio.js';
 
 /** Default HTTP port when neither `--port` nor `PORT` is set. */
@@ -101,6 +102,8 @@ async function main(): Promise<void> {
               resourceName: 'calmcp (SAP Cloud ALM MCP Server)',
               dcrSigningSecret:
                 process.env.CALM_DCR_SIGNING_SECRET?.trim() || xsuaaCredentials.clientsecret,
+              redirectUriPatterns: redirectPatterns(process.env),
+              dcrRedirectUriPatterns: redirectPatterns(process.env),
             }
           : undefined,
       },

@@ -7,7 +7,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { odataString } from '../../src/calm/odata.js';
 import { Config } from '../../src/config.js';
 import { ConfigError, summarizeBody } from '../../src/errors.js';
-import { mergeAnalyticsFilter } from '../../src/tools/analyticsFilter.js';
+import {
+  controlValue,
+  filtersDimensions,
+  mergeAnalyticsFilter,
+} from '../../src/tools/analyticsFilter.js';
 import { handleCalmGet } from '../../src/tools/calmGet.js';
 import { handleCalmResources } from '../../src/tools/calmResources.js';
 import { documentCreateSchema, xlibApplicationCreateSchema } from '../../src/tools/create.js';
@@ -120,19 +124,12 @@ describe('network-backed hardening', () => {
     await agent.close();
   });
 
-  it('quotes a feature display id inside the lookup filter', async () => {
+  it('refuses an id that is neither a uuid nor a display id, before any lookup', async () => {
+    // No interceptor: a lookup would fail as NETWORK. Display ids are digits and dashes only, so a
+    // filter fragment never reaches the $filter (where odataString would still quote it).
     const hostile = "x' or true or displayId eq '";
-    agent
-      .get(ORIGIN)
-      .intercept({
-        path: (path) =>
-          path.startsWith(`${FEATURES}?`) &&
-          new URLSearchParams(path.split('?')[1]).get('$filter') ===
-            `displayId eq ${odataString(hostile)}`,
-      })
-      .reply(200, { value: [] });
     const result = await handleCalmGet(makeClients(), { resource: 'feature', id: hostile });
-    expect(textOf(result)).toContain('No feature has the display id');
+    expect(textOf(result)).toContain('neither a uuid nor a display id');
   });
 
   it('keeps paging past a short page when the service announces a next link', async () => {
@@ -150,5 +147,20 @@ describe('network-backed hardening', () => {
     expect(fetched.records).toHaveLength(130);
     expect(fetched.complete).toBe(true);
     expect(fetched.pages).toBe(2);
+  });
+});
+
+describe('analytics filter controls', () => {
+  it('reads a window the filter sets itself', () => {
+    expect(controlValue("typeID eq 'CALMUS' and period eq 'L4W'", 'period')).toBe('L4W');
+    expect(controlValue("typeID eq 'CALMUS'", 'period')).toBeUndefined();
+  });
+
+  it('tells a dimension filter from one that only sets controls', () => {
+    // A filter of controls alone selects no subset; comparing it with the unfiltered window would
+    // flag it as dropped every time.
+    expect(filtersDimensions("period eq 'C1D' and resolution eq 'D'")).toBe(false);
+    expect(filtersDimensions("(typeID eq 'CALMUS') and period eq 'L4W'")).toBe(true);
+    expect(filtersDimensions(undefined)).toBe(false);
   });
 });

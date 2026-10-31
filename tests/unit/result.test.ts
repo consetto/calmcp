@@ -29,9 +29,10 @@ afterEach(() => {
 });
 
 describe('jsonResult under budget', () => {
-  it('returns the payload verbatim as pretty-printed JSON', () => {
+  it('returns the payload verbatim as compact JSON', () => {
+    // Indentation added about a third to every answer and counted against the response budget.
     const data = { value: [{ a: 1 }] };
-    expect(textOf(jsonResult(data))).toBe(JSON.stringify(data, null, 2));
+    expect(textOf(jsonResult(data))).toBe(JSON.stringify(data));
   });
 
   it('is not flagged as an error', () => {

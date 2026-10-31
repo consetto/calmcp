@@ -1,6 +1,6 @@
 # Predecessor and provenance
 
-`calmcp` is my second SAP Cloud ALM MCP bridge . It succeeds an earlier
+`calmcp` is my second SAP Cloud ALM MCP bridge. It succeeds an earlier
 **Rust** implementation [sap-cloud-alm-mcp](https://github.com/consetto/sap-cloud-alm-odata-mcp) and reuses the knowledge of the Cloud ALM APIs, while taking a different technical direction.
 
 ## What was carried over
@@ -17,8 +17,8 @@
 | --- | --- | --- |
 | Language / runtime | Rust (`rmcp`) | TypeScript / Node.js (`@modelcontextprotocol/sdk`) |
 | Transport | stdio | stdio **and** Streamable HTTP |
-| Direction | read + write | **read-only** |
-| Tools | ~73 fine-grained tools | 4 consolidated tools (`calm_list`, `calm_get`, `calm_analytics`, `calm_resources`) |
+| Direction | read + write | **read-only by default**; opt-in creates, links and feature updates |
+| Tools | ~73 fine-grained tools | 4 consolidated read tools (`calm_list`, `calm_get`, `calm_analytics`, `calm_resources`) plus opt-in `calm_create` and `calm_update` |
 | Deployment | local binary | SAP BTP Cloud Foundry (`mta.yaml`, XSUAA, Destination) |
 | Auth source | config file | BTP Destination service (with local env fallback) |
 | Reference architecture | — | [`marianfoo/arc-1`](https://github.com/marianfoo/arc-1) |

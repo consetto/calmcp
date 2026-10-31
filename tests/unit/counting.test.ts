@@ -401,6 +401,52 @@ describe('counting via calm_list', () => {
     }
   });
 
+  it('reads on after a full page that holds a null entry', async () => {
+    const pool = agent.get(ORIGIN);
+    pool
+      .intercept({ path: `${TASKS}?projectId=p1&offset=0&limit=500` })
+      .reply(200, [...tasks(499), null]);
+    pool.intercept({ path: `${TASKS}?projectId=p1&offset=500&limit=500` }).reply(200, tasks(3));
+    const body = parse(
+      await handleCalmList(makeClients(), {
+        resource: 'tasks',
+        project_id: 'p1',
+        count_only: true,
+      }),
+    ) as CountBody;
+    expect(body).toMatchObject({ total: 502, complete: true });
+  });
+
+  it('cuts off a page still in flight when the time budget runs out', async () => {
+    // The first page leaves 20 ms of the budget; the second takes 2 s to answer. Without a cut-off
+    // the count would wait for it (and in production for its full timeout and a retry).
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const pool = agent.get(ORIGIN);
+    pool.intercept({ path: `${TASKS}?projectId=p1&offset=0&limit=500` }).reply(() => {
+      now += 39_980;
+      return { statusCode: 200, data: tasks(500) };
+    });
+    pool
+      .intercept({ path: `${TASKS}?projectId=p1&offset=500&limit=500` })
+      .reply(200, tasks(500))
+      .delay(2000);
+    const started = performance.now();
+    try {
+      const body = parse(
+        await handleCalmList(makeClients(), {
+          resource: 'tasks',
+          project_id: 'p1',
+          count_only: true,
+        }),
+      ) as CountBody & { stoppedBy?: string };
+      expect(body).toMatchObject({ total: 500, complete: false, stoppedBy: 'time' });
+      expect(performance.now() - started).toBeLessThan(1500);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('counts a SCIM resource that lists its records under Resources', async () => {
     agent
       .get(ORIGIN)
@@ -490,6 +536,31 @@ describe('counting via calm_list', () => {
     ) as CountBody;
     expect(body.total).toBe(57);
     expect(body.method).toBe('odata-count');
+  });
+
+  it('selects only the grouped fields of an OData resource', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith('/api/calm-features/v1/Features?') &&
+          new URLSearchParams(path.split('?')[1]).get('$select') === 'statusCode',
+      })
+      .reply(200, { value: [{ statusCode: 'CREATED' }, { statusCode: 'CREATED' }] });
+    const body = parse(
+      await handleCalmList(makeClients(), { resource: 'features', group_by: 'statusCode' }),
+    ) as CountBody;
+    expect(body).toMatchObject({ total: 2, groups: [{ value: 'CREATED', count: 2 }] });
+  });
+
+  it('names the group_by field an OData service refused', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: (path) => path.startsWith('/api/calm-features/v1/Features?') })
+      .reply(400, { error: { message: "The property 'nope' is not defined in type 'Features'." } });
+    const result = await handleCalmList(makeClients(), { resource: 'features', group_by: 'nope' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("group_by 'nope'");
   });
 
   it('rejects an unknown group_by field, naming the ones that exist', async () => {

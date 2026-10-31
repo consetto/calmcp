@@ -64,12 +64,25 @@ const LINK_SCHEME = /^(https?|mailto):/i;
 const STYLE_LOADS =
   /\\|\/\*|url\s*\(|image(-set)?\s*\(|cross-fade\s*\(|element\s*\(|src\s*\(|expression\s*\(|@import|binding|behavior/i;
 
+/** The start of a tag: `<`, an optional closing slash, the element name. */
+const TAG_START = /<\s*\/?\s*([a-z][a-z0-9:-]*)/iy;
+
 /**
- * One tag: closing slash, element name, and the raw attribute text. Quoted values may contain `>`,
- * which therefore does not end the tag; a tag with an unterminated quote does not match at all and
- * is reported as malformed by {@link unsafeHtml}.
+ * The only named entities a `style`, `href` or `src` value may use. A browser decodes every HTML5
+ * entity there (`&sol;`, `&bsol;`, `&colon;`, ...), and each could disguise a host or a CSS escape,
+ * so anything beyond these and numeric entities is refused rather than decoded by a partial table.
  */
-const TAG = /<\s*(\/?)\s*([a-z][a-z0-9:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+const PLAIN_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: '\u00a0',
+};
+
+/** Attributes whose value the browser uses to load something or to style: checked after decoding. */
+const LOADING_ATTRIBUTES = new Set(['style', 'href', 'src']);
 
 /** One attribute, read from where the previous one ended (sticky), as a browser tokenises them. */
 const ATTRIBUTE = /\s*([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?|\s*\/|\s+/y;
@@ -83,12 +96,67 @@ interface Tag {
   complete: boolean;
 }
 
-/** Every tag in `html`, parsed. */
+/**
+ * Every tag in `html`, parsed. A tag runs from its name to the first `>` outside quotes, so a quoted
+ * value may contain `>`; a tag whose quote never closes, or that has no `>`, is not a tag at all and
+ * is reported as malformed by {@link unsafeHtml}. The scan resumes after a tag, or one character
+ * after a start that was not one, like a global regular expression.
+ *
+ * Linear in the length of `html`: where a scan reaches a position outside quotes that an earlier
+ * scan already passed, it takes that scan's result instead of reading on. A regular expression
+ * here backtracked to the end of the text from every `<` (seconds for 100 KB of `<a`).
+ */
 function tags(html: string): Tag[] {
-  return [...html.matchAll(TAG)].map(([, , name = '', rest = '']) => ({
-    name: name.toLowerCase(),
-    ...parseAttributes(rest),
-  }));
+  const found: Tag[] = [];
+  const endFrom = new Map<number, number>();
+  let at = html.indexOf('<');
+  while (at !== -1) {
+    TAG_START.lastIndex = at;
+    const start = TAG_START.exec(html);
+    const end = start ? tagEnd(html, TAG_START.lastIndex, endFrom) : -1;
+    if (start && end !== -1) {
+      found.push({
+        name: (start[1] ?? '').toLowerCase(),
+        ...parseAttributes(html.slice(TAG_START.lastIndex, end)),
+      });
+      at = html.indexOf('<', end + 1);
+    } else {
+      at = html.indexOf('<', at + 1);
+    }
+  }
+  return found;
+}
+
+/**
+ * The index of the `>` that ends a tag whose attribute text starts at `from`, or -1 when a quote
+ * never closes or no `>` follows. Results are remembered per position outside quotes in `endFrom`.
+ */
+function tagEnd(html: string, from: number, endFrom: Map<number, number>): number {
+  const visited: number[] = [];
+  let at = from;
+  let result = -1;
+  while (at < html.length) {
+    const known = endFrom.get(at);
+    if (known !== undefined) {
+      result = known;
+      break;
+    }
+    visited.push(at);
+    const char = html[at];
+    if (char === '>') {
+      result = at;
+      break;
+    }
+    if (char === '"' || char === "'") {
+      const close = html.indexOf(char, at + 1);
+      if (close === -1) break;
+      at = close + 1;
+    } else {
+      at += 1;
+    }
+  }
+  for (const position of visited) endFrom.set(position, result);
+  return result;
 }
 
 /**
@@ -112,12 +180,12 @@ function parseAttributes(text: string): { attributes: Map<string, string>; compl
   return { attributes, complete: true };
 }
 
-/** Every `<img>` tag's `src`, exactly as written (with `&amp;` decoded), in order. */
+/** Every `<img>` tag's `src`, entities decoded as the browser reads them, in order. */
 function imageSources(html: unknown): string[] {
   if (typeof html !== 'string') return [];
   return tags(html)
     .filter((tag) => tag.name === 'img')
-    .map((tag) => (tag.attributes.get('src') ?? '').replace(/&amp;/g, '&'));
+    .map((tag) => decodeEntities(tag.attributes.get('src') ?? ''));
 }
 
 /**
@@ -187,7 +255,12 @@ export function unsafeHtml(html: unknown, current?: unknown): string[] {
       problems.add(`a <${tag.name}> tag could not be read to its end; remove stray "=" or quotes`);
     }
     for (const [name, value] of tag.attributes) {
-      if (name.startsWith('on')) {
+      if (LOADING_ATTRIBUTES.has(name) && unknownEntity(value)) {
+        problems.add(
+          `the ${name} attribute may use only the entities &amp; &lt; &gt; &quot; &apos; ` +
+            `&nbsp; and numeric ones, not "${unknownEntity(value)}"`,
+        );
+      } else if (name.startsWith('on')) {
         problems.add(`event handler attributes such as ${name}= are not allowed`);
       } else if (
         !GLOBAL_ATTRIBUTES.has(name) &&
@@ -206,7 +279,7 @@ export function unsafeHtml(html: unknown, current?: unknown): string[] {
           problems.add('links must be http(s), mailto or a path within Cloud ALM');
         }
       } else if (tag.name === 'img' && name === 'src') {
-        const src = value.replace(/&amp;/g, '&');
+        const src = decodeEntities(value);
         if (!existingSources.has(src) && !isImageServicePath(src)) {
           problems.add(
             `images must come from Cloud ALM's image service (${IMAGE_SERVICE_PATH}…), not "${src}"`,
@@ -252,16 +325,32 @@ function isImageServicePath(src: string): boolean {
   return url.origin === 'https://tenant.invalid' && url.pathname.startsWith(IMAGE_SERVICE_PATH);
 }
 
-/** Decode the numeric and the few named entities that can disguise a scheme or a CSS function. */
+/** The first named entity in `value` outside {@link PLAIN_ENTITIES}, if any. */
+function unknownEntity(value: string): string | undefined {
+  for (const [entity, name = ''] of value.matchAll(/&([a-z][a-z0-9]*);?/gi)) {
+    if (!(name in PLAIN_ENTITIES)) return entity;
+  }
+  return undefined;
+}
+
+/**
+ * Decode numeric entities, the plain named ones, and the named ones that can disguise a scheme or a
+ * CSS function in running text. A code point outside Unicode becomes U+FFFD, as in a browser.
+ */
 function decodeEntities(value: string): string {
+  const codePoint = (n: number) => String.fromCodePoint(n >= 0 && n <= 0x10ffff ? n : 0xfffd);
   return value
-    .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) =>
-      String.fromCodePoint(Number.parseInt(hex, 16)),
-    )
-    .replace(/&#(\d+);?/g, (_, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
+    .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) => codePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);?/g, (_, dec: string) => codePoint(Number.parseInt(dec, 10)))
     .replace(/&colon;/gi, ':')
     .replace(/&lpar;/gi, '(')
-    .replace(/&tab;|&newline;/gi, '');
+    .replace(/&sol;/gi, '/')
+    .replace(/&bsol;/gi, '\\')
+    .replace(/&tab;|&newline;/gi, '')
+    .replace(
+      /&(amp|lt|gt|quot|apos|nbsp);/gi,
+      (_, name: string) => PLAIN_ENTITIES[name.toLowerCase()] ?? '',
+    );
 }
 
 /** A URL as a browser reads its scheme: entities decoded, whitespace and control characters gone. */

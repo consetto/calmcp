@@ -58,8 +58,10 @@ export class ClientCredentialsAuthProvider implements AuthProvider {
   }
 
   /** @inheritdoc */
-  invalidate(): void {
-    this.cached = undefined;
+  invalidate(refused: AuthContext): void {
+    if (this.cached && refused.headers.Authorization === `Bearer ${this.cached.token}`) {
+      this.cached = undefined;
+    }
   }
 
   /**

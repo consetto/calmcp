@@ -32,6 +32,12 @@ export async function uuidByDisplayId(
   noun: string,
   displayId: string,
 ): Promise<string> {
+  if (!DISPLAY_ID.test(displayId)) {
+    throw new LookupError(
+      `'${displayId}' is neither a uuid nor a display id such as 6-123. Pass the ${noun}'s uuid or ` +
+        'its display id as calm_get returns it.',
+    );
+  }
   const page = await clients.listOData(service, entitySet, {
     filter: `displayId eq ${odataString(displayId)}`,
     select: 'uuid,displayId',
