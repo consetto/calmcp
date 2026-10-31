@@ -56,6 +56,14 @@ export class AuthError extends CalmError {
 }
 
 /**
+ * Cloud ALM answered with a body calmcp cannot read as what it asked for (e.g. a list page that is
+ * no list). Refused rather than guessed at: a guess would be a plausible but wrong number.
+ */
+export class UnexpectedResponseError extends CalmError {
+  override readonly name = 'UnexpectedResponseError';
+}
+
+/**
  * An API request failed. Keeps the HTTP status and (for OData) the structured error code/message
  * so callers and the MCP client see actionable detail.
  */
@@ -177,6 +185,9 @@ export function describeError(error: unknown): ErrorInfo {
     };
   }
   if (error instanceof ConfigError) return { error: 'CONFIG', retryable: false, message };
+  if (error instanceof UnexpectedResponseError) {
+    return { error: 'UPSTREAM_ERROR', retryable: false, message };
+  }
   return { error: 'INTERNAL', retryable: false, message };
 }
 

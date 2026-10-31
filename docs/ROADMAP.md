@@ -55,8 +55,6 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 
 ## Reliability
 
-- **Time budget for long counts.** Up to 40 pages are fetched in sequence; stop at about 45 s and
-  return the partial tally with `complete: false` instead of losing it to a client timeout.
 - **Progress notifications** during long walks, so clients keep waiting and users see progress.
 
 ## Security and operations

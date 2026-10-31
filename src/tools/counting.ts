@@ -26,7 +26,13 @@ import {
   type Group,
   NO_VALUE,
 } from './aggregate.js';
-import { fetchAllOData, fetchAllRest, MAX_PAGES_COUNT, type PagingOptions } from './paging.js';
+import {
+  COUNT_TIME_BUDGET_MS,
+  fetchAllOData,
+  fetchAllRest,
+  MAX_PAGES_COUNT,
+  type PagingOptions,
+} from './paging.js';
 import type { ListParams, RestListResource } from './registry.js';
 import { parseFields, type Record_ } from './shape.js';
 
@@ -46,6 +52,8 @@ export interface CountResult {
   total: number;
   /** False when a page cap stopped the walk, so `total` is a floor rather than the total. */
   complete: boolean;
+  /** Present when the time budget, not the page cap, stopped an incomplete walk. */
+  stoppedBy?: 'time';
   method: CountMethod;
   pagesFetched?: number;
   /**
@@ -194,6 +202,7 @@ type PagedTally = Pick<
   | 'groupsOmitted'
   | 'otherCount'
   | 'multiValued'
+  | 'stoppedBy'
 >;
 
 /**
@@ -207,7 +216,9 @@ type PagedTally = Pick<
 async function pagedTally(
   keys: string[],
   groupLimit: number | undefined,
-  walk: (options: PagingOptions) => Promise<{ complete: boolean; pages: number }>,
+  walk: (
+    options: PagingOptions,
+  ) => Promise<{ complete: boolean; pages: number; stoppedBy?: 'pages' | 'time' }>,
 ): Promise<PagedTally> {
   const grouping = keys.length > 0 ? createGroupTally(keys, groupLimit) : undefined;
   let counted = 0;
@@ -217,13 +228,18 @@ async function pagedTally(
     grouping?.add(rows);
   };
 
-  const { complete, pages } = await walk({ maxPages: MAX_PAGES_COUNT, onPage });
+  const { complete, pages, stoppedBy } = await walk({
+    maxPages: MAX_PAGES_COUNT,
+    onPage,
+    deadline: Date.now() + COUNT_TIME_BUDGET_MS,
+  });
 
   const base: PagedTally = {
     total: counted,
     complete,
     method: 'client-paging',
     pagesFetched: pages,
+    ...(stoppedBy === 'time' ? { stoppedBy } : {}),
   };
   if (!grouping) return base;
 
@@ -416,8 +432,12 @@ function noteFor(tally: PagedTally, request: CountRequest): { note?: string } {
   }
   if (!tally.complete) {
     parts.push(
-      `Stopped at the ${tally.total}-record page cap, so the real total is higher. ` +
-        'Narrow the query (for tasks: project_id, task_type, status) and count again.',
+      tally.stoppedBy === 'time'
+        ? `Stopped after ${COUNT_TIME_BUDGET_MS / 1000} s of paging with ${tally.total} ` +
+            'records counted, so the real total is higher. Narrow the query (for tasks: ' +
+            'project_id, task_type, status) and count again.'
+        : `Stopped at the ${tally.total}-record page cap, so the real total is higher. ` +
+            'Narrow the query (for tasks: project_id, task_type, status) and count again.',
     );
   }
   return parts.length > 0 ? { note: parts.join(' ') } : {};
