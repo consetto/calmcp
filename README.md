@@ -17,7 +17,7 @@ remotely, and deploys to **SAP BTP Cloud Foundry**.
 `calmcp` is my second SAP Cloud ALM MCP bridge. It succeeds an earlier
 **Rust** implementation [sap-cloud-alm-mcp](https://github.com/consetto/sap-cloud-alm-odata-mcp) and reuses the knowledge of the Cloud ALM APIs, while taking a different technical direction.
 
-The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc-1`](https://github.com/marianfoo/arc-1) as reference architecture. See [docs/PREDECESSOR.md](docs/PREDECESSOR.md) for the project's lineage.
+The architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc-1`](https://github.com/marianfoo/arc-1) as reference architecture. See [docs/PREDECESSOR.md](docs/PREDECESSOR.md) for the project's lineage.
 
 ## Tools
 
@@ -35,7 +35,7 @@ The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
 - **How many user stories are there in the tenant?**
 
   ```json
-  calm_analytics({ "provider": "Tasks", "filter": "type eq 'User Story'", "count_only": true })
+  calm_analytics({ "provider": "Tasks", "filter": "typeID eq 'CALMUS'", "count_only": true })
   ```
 
 - **Open defects per project**
@@ -81,6 +81,10 @@ after fetching: `fields` projects the records, and `timebox_id`/`timebox_name` s
 (paging through the project so the filter is complete). Unknown field names and unknown timebox
 names are rejected rather than silently ignored.
 
+REST services cut a list at their own default page size and never say so, so calmcp always asks
+for a page size: `top`, or 500 when the call names none. A full page then carries `nextPage` with
+the `skip` of the next one, on every resource and in `calm_analytics`.
+
 REST resources have no server-side `$filter`, and each reads only a few parameters. A parameter the
 chosen resource does not read (for example `filter` on a REST resource, or `project_id` on an OData
 one) is rejected with the list of parameters it does read, rather than left off the request: an
@@ -88,8 +92,8 @@ unfiltered answer to a filtered question reads as authoritative and is wrong. `c
 reports those `parameters` per resource, derived from how calmcp builds the request.
 
 calmcp also caps the response itself. A payload over `CALM_MAX_RESPONSE_BYTES` (default 100 KB) is
-withheld and replaced by a summary naming how many records matched, which fields they carry, and
-how to ask again. Handing the payload over instead means the client truncates the JSON mid-record
+withheld and replaced by a summary (`reason: "RESPONSE_TOO_LARGE"`, `complete: false`) naming how
+many records matched, which fields they carry, and how to ask again. Handing the payload over instead means the client truncates the JSON mid-record
 and the model answers from a fragment, which reads as authoritative and is wrong.
 
 ### Counting and breakdowns
@@ -102,6 +106,9 @@ Never answer "how many?" by listing records and counting them. Both query tools 
 | `group_by: "status"` | Returns `{ total, groups: [{ value, count }] }` instead of records. Accepts several fields (`"projectName,priority"`). Doubles as a way to discover the values a field actually takes. |
 | `group_limit` | Caps the number of groups (default 50); the tail folds into `otherCount` rather than being dropped. |
 | `with_count: true` | Returns the total *alongside* the records (OData and analytics only). |
+
+A count returns no records, so `top`, `skip`, `select` and `with_count` are refused next to
+`count_only` or `group_by` rather than ignored.
 
 Which tool you call decides where the number comes from:
 
@@ -144,7 +151,8 @@ without parsing prose:
 Codes: `INVALID_ARGUMENT` (fix the call), `NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`,
 `CONFLICT`, `RATE_LIMITED`, `UPSTREAM_ERROR`, `TIMEOUT`, `NETWORK`, `CANCELLED`, `AUTH`, `CONFIG`,
 `RESPONSE_TOO_LARGE` (a Cloud ALM answer over 8 MB, not read), `INTERNAL`. A read answered with 429
-or 503 is retried once when Cloud ALM asks for a wait of at most 5 seconds. A create or update is
+or 503 is retried once, after the wait Cloud ALM asks for (at most 5 seconds; 1 second when it
+names none). A create or update is
 never retried after Cloud ALM processed it; the one exception is a 401, which Cloud ALM answers
 before processing anything, so any request is sent once more with a fresh token. A call the client
 cancels stops issuing requests.
@@ -242,6 +250,9 @@ What it does and does not do:
   else OAuth client, else `local`), the resource, the new uuid and display id, and the names of the
   fields set, not their values. With Cloud ALM naming only the technical user, this log is where
   the person is.
+- **Uncertain outcome.** A create that times out, gets a 408 or a 5xx is not retried: the result
+  says the entry may or may not exist (`retryable: false`), and the audit entry carries
+  `outcome: "unknown"`. Check with `calm_list` before creating it again.
 
 Example:
 
@@ -283,9 +294,12 @@ Every call goes through the same checks, in order:
   ETag or `If-Match`, so this is the only protection against overwriting someone else's edit; it
   narrows the window to the moment between the check and the write.
 - **Only real changes.** Fields that already hold the requested value are not sent.
-- **No active content.** Rich text may not contain scripts, event handlers (`onerror=`, ...),
-  `javascript:`/`vbscript:`/`data:` URLs, CSS `url(...)`, or images from anywhere but Cloud ALM's
-  image service (an image already in the current text may stay). calmcp reads text other people
+- **No active content.** Rich text is checked against an allowlist: only the elements and
+  attributes of formatted text, links to http(s), mailto or Cloud ALM paths, and images from Cloud
+  ALM's image service (an image already in the current text may stay). Everything else is refused:
+  scripts, event handlers, `javascript:` or `data:` URLs, CSS `url(...)`, and named entities other
+  than `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` and `&nbsp;` in `style`, `href` or `src`, where
+  a browser would decode them into a hidden host or CSS escape. calmcp reads text other people
   wrote, so an instruction planted in one object could otherwise make a model write a tracking
   pixel or a script into another. The same check applies to `calm_create`.
 - **Image guard.** A feature description references its images as `<img>` tags pointing at Cloud
@@ -336,7 +350,7 @@ auth modes, plus a BTP destination mode:
 | `CALM_TENANT`, `CALM_REGION` | Tenant subdomain and region (e.g. `eu10`) for OAuth2 mode. |
 | `CALM_CLIENT_ID`, `CALM_CLIENT_SECRET` | OAuth2 client-credentials from the service binding. |
 | `CALM_DESTINATION_NAME` | Name of a bound BTP Destination (BTP mode; takes precedence). |
-| `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port, and the exact origins of browser-based clients allowed by CORS (comma-separated, e.g. `http://localhost:6274`). Unset sends no CORS headers, which is right for MCP clients such as Claude Desktop. A wildcard (`*`) is refused at startup: on the local unauthenticated endpoint it would let any website read Cloud ALM data through the developer's browser. |
+| `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port (default 8080; `--port`/`-p` overrides), and the exact origins of browser-based clients allowed by CORS (comma-separated, e.g. `http://localhost:6274`). Unset sends no CORS headers, which is right for MCP clients such as Claude Desktop. A wildcard (`*`) is refused at startup: on the local unauthenticated endpoint it would let any website read Cloud ALM data through the developer's browser. |
 | `CALM_DEBUG`, `CALM_TIMEOUT_SECONDS` | Verbose tracing and request timeout (default 30 s). |
 | `CALM_MAX_RESPONSE_BYTES` | Largest tool result handed to the client (default 100 000); a larger one is replaced by a summary. |
 | `CALM_TOKEN_REFRESH_BUFFER_SECONDS` | Renew the OAuth token this many seconds before it expires (default 5). |
@@ -428,8 +442,8 @@ The simplest path for a single developer: install calmcp as a Claude Desktop ext
    Business Accelerator Hub sandbox instead, turn on **Use Sandbox** and supply a **Sandbox API
    Key**. **Debug Logging** and **Request Timeout** are optional. Fill them in and enable the
    extension.
-4. Ask Claude: *"Using the SAP Cloud ALM tools, list the open defects ordered by priority."* — it
-   should call `calm_analytics`.
+4. Ask Claude: *"Using the SAP Cloud ALM tools, how many open defects are there per project?"* — it
+   should call `calm_analytics` with `group_by`.
 
 **What the bundle is:** a pure-JS, cross-platform (macOS / Windows / Linux) build of the stdio
 server packaged with its dependencies — calmcp has no native modules, so one bundle runs
@@ -527,6 +541,9 @@ This creates and binds `calmcp-xsuaa` (XSUAA), `calmcp-destination` (Destination
 
 ### Using `cf push`
 
+`manifest.yml` names the app `calmcp`; the MTA deployment names it `calmcp-srv`. The `cf set-env`
+examples in this README use `calmcp-srv`: replace it with `calmcp` after a `cf push`.
+
 Before creating or updating XSUAA, configure the exact public `/oauth/callback` in
 `xs-security.json`; the checked-in localhost example is not a production route. See the
 [OAuth upgrade guide](docs/XSUAA-AUTH-UPGRADE.md).
@@ -551,7 +568,7 @@ Two differently-named things are involved — don't confuse them:
 
 - **`calmcp-destination`** — the destination *service instance* created and bound by the deploy
   (mta.yaml / manifest.yml). It is the container that holds destinations; you do not edit it by hand.
-- **`CALM_DESTINATION_NAME`** (default `SAP_CALM`) — the name of the destination *entry* the app
+- **`CALM_DESTINATION_NAME`** (`SAP_CALM` in mta.yaml and manifest.yml) — the name of the destination *entry* the app
   looks up at runtime. **This is the name you give the destination you create.** It must match the
   value of `CALM_DESTINATION_NAME`; change one and change the other.
 
@@ -561,7 +578,7 @@ API service key (an OAuth2 client-credentials key for the Cloud ALM API):
 
 | Field | Value |
 | --- | --- |
-| **Name** | the value of `CALM_DESTINATION_NAME` (default `SAP_CALM`) |
+| **Name** | the value of `CALM_DESTINATION_NAME` (`SAP_CALM` in the descriptors) |
 | **Type** | `HTTP` |
 | **Proxy Type** | `Internet` |
 | **URL** | your Cloud ALM API base **including the `/api` suffix**: `https://<tenant>.<region>.alm.cloud.sap/api` (the region-only form `https://<region>.alm.cloud.sap/api` works too) |
@@ -583,6 +600,13 @@ Notes:
 
 The destination above is how calmcp authenticates **to** Cloud ALM. Separately, the `/mcp` endpoint
 itself is protected so only authorized callers can reach it.
+
+**What sign-in does and does not decide.** Every caller reads and writes Cloud ALM with the one
+technical identity of the destination or OAuth client. The role collections decide which tools a
+caller is offered (`Viewer` the read tools, `Writer` also `calm_create`/`calm_update`) and who is
+named in the audit log; they do not narrow what the read tools can see. Cloud ALM's API accepts
+client credentials only, so per-user data access is not possible (see
+[docs/ROADMAP.md](docs/ROADMAP.md) for access levels through separate API instances).
 
 **Standard approach: a BTP user signing in from an AI tool.** When the `calmcp-xsuaa` service is
 bound, `/mcp` requires a valid XSUAA token carrying the `Viewer` scope (granted via the
@@ -610,6 +634,7 @@ Relevant environment variables (HTTP transport):
 | `CALM_PUBLIC_URL` | Public base URL used in OAuth metadata and the callback. Defaults to the first route in `VCAP_APPLICATION`, so it's normally not needed. |
 | `CALM_DCR_SIGNING_SECRET` | Secret for HMAC-signing dynamic client registrations. Set it (e.g. `cf set-env calmcp-srv CALM_DCR_SIGNING_SECRET "$(openssl rand -base64 48)"`) so registered clients survive a `cf deploy` (which rotates the XSUAA `clientsecret`). Defaults to the XSUAA `clientsecret`. |
 | `CALM_HTTP_ALLOW_UNAUTHENTICATED` | `true` allows an open `/mcp` on `127.0.0.1` when no auth is configured. Local development only; ignored on Cloud Foundry. |
+| `CALM_OAUTH_REDIRECT_PATTERNS` | Extra redirect URIs (comma-separated globs, `*` within a segment, `**` across) an MCP client may receive its OAuth code at. calmcp accepts localhost, Claude, ChatGPT, Cursor, VS Code, Mistral and Copilot Studio; any other `https://` redirect is refused at registration, so a link to someone else's app cannot carry a user's code there. |
 | `CALM_HTTP_API_KEY` | Shared secret for the alternative API-key path. Generate with `openssl rand -base64 48`. Leave empty to rely on XSUAA only. See the [Copilot Studio guide](docs/copilot-studio.md). |
 
 ### Consuming the deployed server from an AI tool
@@ -639,8 +664,8 @@ npm run test:integration # live backend from .env; skipped without credentials
 npm run build && npm run test:e2e   # real MCP calls over stdio and HTTP
 ```
 
-Pushes to `main` and every pull request run `npm ci`, the version check, lint, unit tests, the
-build and the e2e tests on Node 22 and 24 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+Pushes to `main` and every pull request run `npm ci`, the dependency audit, the version check,
+lint, the type-check, unit tests, the build and the e2e tests on Node 22 and 24 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 `npm ci` installs strictly from the lockfile, so a stale local `node_modules` can never be mistaken
 for a real failure again. The same workflow validates `mta.yaml` with `mbt`, checks that
 `xs-security.json` still defines the scopes the code requires

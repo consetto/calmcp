@@ -7,7 +7,8 @@ caller, so it uses a **static API key** instead of a per-user login.
 
 > API-key access authenticates the *caller* (the Copilot Studio agent), not an end user. Every request
 > still reads SAP Cloud ALM as the bound Destination's technical identity, so there is no per-user data
-> filtering. If you need per-user identity, use the interactive OAuth path instead.
+> filtering. The interactive OAuth path identifies the user to calmcp (role collections, audit log),
+> but Cloud ALM data is still read with the same technical identity.
 
 ## Prerequisites
 
@@ -50,7 +51,7 @@ caller, so it uses a **static API key** instead of a per-user login.
 
 4. **Add the connector to your agent** in Copilot Studio (Tools, then Add a tool, then the custom
    connector) and call calmcp. The four tools are `calm_list`, `calm_get`, `calm_analytics`, and
-   `calm_resources`.
+   `calm_resources`. `calm_create` and `calm_update` are never offered to API-key callers.
 
 ## Verify
 
@@ -85,7 +86,7 @@ tool instead). Topics, instructions and other tools are unaffected.
 Purely behavioural changes need none of this. The response-size cap and the recipes returned by
 `calm_resources`, for instance, take effect as soon as the new build is running.
 
-Verify what the agent can currently see with the `tools/list` call below, and compare the parameter
+Verify what the agent can currently see with the `tools/list` call above, and compare the parameter
 names against the release you deployed.
 
 ## Troubleshooting
@@ -109,7 +110,7 @@ again, because the failed discovery is cached.
 - **Rotate:** set a new `CALM_HTTP_API_KEY`, `cf restart`, then update the Copilot Studio connection.
   The key of an existing connection cannot be edited, so delete it and create a new one.
 - **Revoke:** clear `CALM_HTTP_API_KEY` and restart. If XSUAA is still bound, `/mcp` remains protected
-  by OAuth; otherwise the endpoint would be open, so do not leave it unauthenticated and exposed.
+  by OAuth; with neither, the app refuses to start.
 
 ## Notes
 

@@ -1,4 +1,4 @@
-## XSUAA OAuth upgrade to 1.2.0
+# XSUAA OAuth upgrade to 1.2.0
 
 This update addresses [GHSA-6935-r3wv-f646](https://github.com/arc-mcp/arc-1/security/advisories/GHSA-6935-r3wv-f646)
 by using `@arc-mcp/xsuaa-auth` 1.2.0. A new authorization flow displays **Approve and continue**

@@ -27,4 +27,8 @@ calmcp sits between AI clients and SAP Cloud ALM. Reports about these are especi
   somewhere it should not, for example through rich text.
 - Leaks of tokens, client secrets or Cloud ALM data into logs, errors or packages.
 
+Design limits that are not vulnerabilities: every caller reads and writes Cloud ALM with the one
+technical identity of the destination or OAuth client, so the role collections decide which tools a
+caller gets, not what the read tools can see (the Cloud ALM API accepts client credentials only).
+
 Vulnerabilities in SAP Cloud ALM or SAP BTP themselves go to SAP.

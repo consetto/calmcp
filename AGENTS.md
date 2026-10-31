@@ -22,13 +22,16 @@ to change it without breaking what models rely on.
 | Path | What lives there |
 | --- | --- |
 | `src/index.ts`, `src/server.ts` | CLI entry, transports, server assembly, instructions sent to clients, which tools a caller gets |
-| `src/transport/` | stdio and Streamable HTTP (auth, CORS, rate limit) |
+| `src/transport/` | stdio and Streamable HTTP (auth, CORS, rate limit, OAuth redirect allowlist in `redirects.ts`) |
 | `src/auth/` | OAuth2 client credentials, sandbox API key, BTP destination |
 | `src/calm/` | HTTP client per Cloud ALM service, OData query building, scope hints for 403 |
 | `src/tools/index.ts` | Tool registration: names, descriptions, annotations, input schemas |
 | `src/tools/schemas.ts` | Tool input schemas (zod), made strict at registration |
 | `src/tools/registry/` | `calm_list` and `calm_get` resources: one entry per Cloud ALM collection or entity |
 | `src/tools/create.ts` | `calm_create` resources and their strict payload schemas |
+| `src/tools/update.ts`, `calmUpdate.ts` | `calm_update` resources, field allowlists, the change check and the image guard |
+| `src/tools/richText.ts` | The rich-text allowlist and image keys, used by create and update |
+| `src/tools/writeOutcome.ts`, `displayId.ts` | How an uncertain write is reported; the one display-id lookup |
 | `src/tools/analyticsCatalog.ts`, `recipes.ts`, `codeLists.ts` | Static knowledge surfaced by `calm_resources` |
 | `src/tools/counting.ts`, `aggregate.ts`, `paging.ts` | `count_only`, `group_by` and the paging behind them |
 | `YAML/` (gitignored) | The Cloud ALM OpenAPI specs; see `docs/API_VERSIONS.md` |
@@ -40,6 +43,7 @@ to change it without breaking what models rely on.
 | New `calm_list`/`calm_get` resource | `src/tools/registry/{list,get}.ts`, a test in `tests/unit/registry.test.ts`; `calm_resources` derives its catalog from the registry |
 | New tool parameter | `src/tools/schemas.ts`, the handler, the tool description in `src/tools/index.ts`, `README.md`; check the size budget in `tests/unit/schema.test.ts` |
 | New `calm_create` resource | `src/tools/create.ts` (schema from the spec's `*-create` body), `src/calm/scopes.ts` (write scope), README "Write access", `mcpb-manifest.json` tool description |
+| New `calm_update` resource | `src/tools/update.ts` (allowlist from the spec's `*-update` body), `src/calm/scopes.ts`, README "Update access", `mcpb-manifest.json` |
 | New Cloud ALM service | `SERVICE_PATHS` in `src/config.ts`, `src/calm/scopes.ts`, `docs/API_VERSIONS.md`, README "Cloud ALM API scopes" |
 | Server instructions or tool descriptions | Text only, but it is what models read: the tool-surface comment on the PR shows the diff and its token cost |
 | Version | `npm version <x.y.z>` syncs `mcpb-manifest.json`, `mta.yaml` and `src/server.ts`; CI checks it |

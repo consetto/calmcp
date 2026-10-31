@@ -1,7 +1,8 @@
 # Updating Cloud ALM objects: analysis
 
-Can calmcp offer updates to existing objects, and what could a read-modify-write lose? calmcp is
-create-only today (see the README, "Write access"). This analysis looks at what the Cloud ALM APIs
+Can calmcp offer updates to existing objects, and what could a read-modify-write lose? calmcp started
+create-only; this analysis led to `calm_update` for features (see Status and the README, "Update
+access"). This analysis looks at what the Cloud ALM APIs
 allow, where rich text and images live, and what a safe update tool would need.
 
 Sources: the OpenAPI specs of the 19 Cloud ALM APIs (pulled 2026-09-21), SAP's *API Guide for SAP
@@ -18,12 +19,18 @@ Implemented on this basis:
   update tool would need" below: PATCH of only the changed fields, a field allowlist, the image
   guard, the change check against `modifiedAt`, no target-state endpoints, documents excluded, an
   audit log, and the Writer scope on HTTP. Tasks and the other objects are not covered yet.
-- **After review:** rich text written by `calm_create` and `calm_update` is refused when it carries
-  active content (scripts, event handlers, `javascript:`/`data:` URLs, CSS `url(...)`) or images
-  from outside Cloud ALM's image service; image removal names the images (`remove_images`) instead
+- **After review:** rich text written by `calm_create` and `calm_update` is checked against an
+  allowlist of formatted-text elements, attributes and URL schemes (1.0), so active content
+  (scripts, event handlers, `javascript:`/`data:` URLs, CSS `url(...)`, entity-disguised hosts) and
+  images from outside Cloud ALM's image service are refused; image removal names the images (`remove_images`) instead
   of a blanket switch; an update Cloud ALM accepted is reported and audited even when reading it
   back fails, and one without an answer is audited as `outcome: unknown`; the audit entry holds the
   replaced values; `null` clears assignments.
+- **Known Cloud ALM limitation (tenant test 2026-10-31):** a feature whose description contains
+  images cannot have its description changed through the API at all, even when every image is
+  kept. Cloud ALM's image service answers 403 to the API's technical user (`updateUsedImages`), the
+  PATCH fails with 500 and nothing is saved. The image guard below still matters for features
+  whose images are added later in the UI; see the README, "Update access".
 
 ## Summary
 
