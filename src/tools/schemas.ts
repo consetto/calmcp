@@ -243,7 +243,7 @@ export const calmCreateShape = {
         'A task needs title, projectId and type (CALMDEF defect, CALMUS user story, ...). ' +
         'A task_comment needs taskId and text. ' +
         'A link names the two objects by uuid (features, documents, process nodes and manual ' +
-        'test cases also by display id, e.g. 6-132; tasks by uuid only). ' +
+        'test cases also by display id, e.g. 6-123; tasks by uuid only). ' +
         'A library entry needs title. Related links and assignments (toURLReferences, ' +
         'toLibraryAssignments, ...) can be included and are created in the same call. Unknown ' +
         'fields are rejected, never dropped',
@@ -257,7 +257,7 @@ export const calmUpdateShape = {
     .describe(
       'What to change: "feature". calm_resources({ topic: "<resource>" }) lists the fields',
     ),
-  id: z.string().min(1).describe('uuid or display id (e.g. "6-132") of the object'),
+  id: z.string().min(1).describe('uuid or display id (e.g. "6-123") of the object'),
   changes: z
     .record(z.string(), z.unknown())
     .describe(

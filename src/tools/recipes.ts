@@ -92,9 +92,9 @@ export const RECIPES: Recipe[] = [
   },
   {
     question:
-      'Which transports belong to feature 6-132, and which feature carries transport K900123?',
+      'Which transports belong to feature 6-123, and which feature carries transport K900123?',
     steps: [
-      "Feature to transports: calm_list({ resource: 'features', filter: \"displayId eq '6-132'\", " +
+      "Feature to transports: calm_list({ resource: 'features', filter: \"displayId eq '6-123'\", " +
         "select: 'displayId,title', expand: 'toTransports,toTransportReferences' })",
       "Transport to feature: calm_list({ resource: 'feature_transports', filter: \"id eq " +
         "'K900123'\", expand: 'parent' }); repeat on feature_transport_references, which holds " +

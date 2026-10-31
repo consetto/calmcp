@@ -3,8 +3,8 @@
 > Upgrading an XSUAA deployment? Read the [OAuth upgrade guide](docs/XSUAA-AUTH-UPGRADE.md) before redeploying.
 
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that bridges AI
-assistants (Claude, GitHub Copilot, …) to **SAP Cloud ALM** (aka CALM). It exposes the Cloud ALM read APIs
-through four consolidated, intent-based tools, runs over **stdio** locally or **Streamable HTTP**
+assistants (Claude, GitHub Copilot, …) to **SAP Cloud ALM** (aka CALM). It exposes the Cloud ALM APIs
+through four consolidated, intent-based read tools (plus two opt-in write tools), runs over **stdio** locally or **Streamable HTTP**
 remotely, and deploys to **SAP BTP Cloud Foundry**.
 
 > calmcp is read-only by default: it never changes or deletes data in SAP Cloud ALM. An operator
@@ -14,16 +14,16 @@ remotely, and deploys to **SAP BTP Cloud Foundry**.
 > fields of existing features** with `CALM_UPDATE_ENABLED=true`
 > ([Update access](#update-access-opt-in)). Nothing is ever deleted.
 
-`calmcp` is my second SAP Cloud ALM MCP bridge . It succeeds an earlier
+`calmcp` is my second SAP Cloud ALM MCP bridge. It succeeds an earlier
 **Rust** implementation [sap-cloud-alm-mcp](https://github.com/consetto/sap-cloud-alm-odata-mcp) and reuses the knowledge of the Cloud ALM APIs, while taking a different technical direction.
 
-The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc-1`](https://github.com/marianfoo/arc-1) as reference architecutre. See [docs/PREDECESSOR.md](docs/PREDECESSOR.md) for the project's lineage.
+The Architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc-1`](https://github.com/marianfoo/arc-1) as reference architecture. See [docs/PREDECESSOR.md](docs/PREDECESSOR.md) for the project's lineage.
 
 ## Tools
 
 | Tool | Purpose |
 | --- | --- |
-| `calm_list` | List/query any collection — tasks (incl. **requirements**, **user stories** and **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `$filter/$select/$expand/$orderby/$top/$skip`; REST resources accept contextual params (`project_id`, or `project_name` resolved to it, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource; `count_only`/`group_by` return a live count instead of the records. |
+| `calm_list` | List/query any collection — tasks (incl. **requirements**, **user stories** and **defects**), projects, features, documents, test cases, hierarchy nodes, cross-library objects, landscape objects, status events, code lists. OData resources accept `filter`, `select`, `expand`, `orderby`; every resource pages with `top`/`skip`; REST resources accept contextual params (`project_id`, or `project_name` resolved to it, `task_id`, `task_type`, `timebox_id`/`timebox_name`, …). `fields` projects the response on any resource; `count_only`/`group_by` return a live count instead of the records. |
 | `calm_get` | Fetch a single entity by id (a feature also by display id, e.g. `6-123`). |
 | `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Providers span the whole tenant, so `count_only`/`group_by` here answer "how many across all projects". It aggregates but does **not** sort: `$orderby` is silently ignored by the service, so it is not offered. |
 | `calm_resources` | Discovery: the catalog of resources/providers, per-provider analytics dimensions and measures, the task type/status/priority code lists, and worked recipes. With write or update access on, also the fields `calm_create` and `calm_update` accept, per resource by `topic`. |
@@ -101,7 +101,7 @@ Never answer "how many?" by listing records and counting them. Both query tools 
 | `count_only: true` | Returns only the total. One `$count` request on OData and analytics; on REST resources calmcp pages and keeps just the tally. |
 | `group_by: "status"` | Returns `{ total, groups: [{ value, count }] }` instead of records. Accepts several fields (`"projectName,priority"`). Doubles as a way to discover the values a field actually takes. |
 | `group_limit` | Caps the number of groups (default 50); the tail folds into `otherCount` rather than being dropped. |
-| `count: true` | Returns the total *alongside* the records (OData and analytics only). |
+| `with_count: true` | Returns the total *alongside* the records (OData and analytics only). |
 
 Which tool you call decides where the number comes from:
 
@@ -123,8 +123,13 @@ one was applied, so prefer `group_by` on the field you would have filtered: it s
 nothing can be dropped, and it returns every value with its count in one call.
 
 Every counting result reports `method`, the effective `filter`, and `complete`. A walk stopped by
-the 20 000-record page cap comes back with `complete: false` and says the real total is higher,
-rather than presenting a floor as the answer.
+the 20 000-record page cap, or by the 40-second time budget for one count (`stoppedBy: "time"`),
+comes back with `complete: false` and says the real total is higher, rather than presenting a floor
+as the answer.
+
+Some analytics providers insist on a filter before they answer: `ServiceLevels` needs
+`businessServiceId`, `MonitoringEvents` at least one dimension filter such as `serviceId`.
+`calm_resources({ topic: "<provider>" })` states this as `requires`.
 
 ### Errors
 
@@ -138,8 +143,11 @@ without parsing prose:
 
 Codes: `INVALID_ARGUMENT` (fix the call), `NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`,
 `CONFLICT`, `RATE_LIMITED`, `UPSTREAM_ERROR`, `TIMEOUT`, `NETWORK`, `CANCELLED`, `AUTH`, `CONFIG`,
-`INTERNAL`. A read answered with 429 or 503 is retried once when Cloud ALM asks for a wait of at
-most 5 seconds; a create is never retried. A call the client cancels stops issuing requests.
+`RESPONSE_TOO_LARGE` (a Cloud ALM answer over 32 MB, not read), `INTERNAL`. A read answered with 429
+or 503 is retried once when Cloud ALM asks for a wait of at most 5 seconds. A create or update is
+never retried after Cloud ALM processed it; the one exception is a 401, which Cloud ALM answers
+before processing anything, so any request is sent once more with a fresh token. A call the client
+cancels stops issuing requests.
 A `FORBIDDEN` hint names the scope the service needs (see [Cloud ALM API scopes](#cloud-alm-api-scopes)).
 SAP limits every Cloud ALM pull API to 500 requests per 5 seconds. calmcp pages one request at a
 time, so it stays far below that on its own, but the budget is shared with every other client of
@@ -207,7 +215,7 @@ What it does and does not do:
   start date to today and, when no `timeboxId` is given, assigns it to a timebox itself.
 - **Links between existing objects.** A link is an object of its own; the two objects it
   connects are left as they are. Features, documents, process hierarchy nodes and manual test cases
-  can be named by display id (`6-132`), which calmcp resolves first; tasks only by uuid, because
+  can be named by display id (`6-123`, or `8-1-1` for a test case), which calmcp resolves first; tasks only by uuid, because
   the Tasks API cannot look one up by display id. Cloud ALM refuses a duplicate assignment or
   relation itself, but stores a URL twice, so calmcp refuses a `task_reference` or
   `feature_url_reference` whose URL the object already has. `task_relation` takes `2` (the
@@ -265,7 +273,7 @@ where images live.
 
 Every call goes through the same checks, in order:
 
-- **Display id or uuid.** `id` takes the uuid or the display id (e.g. `6-132`). A display id is
+- **Display id or uuid.** `id` takes the uuid or the display id (e.g. `6-123`). A display id is
   resolved to the uuid first; one that matches no feature, or more than one, is refused.
 - **Allowlist.** Only the fields above; anything else, such as `projectId`, is an error. No link or
   assignment lists, whose update semantics the API does not state. `null` clears `scopeId`,
@@ -284,7 +292,8 @@ Every call goes through the same checks, in order:
   ALM's image service. A new description that drops one is refused, naming the image, unless the
   call lists exactly that image in `remove_images` (e.g. `["imageId:4e4b…"]`) after the user
   confirmed it. Any other dropped image is still refused.
-- **PATCH, never PUT,** and never retried: a throttled or failed update is reported, not repeated.
+- **PATCH, never PUT,** and never retried once Cloud ALM processed it: a throttled or failed update
+  is reported, not repeated.
   When Cloud ALM gives no answer (timeout, 5xx), the result says the update may or may not have
   been applied, and how to find out with `calm_get`.
 - **Result and audit.** The answer shows each changed field before and after (a description as its
@@ -294,6 +303,13 @@ Every call goes through the same checks, in order:
   modification timestamps, so a change can be undone by hand; Cloud ALM records only the
   technical user.
 
+**Known Cloud ALM limitation: descriptions with images.** Cloud ALM refuses any change to the
+description of a feature that contains images when it comes through the API: its image service
+answers 403 to the API's technical user, and Cloud ALM reports a 500 (`updateUsedImages`). Nothing is
+saved (`modifiedAt` stays the same), so calmcp reports that the update may not have been applied.
+Other fields of such a feature, and descriptions of features without images, can be changed. Change
+those descriptions in the Cloud ALM UI. Reported to SAP.
+
 Like `calm_create`, `calm_update` is offered over HTTP only to callers with the `Writer` scope
 (role collection `CALMCP_Editor`), and the OAuth2 client needs `calm-api.features.write`.
 
@@ -302,8 +318,8 @@ Example:
 ```json
 {
   "resource": "feature",
-  "id": "5a4d46a3-13c4-492e-9bc4-5512ff56ef5c",
-  "expected_modified_at": "2026-09-14T11:20:58.396Z",
+  "id": "6-123",
+  "expected_modified_at": "2026-10-01T09:30:00Z",
   "changes": { "statusCode": "IN_TESTING", "priorityCode": 20 }
 }
 ```
@@ -321,7 +337,10 @@ auth modes, plus a BTP destination mode:
 | `CALM_CLIENT_ID`, `CALM_CLIENT_SECRET` | OAuth2 client-credentials from the service binding. |
 | `CALM_DESTINATION_NAME` | Name of a bound BTP Destination (BTP mode; takes precedence). |
 | `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port, and the exact origins of browser-based clients allowed by CORS (comma-separated, e.g. `http://localhost:6274`). Unset sends no CORS headers, which is right for MCP clients such as Claude Desktop. A wildcard (`*`) is refused at startup: on the local unauthenticated endpoint it would let any website read Cloud ALM data through the developer's browser. |
-| `CALM_DEBUG`, `CALM_TIMEOUT_SECONDS` | Verbose tracing and request timeout. |
+| `CALM_DEBUG`, `CALM_TIMEOUT_SECONDS` | Verbose tracing and request timeout (default 30 s). |
+| `CALM_MAX_RESPONSE_BYTES` | Largest tool result handed to the client (default 100 000); a larger one is replaced by a summary. |
+| `CALM_TOKEN_REFRESH_BUFFER_SECONDS` | Renew the OAuth token this many seconds before it expires (default 5). |
+| `CALM_TRANSPORT` | `http` starts the HTTP transport, like `--http`. |
 | `CALM_WRITE_ENABLED` | `true` registers `calm_create` (create-only). Default `false`: read-only. See [Write access](#write-access-opt-in). |
 | `CALM_UPDATE_ENABLED` | `true` registers `calm_update` (change fields of existing features). Default `false`. See [Update access](#update-access-opt-in). |
 
@@ -341,9 +360,12 @@ cockpit (update the instance), not of any person. calmcp uses this instance for 
 | `calm-api.processmanagement.read`, `calm-api.processauthoring.read` | Process scopes, custom processes |
 | `calm-api.testcases.read`, `calm-api.testplans.read` | Test cases, test plans |
 | `calm-api.lib.read` | Cross-library applications, configurations, developments, interfaces |
-| `calm-api.landscape.read` | Landscape |
+| `calm-api.landscape.read` | Landscape objects |
+| `calm-api.landscape.access-control.admin` | Landscape access control lists |
 | `calm-api.bsm.read` | Status events |
-| `calm-api.analytics.read`, `calm-api.analytics.providers.read` | `calm_analytics`, plus each provider's own scope (e.g. `calm-api.defects.read`, `calm-api.requirements.read`, `calm-api.tests.read`) |
+| `calm-api.analytics.read`, `calm-api.analytics.providers.read` | `calm_analytics`, plus each provider's own scope |
+| `calm-api.tasks.read`, `defects.read`, `requirements.read`, `tests.read`, `features.read`, `projects.read` | Analytics providers `Tasks`, `Defects`, `Requirements`, `Tests`, `Features`, `Projects` |
+| `calm-api.metrics.read`, `jobs.read`, `exm.read`, `iep.read`, `integration-monitoring.read`, `rum.read`, `sum.read`, `csa.read` | The operations providers (`Metrics`, `Jobs`, `Exceptions`, `MonitoringEvents`, `Messages`, `Requests`, `ScenarioExecutions`, `ConfigurationItems`, ...). Tested as a set; the exact scope per provider is SAP's |
 
 Two groups of scopes are easy to leave out, and a missing one does not have to show up as an
 error:
@@ -355,6 +377,40 @@ error:
   `calm-api.tasks.personal.read` (`processor`), `calm-api.defects.personal.read` and
   `calm-api.requirements.personal.read` (`assignee`), `calm-api.features.personal.read`
   (`responsible`). Without them, those fields are not readable.
+
+The scopes are set as `authorities` when the instance of the **SAP Cloud ALM API** service is
+created or updated in the BTP cockpit. A service key created later inherits them. A complete set
+for every calmcp feature, reads and writes:
+
+```json
+{
+  "xs-security": {
+    "xsappname": "calmcp-api",
+    "authorities": [
+      "$XSMASTERAPPNAME.calm-api.tasks.read", "$XSMASTERAPPNAME.calm-api.tasks.personal.read",
+      "$XSMASTERAPPNAME.calm-api.projects.read", "$XSMASTERAPPNAME.calm-api.projects.private.read",
+      "$XSMASTERAPPNAME.calm-api.projects.protected.read",
+      "$XSMASTERAPPNAME.calm-api.features.read", "$XSMASTERAPPNAME.calm-api.features.personal.read",
+      "$XSMASTERAPPNAME.calm-api.documents.read", "$XSMASTERAPPNAME.calm-api.processhierarchy.read",
+      "$XSMASTERAPPNAME.calm-api.processmanagement.read", "$XSMASTERAPPNAME.calm-api.processauthoring.read",
+      "$XSMASTERAPPNAME.calm-api.testcases.read", "$XSMASTERAPPNAME.calm-api.testplans.read",
+      "$XSMASTERAPPNAME.calm-api.lib.read", "$XSMASTERAPPNAME.calm-api.landscape.read",
+      "$XSMASTERAPPNAME.calm-api.bsm.read",
+      "$XSMASTERAPPNAME.calm-api.analytics.read", "$XSMASTERAPPNAME.calm-api.analytics.providers.read",
+      "$XSMASTERAPPNAME.calm-api.defects.read", "$XSMASTERAPPNAME.calm-api.defects.personal.read",
+      "$XSMASTERAPPNAME.calm-api.requirements.read", "$XSMASTERAPPNAME.calm-api.requirements.personal.read",
+      "$XSMASTERAPPNAME.calm-api.tests.read",
+      "$XSMASTERAPPNAME.calm-api.documents.write", "$XSMASTERAPPNAME.calm-api.features.write",
+      "$XSMASTERAPPNAME.calm-api.tasks.write", "$XSMASTERAPPNAME.calm-api.testcases.write",
+      "$XSMASTERAPPNAME.calm-api.lib.write"
+    ]
+  }
+}
+```
+
+Leave out the `.write` scopes for a read-only deployment. Add the operations scopes from the table
+above for the operations analytics providers, and `calm-api.landscape.access-control.admin` for
+access control lists.
 
 Grant only what the deployment should expose: every caller of calmcp sees what these scopes allow.
 The write scopes are listed under [Write access](#write-access-opt-in). The full scope list is in
@@ -377,8 +433,8 @@ The simplest path for a single developer: install calmcp as a Claude Desktop ext
 
 **What the bundle is:** a pure-JS, cross-platform (macOS / Windows / Linux) build of the stdio
 server packaged with its dependencies — calmcp has no native modules, so one bundle runs
-everywhere. It is **read-only** unless you switch on **Write Access** in the extension settings
-(see [Write access](#write-access-opt-in)). For multi-user, HTTP, or BTP deployments, use the
+everywhere. It is **read-only** unless you switch on **Write Access** or **Update Access** in the extension
+settings (see [Write access](#write-access-opt-in) and [Update access](#update-access-opt-in)). For multi-user, HTTP, or BTP deployments, use the
 Docker image or deploy to Cloud Foundry instead (see below).
 
 ### Build the bundle locally
@@ -486,7 +542,7 @@ cf push
 ```
 
 After deploy, assign the `CALMCP_Viewer` role collection to authorized users (or `CALMCP_Editor`
-for users who may use `calm_create` when writes are enabled) and create the **destination** as
+for users who may use `calm_create` and `calm_update` when writes and updates are enabled) and create the **destination** as
 described below.
 
 ### Configure the destination
@@ -566,8 +622,9 @@ transport, so point a remote-MCP-capable client at it:
 - **Cursor / VS Code / others:** add an MCP server of type HTTP (Streamable) at the `/mcp` URL.
 
 On first connect the client triggers the OAuth login; **sign in with your BTP user**, which must hold
-the `CALMCP_Viewer` role collection. The four tools (`calm_list`, `calm_get`, `calm_analytics`,
-`calm_resources`) then appear.
+the `CALMCP_Viewer` role collection. The four read tools (`calm_list`, `calm_get`,
+`calm_analytics`, `calm_resources`) then appear; a user with `CALMCP_Editor` also gets `calm_create`
+and `calm_update` when the deployment enables them.
 
 For non-interactive server-to-server callers such as Microsoft Copilot Studio, use the API-key path
 instead: see [Connecting calmcp to Microsoft Copilot Studio](docs/copilot-studio.md).
@@ -603,6 +660,27 @@ comment. To compare two builds locally:
 node scripts/tool-surface.mjs snapshot dist/index.js after.json
 node scripts/tool-surface.mjs diff before.json after.json
 ```
+
+## Versioning and stability
+
+calmcp follows [semantic versioning](https://semver.org) from 1.0 on. A breaking change to any of
+the following waits for the next major version; changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+- Tool names, parameter names and their meaning; `resource` and `provider` names.
+- Error codes and the error result shape (`error`, `retryable`, `status`, `message`, `hint`).
+- The counting result (`total`, `groups`, `otherCount`, `complete`, `method`, `unit`, `stoppedBy`)
+  and the `calm_create`/`calm_update` answers.
+- Environment variables, CLI flags, XSUAA scope and role collection names.
+
+Not covered:
+
+- The wording of descriptions, server instructions, hints and messages, which is tuned for models
+  and may change in any release.
+- Resources SAP marks as beta (Test Plans).
+- Changes SAP makes to Cloud ALM itself: a field or code SAP removes (for example the Fit/Gap
+  sub-classifications) disappears from calmcp too, in a minor release, with a note in the changelog.
+
+Security issues: see [SECURITY.md](SECURITY.md).
 
 ## License
 

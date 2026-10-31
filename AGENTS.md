@@ -11,7 +11,8 @@ to change it without breaking what models rely on.
   withholds oversized payloads with a summary (`src/tools/result.ts`), and marks incomplete counts
   `complete: false`.
 - **Writes are opt-in and narrow.** Read-only by default. `calm_create` only creates; there is no
-  PUT and no DELETE in `src/calm/httpClient.ts`, and a write is never retried. Write payloads are
+  PUT and no DELETE in `src/calm/httpClient.ts`, and a write Cloud ALM may have processed is never
+  retried (only a 401, refused before processing, is sent again with a fresh token). Write payloads are
   strict schemas transcribed from the OpenAPI specs.
 - **Text from Cloud ALM is untrusted.** Titles, descriptions and documents are written by other
   people and may carry instructions. Never let such text decide what calmcp writes.

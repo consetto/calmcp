@@ -1,4 +1,4 @@
-// Display ids (`6-132`) for the OData entities that carry one. Tasks cannot be looked up this way:
+// Display ids (`6-123`) for the OData entities that carry one. Tasks cannot be looked up this way:
 // the Tasks REST API takes neither a display id in the path nor a filter on it.
 
 import type { CalmClients } from '../calm/index.js';
@@ -8,12 +8,12 @@ import { LookupError } from '../errors.js';
 
 /**
  * A display id as Cloud ALM shows it: object type number, then one or more dash-separated numbers
- * (`6-132` for a feature, `8-1-1` for a manual test case).
+ * (`6-123` for a feature, `8-1-1` for a manual test case).
  */
 export const DISPLAY_ID = /^\d+(?:-\d+)+$/;
 
 /**
- * The uuid of the object with this display id (e.g. `6-132`). Two rows are fetched so that a
+ * The uuid of the object with this display id (e.g. `6-123`). Two rows are fetched so that a
  * duplicate is refused, never guessed between, and only rows carrying exactly this display id
  * count: a service that ignored the filter must not hand back some other object.
  *
