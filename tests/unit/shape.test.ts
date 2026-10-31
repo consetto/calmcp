@@ -127,19 +127,19 @@ describe('resolveTimeboxName', () => {
 });
 
 describe('resolveProjectName', () => {
-  // Shaped like real tenant names: a double space and umlauts.
+  // Invented names shaped like real ones: a double space and umlauts.
   const projects = [
-    { id: 'p1', name: 'Müller GmbH  - ERP Number: 12977' },
+    { id: 'p1', name: 'Acme Lösungen GmbH  - ERP Number: 10001' },
     { id: 'p2', name: 'Sandbox - Do not use' },
-    { id: 'p3', name: 'S4 Transformation @ Müller' },
+    { id: 'p3', name: 'S4 Transformation @ Acme Lösungen' },
   ];
 
   it('ignores case and runs of whitespace', () => {
-    expect(resolveProjectName(projects, 'müller gmbh - erp number: 12977')).toBe('p1');
+    expect(resolveProjectName(projects, 'acme lösungen gmbh - erp number: 10001')).toBe('p1');
   });
 
   it('matches an umlaut typed in the other Unicode form', () => {
-    expect(resolveProjectName(projects, 'S4 Transformation @ Mu\u0308ller')).toBe('p3');
+    expect(resolveProjectName(projects, 'S4 Transformation @ Acme Lo\u0308sungen')).toBe('p3');
   });
 
   it('names the candidates with their ids instead of picking one', () => {

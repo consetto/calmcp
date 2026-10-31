@@ -1,7 +1,24 @@
+# What `cf push` (manifest.yml) leaves out. Keep it in line with the `ignore` list in mta.yaml:
+# anything missing here is uploaded to Cloud Foundry.
 node_modules/
 YAML/
 tests/
+mta_archives/
+marketing/
 coverage/
 .git/
+.github/
+docs/
+scripts/
+copilot-studio/
+*.mcpb
 *.log
 .env
+.env.*
+# Local, gitignored files: notes, assistant settings and scripts that may name tenants or customers.
+*.local
+*.local.*
+.claude/
+.mcp.json
+.DS_Store
+Makefile_*.mta

@@ -235,7 +235,7 @@ interface Named {
 
 /**
  * A name as matched: Unicode-normalised, trimmed, runs of whitespace collapsed, case folded. Real
- * Cloud ALM names carry double spaces and umlauts ("Müller GmbH  - ERP"), and an agent passes the
+ * Cloud ALM names carry double spaces and umlauts ("Acme Lösungen GmbH  - ERP"), and an agent passes the
  * name a user typed.
  */
 function matchKey(name: string): string {
