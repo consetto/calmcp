@@ -8,13 +8,13 @@ it has not changed. What moves between refreshes is the *spec revision* of each 
 | --- | --- | --- | --- |
 | CALM_TKM | 1.0.31 | Tasks | `/calm-tasks/v1` |
 | CALM_PJM | 1.0.12 | Projects | `/calm-projects/v1` |
-| CALM_PH | 1.2.0 | Process Hierarchy | `/calm-processhierarchy/v1` |
+| CALM_PH | 1.3.0 | Process Hierarchy | `/calm-processhierarchy/v1` |
 | CALM_TM | 1.0.6 | Test Cases | `/calm-testmanagement/v1` |
 | CALM_CDM_ODATA | 1.0.6 | Features | `/calm-features/v1` |
 | CALM_SD | 1.0.4 | Documents | `/calm-documents/v1` |
 | CALM_LMS | 1.0.0 *(content changed 2026-09-21)* | Landscape | `/calm-landscape/v1` |
 | CALM_BSM | 1.0.0 | Status Events | `/bsm-service/v1` |
-| CALM_ANALYTICS_ODATA | 1.0.0 | Analytics | `/calm-analytics/v1/odata/v4/analytics` |
+| CALM_ANALYTICS_ODATA | 1.1.0 | Analytics | `/calm-analytics/v1/odata/v4/analytics` |
 | CALM_PM | 1.1.0 | Process Scopes | `/calm-processmanagement/v1` |
 | CALM_PMGE | 1.0.0 | Custom Processes | `/calm-processauthoring/v1` |
 | CALM_TM_PLAN | 1.0.2 | Test Plans *(BETA)* | `/calm-testmanagement-testplans/v1` |
@@ -23,7 +23,23 @@ it has not changed. What moves between refreshes is the *spec revision* of each 
 | CALM_XLIB_CON | 1.0.2 | Cross-Library Configurations | `/calm-crosslibraryconfigurations/v1` |
 | CALM_XLIB_INT | 1.0.3 | Cross-Library Interfaces | `/calm-crosslibraryinterfaces/v1` |
 
-Specs last pulled from the SAP Business Accelerator Hub on **2026-09-21**. That refresh added the
-`us20` region to every service, SCIM access control lists to Landscape (same `1.0.0` version string,
-different content, so compare bytes rather than version numbers), and priority, readiness, usage,
-clean core level and upgrade impact classification codes to the four cross-library services.
+Specs last pulled from the SAP Business Accelerator Hub on **2026-10-28**; every spec in the
+package carries the hub date **2026-10-08**. Changes since the 2026-09-21 pull:
+
+- **Process Hierarchy 1.3.0**: hierarchy nodes have an `ownerId` (selectable, sortable).
+- **Analytics 1.1.0**: a new provider `ConfigurationChecks`; tags renamed without spaces
+  (`StatusEvents`, `QualityGates`, ...). calmcp does not offer `ConfigurationChecks` yet.
+- `us20` added to the region list of Status Events, Features, Process Scopes, Custom Processes and
+  Analytics, which the previous pull still lacked.
+- Unchanged: Tasks, Projects, Test Cases, Test Plans, Documents, Landscape, Test Automation and the
+  four cross-library services.
+
+The package also holds APIs calmcp does not call; their specs are kept in `YAML/` for reference:
+`CALM_ANALYTICS` (REST analytics), `CALM_ITSM`, `CALM_SR` (service requests), `CALM_LOGS`,
+`CALM_METRICS`, `CALM_TRACES`, `CALM_RESOURCE_CHANGES`, `CALM_EVENT_SITUATIONS`, `CALM_IAM` and
+`CALM_TEST_AUTOMATION`.
+
+The 2026-09-21 refresh added the `us20` region to most services, SCIM access control lists to
+Landscape (same `1.0.0` version string, different content, so compare bytes rather than version
+numbers), and priority, readiness, usage, clean core level and upgrade impact classification codes
+to the four cross-library services.
