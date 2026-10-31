@@ -15,10 +15,14 @@ const READ_SCOPES: Record<ServiceName, string> = {
   testmanagement: 'calm-api.testcases.read',
   processhierarchy: 'calm-api.processhierarchy.read',
   analytics:
-    "calm-api.analytics.read plus the provider's own read scope (e.g. calm-api.tasks.read for " +
-    'Tasks, calm-api.defects.read for Defects)',
+    "calm-api.analytics.read and calm-api.analytics.providers.read plus the provider's own read " +
+    'scope: calm-api.tasks.read, defects.read, requirements.read, tests.read, features.read or ' +
+    'projects.read for the implementation providers; an operations scope (calm-api.metrics.read, ' +
+    'jobs.read, exm.read, iep.read, integration-monitoring.read, rum.read, sum.read, csa.read) ' +
+    'for the operations providers',
   bsm: 'calm-api.bsm.read',
-  landscape: 'calm-api.landscape.read',
+  landscape:
+    'calm-api.landscape.read (access control lists: calm-api.landscape.access-control.admin)',
   xlibApplications: 'calm-api.lib.read',
   xlibConfigurations: 'calm-api.lib.read',
   xlibDevelopments: 'calm-api.lib.read',

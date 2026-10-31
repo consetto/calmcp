@@ -260,3 +260,19 @@ export const ANALYTICS_PROVIDER_FIELDS: Record<string, ProviderFields> = {
     ],
   },
 };
+
+/**
+ * What a provider insists on before it answers, observed on a tenant. Stated up front because the
+ * service's own refusals (428 "No filters provided") do not say which filter it wants.
+ */
+export const ANALYTICS_PROVIDER_REQUIREMENTS: Record<string, string> = {
+  ServiceLevels:
+    'Needs a filter on businessServiceId; without one Cloud ALM answers 428 "Business Service Id ' +
+    'is required to fetch SLA".',
+  MonitoringEvents:
+    'Needs at least one dimension filter, such as serviceId or useCaseId; without one Cloud ALM ' +
+    'answers 428 "No filters provided".',
+  ConfigurationItems:
+    'Has no resolution field: counting pins only period. Rows are configuration items of the ' +
+    'Configuration and Security Analysis, which needs that application set up in Cloud ALM.',
+};

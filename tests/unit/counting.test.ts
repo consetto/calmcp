@@ -64,6 +64,24 @@ describe('counting via calm_analytics', () => {
     expect(body.complete).toBe(true);
   });
 
+  it('sends no resolution to ConfigurationItems, which has none', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith(`${ANALYTICS}/ConfigurationItems?`) &&
+          new URLSearchParams(path.split('?')[1]).get('$filter') === "period eq 'C1D'",
+      })
+      .reply(200, { value: [{ sciId: 'a' }, { sciId: 'b' }, { sciId: 'c' }] });
+
+    const result = await handleCalmAnalytics(makeClients(), {
+      provider: 'ConfigurationItems',
+      count_only: true,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(parse(result)).toMatchObject({ total: 3, unit: 'rows' });
+  });
+
   it('coerces a string count annotation to a number', async () => {
     agent
       .get(ORIGIN)

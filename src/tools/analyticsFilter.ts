@@ -26,6 +26,12 @@ export const COUNT_PERIOD = 'C1D';
  */
 export const COUNT_RESOLUTION = 'D';
 
+/**
+ * Providers without a `resolution` field. `ConfigurationItems` lists configuration snapshots, not
+ * time buckets, and answers 400 ("property 'resolution' ... is not defined") when one is sent.
+ */
+export const PROVIDERS_WITHOUT_RESOLUTION: ReadonlySet<string> = new Set(['ConfigurationItems']);
+
 /** Control properties recognised inside an analytics `$filter`. */
 export interface AnalyticsControls {
   period?: string;
