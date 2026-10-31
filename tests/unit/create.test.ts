@@ -809,6 +809,21 @@ describe('calm_create links', () => {
     expect(parse(result)).toMatchObject({ error: 'CONFLICT' });
   });
 
+  it('resolves a three-part test case display id such as 8-1-1', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith('/api/calm-testmanagement/v1/ManualTestCases?') &&
+          new URLSearchParams(path.split('?')[1]).get('$filter') === "displayId eq '8-1-1'",
+      })
+      .reply(200, { value: [{ uuid: OTHER, displayId: '8-1-1' }] });
+    const sent = post('/api/calm-testmanagement/v1/TaskAssignments', { uuid: 'ta-1' });
+    const result = await create('test_case_task_link', { testCaseId: '8-1-1', taskId: TASK });
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual([{ parentTestCase_ID: OTHER, taskId: TASK }]);
+  });
+
   it('sends the test case under the name the Test Management spec uses', async () => {
     const sent = post('/api/calm-testmanagement/v1/TaskAssignments', { uuid: 'ta-1' });
     const result = await create('test_case_task_link', { testCaseId: OTHER, taskId: TASK });

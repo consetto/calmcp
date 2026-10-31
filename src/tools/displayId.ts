@@ -6,8 +6,11 @@ import { isGuid, odataString } from '../calm/odata.js';
 import type { ServiceName } from '../config.js';
 import { LookupError } from '../errors.js';
 
-/** A display id as Cloud ALM shows it: object type number, dash, sequence number. */
-export const DISPLAY_ID = /^\d+-\d+$/;
+/**
+ * A display id as Cloud ALM shows it: object type number, then one or more dash-separated numbers
+ * (`6-132` for a feature, `8-1-1` for a manual test case).
+ */
+export const DISPLAY_ID = /^\d+(?:-\d+)+$/;
 
 /**
  * The uuid of the object with this display id (e.g. `6-132`). Two rows are fetched so that a
