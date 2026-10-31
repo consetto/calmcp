@@ -538,6 +538,31 @@ describe('counting via calm_list', () => {
     expect(body.method).toBe('odata-count');
   });
 
+  it('selects only the grouped fields of an OData resource', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith('/api/calm-features/v1/Features?') &&
+          new URLSearchParams(path.split('?')[1]).get('$select') === 'statusCode',
+      })
+      .reply(200, { value: [{ statusCode: 'CREATED' }, { statusCode: 'CREATED' }] });
+    const body = parse(
+      await handleCalmList(makeClients(), { resource: 'features', group_by: 'statusCode' }),
+    ) as CountBody;
+    expect(body).toMatchObject({ total: 2, groups: [{ value: 'CREATED', count: 2 }] });
+  });
+
+  it('names the group_by field an OData service refused', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: (path) => path.startsWith('/api/calm-features/v1/Features?') })
+      .reply(400, { error: { message: "The property 'nope' is not defined in type 'Features'." } });
+    const result = await handleCalmList(makeClients(), { resource: 'features', group_by: 'nope' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("group_by 'nope'");
+  });
+
   it('rejects an unknown group_by field, naming the ones that exist', async () => {
     agent
       .get(ORIGIN)

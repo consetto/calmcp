@@ -31,11 +31,12 @@ const MAX_BODY_LOG_CHARS = 500;
 const MAX_RETRY_WAIT_SECONDS = 5;
 
 /**
- * Largest response body calmcp reads (after decompression). A list asked for without limits can be
- * tens of MB; parsing it would take several times that in memory, only for the result to be
- * withheld as over the response budget. Larger answers are refused before parsing.
+ * Largest response body calmcp reads (after decompression). Reading, decoding and parsing take
+ * several times the body in memory (chunks, string, object), and a body this large is far over the
+ * response budget anyway, so it would only be withheld. 8 MB keeps a page of 500 large records and
+ * two concurrent calls well inside a 512 MB instance. Larger answers are refused before parsing.
  */
-const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 /** Statuses that mean "try again shortly" rather than "this request is wrong". */
 const RETRYABLE_STATUSES = new Set([429, 503]);

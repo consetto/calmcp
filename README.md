@@ -143,7 +143,7 @@ without parsing prose:
 
 Codes: `INVALID_ARGUMENT` (fix the call), `NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`,
 `CONFLICT`, `RATE_LIMITED`, `UPSTREAM_ERROR`, `TIMEOUT`, `NETWORK`, `CANCELLED`, `AUTH`, `CONFIG`,
-`RESPONSE_TOO_LARGE` (a Cloud ALM answer over 32 MB, not read), `INTERNAL`. A read answered with 429
+`RESPONSE_TOO_LARGE` (a Cloud ALM answer over 8 MB, not read), `INTERNAL`. A read answered with 429
 or 503 is retried once when Cloud ALM asks for a wait of at most 5 seconds. A create or update is
 never retried after Cloud ALM processed it; the one exception is a 401, which Cloud ALM answers
 before processing anything, so any request is sent once more with a fresh token. A call the client

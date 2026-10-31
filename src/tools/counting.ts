@@ -18,6 +18,7 @@
 import type { CalmClients } from '../calm/index.js';
 import { readODataCount } from '../calm/odata.js';
 import type { ServiceName } from '../config.js';
+import { ApiError } from '../errors.js';
 import {
   bucketOf,
   createGroupTally,
@@ -34,7 +35,7 @@ import {
   type PagingOptions,
 } from './paging.js';
 import type { ListParams, RestListResource } from './registry.js';
-import { parseFields, type Record_ } from './shape.js';
+import { parseFields, type Record_, ShapeError } from './shape.js';
 
 /** How a total was arrived at. */
 export type CountMethod =
@@ -135,9 +136,23 @@ export async function countOData(
     // The service answered without a count annotation. Fall through rather than report nothing.
   }
 
-  const tally = await pagedTally(keys, request.groupLimit, (options) =>
-    fetchAllOData(clients, service, entitySet, query, options),
-  );
+  // A breakdown needs only its own fields: selecting them keeps each page a few KB instead of 500
+  // whole entities. A field the entity set lacks then fails on the server, so say which one.
+  const select = keys.length > 0 ? keys.join(',') : undefined;
+  let tally: PagedTally;
+  try {
+    tally = await pagedTally(keys, request.groupLimit, (options) =>
+      fetchAllOData(clients, service, entitySet, { ...query, select }, options),
+    );
+  } catch (error) {
+    if (select && error instanceof ApiError && error.status === 400) {
+      throw new ShapeError(
+        `Cloud ALM refused group_by '${keys.join(',')}' on ${entitySet}: ${error.message}. ` +
+          'Use field names as calm_list returns them for this resource.',
+      );
+    }
+    throw error;
+  }
   return { subject: request.subject, filter: query.filter, ...tally, ...noteFor(tally, request) };
 }
 

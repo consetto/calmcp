@@ -30,7 +30,7 @@ import {
   type RestListResource,
   readParams,
 } from './registry.js';
-import { errorResult, errorResultFrom, jsonResult } from './result.js';
+import { errorResult, errorResultFrom, jsonResult, responseBudget } from './result.js';
 import {
   locateRecords,
   pickTimebox,
@@ -221,9 +221,12 @@ export async function handleCalmList(
     const paged = withDefaultPage(def, call);
     const data = await fetchList(clients, def, paged);
     const projected = paged.fields ? projectFields(data, paged.fields) : data;
-    // Document bodies come back without their images; flag the ones that had any.
+    // Document bodies come back without their images; flag the ones that had any. That costs one
+    // lookup per 50 documents, so it is skipped when the result is too large to hand over anyway.
     const shaped =
-      def.kind === 'odata' && returnsDocumentBodies(def)
+      def.kind === 'odata' &&
+      returnsDocumentBodies(def) &&
+      JSON.stringify(projected).length <= responseBudget()
         ? await flagOmittedImages(clients, data, projected)
         : projected;
     return jsonResult(withEmptyNote(withNextPage(shaped, data, paged), paged));

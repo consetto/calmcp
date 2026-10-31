@@ -29,7 +29,7 @@ Other changes a client may notice:
 - A create or update that times out or gets a 5xx answers `retryable: false` and says it may or may
   not have been applied; the audit entry carries `outcome: "unknown"` (#54).
 - A Cloud ALM page that is neither an array, `{ value }` nor `{ Resources }` is `UPSTREAM_ERROR`
-  instead of being read as empty (#58). A Cloud ALM answer over 32 MB is `RESPONSE_TOO_LARGE` (#57).
+  instead of being read as empty (#58). A Cloud ALM answer over 8 MB is `RESPONSE_TOO_LARGE` (#57).
 
 ### Features
 
@@ -55,7 +55,7 @@ Other changes a client may notice:
 
 ### Security and operations
 
-- HTTP hardening: bodies are streamed with a 32 MB cap, a 401 is retried once with a fresh token,
+- HTTP hardening: bodies are streamed with an 8 MB cap, a 401 is retried once with a fresh token,
   token fetches are single-flight and validated, and errors on `/mcp` are JSON-RPC errors without
   stack traces (#57).
 - `.cfignore`, a new `.dockerignore`, `.gitignore` and the `mta.yaml` ignore list keep local notes,

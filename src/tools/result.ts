@@ -50,7 +50,7 @@ const LIST_OVERSIZE_HINT =
   'what produced this response.';
 
 /**
- * Wrap a value as a successful tool result (pretty-printed JSON text).
+ * Wrap a value as a successful tool result (compact JSON text).
  *
  * Payloads over the configured budget are replaced by a summary describing what was withheld and
  * how to narrow the query. The summary is *not* flagged `isError`: the call succeeded, and several
@@ -63,15 +63,13 @@ const LIST_OVERSIZE_HINT =
  * @returns A successful {@link CallToolResult}.
  */
 export function jsonResult(data: unknown, oversizeHint = LIST_OVERSIZE_HINT): CallToolResult {
-  const text = JSON.stringify(data, null, 2);
+  const text = JSON.stringify(data);
   const bytes = Buffer.byteLength(text, 'utf8');
   if (bytes <= maxResponseBytes) {
     return { content: [{ type: 'text', text }] };
   }
   return {
-    content: [
-      { type: 'text', text: JSON.stringify(oversizeSummary(data, bytes, oversizeHint), null, 2) },
-    ],
+    content: [{ type: 'text', text: JSON.stringify(oversizeSummary(data, bytes, oversizeHint)) }],
   };
 }
 
@@ -161,7 +159,7 @@ export function errorResultFrom(error: unknown): CallToolResult {
 }
 
 function structuredError(info: ErrorInfo): CallToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify(info, null, 2) }], isError: true };
+  return { content: [{ type: 'text', text: JSON.stringify(info) }], isError: true };
 }
 
 /**
