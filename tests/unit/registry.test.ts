@@ -62,6 +62,19 @@ describe('LIST_RESOURCES', () => {
     });
   });
 
+  it('reaches the transports of features in both directions', () => {
+    expect(LIST_RESOURCES.feature_transports).toMatchObject({
+      kind: 'odata',
+      service: 'features',
+      entitySet: 'Transports',
+    });
+    expect(LIST_RESOURCES.feature_transport_references).toMatchObject({
+      kind: 'odata',
+      service: 'features',
+      entitySet: 'TransportReferences',
+    });
+  });
+
   it('every REST build produces a service-relative path (and valid query)', () => {
     for (const name of LIST_RESOURCE_NAMES) {
       const def = LIST_RESOURCES[name];

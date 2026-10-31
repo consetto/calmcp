@@ -143,6 +143,17 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
   ),
   feature_url_references: odata('features', 'URLReferences', 'URL references of features'),
   feature_task_assignments: odata('features', 'TaskAssignments', 'Task assignments of features'),
+  feature_transports: odata(
+    'features',
+    'Transports',
+    'Transports of features: transport id and feature uuid (parent_uuid, a string: filter ' +
+      `"parent_uuid eq '<uuid>'")`,
+  ),
+  feature_transport_references: odata(
+    'features',
+    'TransportReferences',
+    'Transport references of features, added by hand: transport id and feature uuid (parent_uuid)',
+  ),
   feature_priorities: odata('features', 'FeaturePriorities', 'Feature priority code list'),
   feature_statuses: odata('features', 'FeatureStatus', 'Feature status code list'),
 
