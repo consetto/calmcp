@@ -29,9 +29,7 @@ const PROBES: ListParams = {
   sub_status: 'x',
   assignee_id: 'x',
   tags: ['x'],
-  limit: 1,
-  offset: 1,
-  filters: { x: 'x' },
+  rest_filters: { x: 'x' },
 };
 
 const PROBED = Object.keys(PROBES) as (keyof ListParams)[];
@@ -73,7 +71,7 @@ export function readParams(def: RestListResource): (keyof ListParams)[] {
  * @returns The system option names `calm_list` forwards.
  */
 export function odataParams(): (keyof ListParams)[] {
-  return [...ODATA_PARAMS, 'count'];
+  return [...ODATA_PARAMS, 'with_count'];
 }
 
 /**
@@ -82,7 +80,7 @@ export function odataParams(): (keyof ListParams)[] {
  * Sending the request without them answers a different question than the one asked (an unfiltered
  * list for a filtered question), so callers reject these instead. For a REST resource each supplied
  * parameter is removed in turn; if the request is unchanged, the build never read it. That also
- * catches a parameter shadowed by another, such as `top` next to `limit` on the process services.
+ * catches a parameter shadowed by another.
  * An OData resource forwards its system options and nothing else.
  *
  * @param def - The resource definition.

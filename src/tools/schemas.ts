@@ -35,8 +35,8 @@ function pathId() {
 const odataOptions = {
   filter: z.string().optional().describe('OData $filter, e.g. "status eq \'CIPDFCTOPEN\'"'),
   select: z.string().optional().describe('OData $select — comma-separated field list'),
-  top: z.number().int().positive().optional().describe('OData $top — maximum number of records'),
-  skip: z.number().int().nonnegative().optional().describe('OData $skip — records to skip'),
+  top: z.number().int().positive().optional().describe('Maximum number of records (page size)'),
+  skip: z.number().int().nonnegative().optional().describe('Records to skip (page offset)'),
 };
 
 // Counting options, shared by `calm_list` and `calm_analytics`. These change what comes back, so
@@ -64,7 +64,7 @@ const countingOptions = {
     .positive()
     .optional()
     .describe('Maximum groups returned by group_by (default 50); the rest fold into otherCount'),
-  count: z
+  with_count: z
     .boolean()
     .optional()
     .describe(
@@ -163,12 +163,13 @@ export const calmListShape = {
         'Use it to keep responses small, e.g. "displayId,title,status,assigneeName,timeboxId". ' +
         'Unlike $select this works for REST resources too. Unknown names are rejected',
     ),
-  limit: z.number().int().positive().optional().describe('REST page size (REST resources)'),
-  offset: z.number().int().nonnegative().optional().describe('REST page offset (REST resources)'),
-  filters: z
+  rest_filters: z
     .record(z.string(), z.string())
     .optional()
-    .describe('Free-form REST filters for landscape_objects / bsm_events'),
+    .describe(
+      'Query parameters of the REST resources that take them (landscape_objects, ' +
+        'landscape_access_control_lists, bsm_events); not OData, see filter for that',
+    ),
 };
 
 /** Input shape for `calm_get`. */
@@ -242,7 +243,7 @@ export const calmCreateShape = {
         'A task needs title, projectId and type (CALMDEF defect, CALMUS user story, ...). ' +
         'A task_comment needs taskId and text. ' +
         'A link names the two objects by uuid (features, documents, process nodes and manual ' +
-        'test cases also by display id, e.g. 6-132; tasks by uuid only). ' +
+        'test cases also by display id, e.g. 6-123; tasks by uuid only). ' +
         'A library entry needs title. Related links and assignments (toURLReferences, ' +
         'toLibraryAssignments, ...) can be included and are created in the same call. Unknown ' +
         'fields are rejected, never dropped',
@@ -256,7 +257,7 @@ export const calmUpdateShape = {
     .describe(
       'What to change: "feature". calm_resources({ topic: "<resource>" }) lists the fields',
     ),
-  id: z.string().min(1).describe('uuid or display id (e.g. "6-132") of the object'),
+  id: z.string().min(1).describe('uuid or display id (e.g. "6-123") of the object'),
   changes: z
     .record(z.string(), z.unknown())
     .describe(

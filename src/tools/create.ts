@@ -741,7 +741,7 @@ const taskCommentCreateSchema = z
  * process hierarchy nodes, manual test cases). Tasks have no display id lookup in their API.
  */
 const uuidOrDisplayId = z.string().refine((value) => isGuid(value) || DISPLAY_ID.test(value), {
-  message: 'must be a uuid or a display id such as 6-132',
+  message: 'must be a uuid or a display id such as 6-123',
 });
 
 const linkTaskId = uuid.describe('UUID of the task (incl. defect, user story); calm_list tasks');
@@ -749,7 +749,7 @@ const linkTaskId = uuid.describe('UUID of the task (incl. defect, user story); c
 const taskFeatureLinkSchema = z
   .object({
     taskId: linkTaskId,
-    featureId: uuidOrDisplayId.describe('UUID or display id (e.g. 6-132) of the feature'),
+    featureId: uuidOrDisplayId.describe('UUID or display id (e.g. 6-123) of the feature'),
   })
   .strict();
 
@@ -804,7 +804,7 @@ const taskReferenceSchema = z
 
 const featureUrlReferenceSchema = z
   .object({
-    featureId: uuidOrDisplayId.describe('UUID or display id (e.g. 6-132) of the feature'),
+    featureId: uuidOrDisplayId.describe('UUID or display id (e.g. 6-123) of the feature'),
     ...urlReference.shape,
   })
   .strict();

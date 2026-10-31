@@ -1,7 +1,7 @@
 _schema-version: '3.3'
 ID: calmcp
 version: 0.9.4
-description: MCP server for SAP Cloud ALM (read-only by default; CALM_WRITE_ENABLED opts into creating documents and library entries)
+description: MCP server for SAP Cloud ALM (read-only by default; CALM_WRITE_ENABLED opts into creates and links, CALM_UPDATE_ENABLED into feature updates)
 
 parameters:
   enable-parallel-deployments: true
@@ -61,9 +61,9 @@ modules:
       # separated) only for browser-based clients.
       CALM_CORS_ORIGINS: ''
       CALM_DEBUG: 'false'
-      # Read-only by default. 'true' offers calm_create, which only creates new documents and
-      # library entries (never updates or deletes), to callers holding the Writer scope (role
-      # collection CALMCP_Editor). Viewers and the API key never get it.
+      # Read-only by default. 'true' offers calm_create, which only creates (documents, features,
+      # tasks, comments, library entries, links; never updates or deletes), to callers holding the
+      # Writer scope (role collection CALMCP_Editor). Viewers and the API key never get it.
       CALM_WRITE_ENABLED: 'false'
       # Off by default and separate from writes: 'true' offers calm_update, which changes fields of
       # existing features, to callers holding the Writer scope. See docs/UPDATES.md.

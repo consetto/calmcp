@@ -637,7 +637,7 @@ describe('calm_create links', () => {
       .intercept({
         path: (path) =>
           path.startsWith('/api/calm-features/v1/Features?') &&
-          new URLSearchParams(path.split('?')[1]).get('$filter') === "displayId eq '6-132'",
+          new URLSearchParams(path.split('?')[1]).get('$filter') === "displayId eq '6-123'",
       })
       .reply(200, { value: rows });
 
@@ -650,22 +650,22 @@ describe('calm_create links', () => {
   });
 
   it('resolves a feature display id to its uuid before linking', async () => {
-    featureLookup([{ uuid: FEATURE, displayId: '6-132' }]);
+    featureLookup([{ uuid: FEATURE, displayId: '6-123' }]);
     const sent = post(`${TASKS}/${TASK}/featureAssignments`, { id: 'a-1', featureId: FEATURE });
-    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-132' });
+    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-123' });
     expect(result.isError).toBeFalsy();
     expect(sent).toEqual([{ featureId: FEATURE }]);
   });
 
   it('refuses a display id that names no feature, before any POST', async () => {
     featureLookup([]);
-    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-132' });
+    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-123' });
     expect(parse(result)).toMatchObject({ error: 'NOT_FOUND' });
   });
 
   it('refuses a lookup answered with another feature, before any POST', async () => {
     featureLookup([{ uuid: OTHER, displayId: '6-1' }]);
-    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-132' });
+    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-123' });
     expect(parse(result)).toMatchObject({ error: 'UPSTREAM_ERROR', retryable: false });
   });
 
@@ -685,10 +685,10 @@ describe('calm_create links', () => {
 
   it('refuses a display id that names two features, never picking one', async () => {
     featureLookup([
-      { uuid: FEATURE, displayId: '6-132' },
-      { uuid: OTHER, displayId: '6-132' },
+      { uuid: FEATURE, displayId: '6-123' },
+      { uuid: OTHER, displayId: '6-123' },
     ]);
-    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-132' });
+    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-123' });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('exactly one');
   });
@@ -807,6 +807,21 @@ describe('calm_create links', () => {
       url: 'https://example.com/spec',
     });
     expect(parse(result)).toMatchObject({ error: 'CONFLICT' });
+  });
+
+  it('resolves a three-part test case display id such as 8-1-1', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith('/api/calm-testmanagement/v1/ManualTestCases?') &&
+          new URLSearchParams(path.split('?')[1]).get('$filter') === "displayId eq '8-1-1'",
+      })
+      .reply(200, { value: [{ uuid: OTHER, displayId: '8-1-1' }] });
+    const sent = post('/api/calm-testmanagement/v1/TaskAssignments', { uuid: 'ta-1' });
+    const result = await create('test_case_task_link', { testCaseId: '8-1-1', taskId: TASK });
+    expect(result.isError).toBeFalsy();
+    expect(sent).toEqual([{ parentTestCase_ID: OTHER, taskId: TASK }]);
   });
 
   it('sends the test case under the name the Test Management spec uses', async () => {

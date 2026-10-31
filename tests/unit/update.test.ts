@@ -18,14 +18,14 @@ import { featureCreateSchema } from '../../src/tools/create.js';
 import { droppedImages, imageKeys } from '../../src/tools/richText.js';
 import { makeClients, ORIGIN, parse, textOf } from './helpers.js';
 
-const ID = '5a4d46a3-13c4-492e-9bc4-5512ff56ef5c';
+const ID = '55555555-5555-5555-5555-555555555555';
 const FEATURE = `/api/calm-features/v1/Features/${ID}`;
-const MODIFIED = '2026-09-14T11:20:58.396Z';
+const MODIFIED = '2026-10-01T09:30:00.000Z';
 const img = (id: string) => `<img src="/ui/imageServiceAPI/v1/getImage?imageId=${id}" alt="x" />`;
 
 const stored = {
   uuid: ID,
-  displayId: '6-132',
+  displayId: '6-123',
   title: 'Close periods',
   description: `<p>Steps</p>${img('aaa')}<p>then</p>${img('bbb')}`,
   statusCode: 'IN_REALIZATION',
@@ -109,12 +109,12 @@ describe('handleCalmUpdate', () => {
       .intercept({
         path: (path) =>
           path.startsWith('/api/calm-features/v1/Features?') &&
-          new URLSearchParams(path.split('?')[1]).get('$filter') === "displayId eq '6-132'",
+          new URLSearchParams(path.split('?')[1]).get('$filter') === "displayId eq '6-123'",
       })
       .reply(200, { value: rows });
 
   it('resolves a display id to the uuid, and updates and reports that uuid', async () => {
-    lookup([{ uuid: ID, displayId: '6-132' }]);
+    lookup([{ uuid: ID, displayId: '6-123' }]);
     agent.get(ORIGIN).intercept({ path: FEATURE }).reply(200, stored);
     let patched = false;
     agent
@@ -132,28 +132,28 @@ describe('handleCalmUpdate', () => {
     const audit: UpdateAuditEntry[] = [];
     const result = await handleCalmUpdate(
       clients(),
-      { ...call({ title: 'New' }), id: '6-132' },
+      { ...call({ title: 'New' }), id: '6-123' },
       (entry) => audit.push(entry),
     );
     expect(result.isError).toBeFalsy();
     expect(patched).toBe(true);
-    expect(parse(result)).toMatchObject({ updated: true, uuid: ID, displayId: '6-132' });
+    expect(parse(result)).toMatchObject({ updated: true, uuid: ID, displayId: '6-123' });
     expect(audit).toMatchObject([{ id: ID, outcome: 'applied' }]);
   });
 
   it('refuses a display id that names no feature, before any PATCH', async () => {
     lookup([]);
-    const result = await handleCalmUpdate(clients(), { ...call({ title: 'x' }), id: '6-132' });
+    const result = await handleCalmUpdate(clients(), { ...call({ title: 'x' }), id: '6-123' });
     expect(errorOf(result)).toMatchObject({ error: 'NOT_FOUND' });
-    expect(errorOf(result).message).toContain("'6-132'");
+    expect(errorOf(result).message).toContain("'6-123'");
   });
 
   it('refuses a display id that names more than one feature, never picking one', async () => {
     lookup([
-      { uuid: ID, displayId: '6-132' },
-      { uuid: '00000000-0000-0000-0000-000000000001', displayId: '6-132' },
+      { uuid: ID, displayId: '6-123' },
+      { uuid: '00000000-0000-0000-0000-000000000001', displayId: '6-123' },
     ]);
-    const result = await handleCalmUpdate(clients(), { ...call({ title: 'x' }), id: '6-132' });
+    const result = await handleCalmUpdate(clients(), { ...call({ title: 'x' }), id: '6-123' });
     expect(result.isError).toBe(true);
     expect(errorOf(result).message).toContain('does not name exactly one feature');
   });
@@ -162,7 +162,7 @@ describe('handleCalmUpdate', () => {
     // No intercept: a lookup would fail the call as NETWORK instead.
     const result = await handleCalmUpdate(clients(), {
       ...call({ projectId: ID }),
-      id: '6-132',
+      id: '6-123',
     });
     expect(errorOf(result)).toMatchObject({ error: 'INVALID_ARGUMENT' });
   });
@@ -232,7 +232,7 @@ describe('handleCalmUpdate', () => {
     expect(sent).toEqual({ statusCode: 'IN_TESTING', description: newDescription });
     expect(parse(result)).toMatchObject({
       updated: true,
-      displayId: '6-132',
+      displayId: '6-123',
       modifiedAt: '2026-09-30T09:00:00Z',
       changes: {
         statusCode: { before: 'IN_REALIZATION', after: 'IN_TESTING' },
@@ -243,7 +243,7 @@ describe('handleCalmUpdate', () => {
       {
         resource: 'feature',
         id: ID,
-        displayId: '6-132',
+        displayId: '6-123',
         outcome: 'applied',
         // The replaced values, so the change can be undone by hand; HTML as length and images.
         changes: {

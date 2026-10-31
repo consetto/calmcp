@@ -32,7 +32,30 @@ import {
  * dropped without a word. Strict says so in the schema and rejects the call, naming the key.
  */
 function strictInput<T extends z.ZodRawShape>(shape: T) {
-  return z.object(shape).strict();
+  return z.strictObject(shape, {
+    error: (issue) => (issue.code === 'unrecognized_keys' ? renamedHint(issue.keys) : undefined),
+  });
+}
+
+/** Parameters renamed in 1.0, so a caller using the 0.9 name is told the new one. */
+const RENAMED_IN_1_0: Record<string, string> = {
+  limit: 'top',
+  offset: 'skip',
+  filters: 'rest_filters',
+  count: 'with_count',
+};
+
+/**
+ * The message for parameters outside the schema, naming the replacement of a renamed one.
+ *
+ * @param keys - The unrecognized parameter names.
+ * @returns The message, or undefined to keep Zod's own.
+ */
+function renamedHint(keys: string[]): string | undefined {
+  const renamed = keys.filter((key) => RENAMED_IN_1_0[key]);
+  if (renamed.length === 0) return undefined;
+  const hints = renamed.map((key) => `'${key}' is now '${RENAMED_IN_1_0[key]}'`);
+  return `Unrecognized key(s): ${keys.map((key) => `"${key}"`).join(', ')}. Renamed in calmcp 1.0: ${hints.join(', ')}.`;
 }
 
 /** Hints for the tools that read Cloud ALM: clients may run them without asking. */

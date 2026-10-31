@@ -65,7 +65,7 @@ describeWithProject('tools against a live project', () => {
       await handleCalmList(makeClients(), {
         resource: 'tasks',
         project_id,
-        limit: 1,
+        top: 1,
         fields: 'id',
       }),
     ) as { records?: { id: string }[] } | { id: string }[];

@@ -14,7 +14,12 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
-import { COUNT_PERIOD, COUNT_RESOLUTION, mergeAnalyticsFilter } from './analyticsFilter.js';
+import {
+  COUNT_PERIOD,
+  COUNT_RESOLUTION,
+  mergeAnalyticsFilter,
+  PROVIDERS_WITHOUT_RESOLUTION,
+} from './analyticsFilter.js';
 import { ANALYTICS_PROVIDER_FIELDS } from './constants.js';
 import { countAnalytics } from './counting.js';
 import { errorResultFrom, jsonResult } from './result.js';
@@ -39,13 +44,16 @@ export async function handleCalmAnalytics(
   args: CalmAnalyticsArgs,
 ): Promise<CallToolResult> {
   const counting = args.count_only === true || args.group_by !== undefined;
+  const countResolution = PROVIDERS_WITHOUT_RESOLUTION.has(args.provider)
+    ? undefined
+    : COUNT_RESOLUTION;
 
   try {
     // Counting pins the window so the row count equals the entity count; a plain query keeps the
     // service defaults unless the caller asked for a specific window.
     const filter = mergeAnalyticsFilter(args.filter, {
       period: args.period ?? (counting ? COUNT_PERIOD : undefined),
-      resolution: args.resolution ?? (counting ? COUNT_RESOLUTION : undefined),
+      resolution: args.resolution ?? (counting ? countResolution : undefined),
     });
 
     if (counting) {
@@ -54,7 +62,7 @@ export async function handleCalmAnalytics(
       const baseline = args.filter
         ? mergeAnalyticsFilter(undefined, {
             period: args.period ?? COUNT_PERIOD,
-            resolution: args.resolution ?? COUNT_RESOLUTION,
+            resolution: args.resolution ?? countResolution,
           })
         : undefined;
 
@@ -80,7 +88,7 @@ export async function handleCalmAnalytics(
       select: args.select,
       top: args.top,
       skip: args.skip,
-      count: args.count,
+      count: args.with_count,
     });
     return jsonResult(data);
   } catch (error) {

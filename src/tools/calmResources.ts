@@ -7,6 +7,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import {
   ANALYTICS_PROVIDER_FIELDS,
+  ANALYTICS_PROVIDER_REQUIREMENTS,
   ANALYTICS_PROVIDERS,
   RECIPES,
   TASK_PRIORITIES,
@@ -162,6 +163,9 @@ function describeProvider(name: string) {
     // field that does not exist. Sorting must happen in the caller.
     supportsOrderby: false,
     scope: 'tenant-wide; no project_id needed',
+    ...(ANALYTICS_PROVIDER_REQUIREMENTS[name]
+      ? { requires: ANALYTICS_PROVIDER_REQUIREMENTS[name] }
+      : {}),
     freshness: 'daily snapshot, so counts may differ from a live calm_list read',
     countExample: `calm_analytics({ provider: '${name}', count_only: true })`,
     breakdownExample: `calm_analytics({ provider: '${name}', group_by: '${statusField(name)}' })`,
@@ -206,6 +210,7 @@ function fullCatalog(options: CalmResourcesOptions) {
       : {}),
     analyticsProviders: ANALYTICS_PROVIDERS,
     analyticsProviderFields: ANALYTICS_PROVIDER_FIELDS,
+    analyticsProviderRequirements: ANALYTICS_PROVIDER_REQUIREMENTS,
     countingHint: COUNTING_HINT,
     codeLists: {
       taskTypes: TASK_TYPES,

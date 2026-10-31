@@ -3,13 +3,6 @@
 Ideas and deferred work, roughly in order of value. Every PR checks this file: add what it defers,
 narrow what it partly does, and remove what it completes. Link the PR or analysis behind an item.
 
-## In progress
-
-| Item | Where | Open before merging |
-| --- | --- | --- |
-| Transports of features, both directions (`feature_transports`, `feature_transport_references`, recipe) | #51 | Review; the test tenant has no transports, so a filled row is checked against the spec only |
-| Links between existing objects in `calm_create` (task to feature, document, process node or task; URLs on tasks and features; test case to user story) | #53 | Tenant test of `task_process_link` and `test_case_task_link` once the API instance has the scopes |
-
 ## Next
 
 - **`calm_update` for tasks** (status, assignee, sprint, priority), reusing the feature guards.
@@ -18,8 +11,17 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
   tasks.
 - **Text search** on task titles (case-insensitive, applied while paging, like the timebox filter).
 - **Several ids in one `calm_get`**, e.g. all features of a defect in one call.
+- **Display ids in `calm_get` for documents, process nodes and test cases**, with the lookup
+  `calm_create` already uses (only features take one today).
 
 ## Watch
+
+- **Feature descriptions with images cannot be changed through the API.** Cloud ALM's image service
+  answers 403 to the API's technical user (`updateUsedImages`), so the PATCH fails with 500 and
+  nothing is saved (tenant test 2026-10-31). Reported to SAP; when fixed, re-test `remove_images`.
+- **Analytics `QualityGates` answers 403** with every documented read scope on the instance; the
+  scope it needs is not documented. `document_approval_states` answers 404 on a tenant whose
+  `$metadata` lists it.
 
 - **Fit and Gap sub-classifications are being discontinued.** The Cloud ALM Tasks app announces
   (seen 2026-10-28) that sub-classifications under Fit and Gap will be deleted from requirements
@@ -47,8 +49,8 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 
 ## More writes
 
-- **Manual test cases** with activities and actions (`ManualTestCases`, `toActivities`). First check
-  whether one POST takes the whole structure.
+- **Manual test cases** with activities and actions (`ManualTestCases`, `toActivities`). One POST
+  takes the whole structure (tenant test 2026-10-31); it needs `projectId` and `scopeId`.
 - **Tags** on tasks and documents (`/tasks/updateTags`, `/updateTags`). These replace the tag list,
   so they need the same care as a PATCH.
 - **Timeboxes and workstreams** (`POST /projects/{id}/timeboxes`, `POST /workstreams`).

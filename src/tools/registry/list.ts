@@ -11,19 +11,14 @@ const enc = encodeURIComponent;
 
 /**
  * Paging window for the process services, which read the OData system options rather than their own
- * `limit`/`offset`.
- *
- * calmcp pages these collections itself (counting, task windows) by driving `limit`/`offset`. A
- * build that forwarded only the caller's `$top`/`$skip` pinned every page to one URL, so the walk
- * stopped after a single request and reported the service's default page size as a complete total.
- * Letting the pager's window win makes the walk advance; the caller's own values still apply when
- * nothing is paging.
+ * `limit`/`offset`. calmcp pages these collections itself (counting, task windows) by driving
+ * `top`/`skip`, so the window must reach the query or the walk stops after one page.
  *
  * @param p - The caller's parameters, with any pager window already merged in.
  * @returns The `$top`/`$skip` pair to put on the query.
  */
 function systemPaging(p: ListParams): { $top?: number; $skip?: number } {
-  return { $top: p.limit ?? p.top, $skip: p.offset ?? p.skip };
+  return { $top: p.top, $skip: p.skip };
 }
 
 /** An OData entity set; `calm_list` forwards the OData system options to it. */
@@ -71,7 +66,7 @@ function childCollection(
   };
 }
 
-/** A REST collection that takes a set of free-form `filters` plus `limit`/`offset`. */
+/** A REST collection that takes free-form `rest_filters`, paged by `top`/`skip` as `limit`/`offset`. */
 function filteredCollection(
   service: ServiceName,
   path: string,
@@ -84,7 +79,7 @@ function filteredCollection(
     description,
     build: (p) => ({
       path,
-      query: buildQueryString({ ...(p.filters ?? {}), limit: p.limit, offset: p.offset }),
+      query: buildQueryString({ ...(p.rest_filters ?? {}), limit: p.top, offset: p.skip }),
     }),
   };
 }
@@ -354,8 +349,8 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
         lastChangedTimestamp: p.last_changed_timestamp,
         // The API takes a single comma-separated `id` value, not repeated keys.
         id: p.ids?.join(','),
-        offset: p.offset,
-        limit: p.limit,
+        offset: p.skip,
+        limit: p.top,
       }),
     }),
   },
@@ -370,8 +365,8 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
         projectId: p.project_id,
         taskId: p.task_id,
         solutionProcessId: p.solution_process_id,
-        offset: p.offset,
-        limit: p.limit,
+        offset: p.skip,
+        limit: p.top,
       }),
     }),
   },
@@ -469,7 +464,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     description: 'System groups',
     build: (p) => ({
       path: '/systemGroups',
-      query: buildQueryString({ limit: p.limit, offset: p.offset }),
+      query: buildQueryString({ limit: p.top, offset: p.skip }),
     }),
   },
   deployment_plans: {
@@ -479,7 +474,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     description: 'Deployment plans (filter by status: active/archived/all)',
     build: (p) => ({
       path: '/deploymentPlans',
-      query: buildQueryString({ status: p.status, limit: p.limit, offset: p.offset }),
+      query: buildQueryString({ status: p.status, limit: p.top, offset: p.skip }),
     }),
   },
 
@@ -487,13 +482,13 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
   landscape_objects: filteredCollection(
     'landscape',
     '/landscapeObjects',
-    'Landscape objects (cloud services, technical/logical systems). REST filters via `filters` ' +
+    'Landscape objects (cloud services, technical/logical systems). REST filters via `rest_filters` ' +
       '(objectType, role, serviceType, name, source, externalId, deploymentModel).',
   ),
   // Access control lists arrived in the Landscape spec of September 2025 (SCIM 2.0, RFC 7643/7644).
   // The response is a SCIM ListResponse (`Resources`, `totalResults`), which `locateRecords` in
   // `tools/shape.ts` unwraps. Paging is SCIM's 1-based `startIndex`/`count`, so the pager's
-  // `offset`/`limit` window is translated here. Reading them needs the
+  // `skip`/`top` window is translated here. Reading them needs the
   // `calm-api.landscape.access-control.admin` scope on the technical user.
   landscape_access_control_lists: {
     kind: 'rest',
@@ -501,13 +496,13 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     required: [],
     description:
       'Landscape access control lists (SCIM groups) with their members and grant levels. REST ' +
-      'filters via `filters` (displayName, id).',
+      'filters via `rest_filters` (displayName, id).',
     build: (p) => ({
       path: '/scim/v2/Groups',
       query: buildQueryString({
-        ...(p.filters ?? {}),
-        startIndex: p.offset === undefined ? undefined : p.offset + 1,
-        count: p.limit,
+        ...(p.rest_filters ?? {}),
+        startIndex: p.skip === undefined ? undefined : p.skip + 1,
+        count: p.top,
       }),
     }),
   },
@@ -517,7 +512,7 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     'bsm',
     '/events',
     'Business service status events (disruptions, degradations, maintenance). REST filters via ' +
-      '`filters` (type, serviceName, eventType, serviceType, period, startTime, endTime).',
+      '`rest_filters` (type, serviceName, eventType, serviceType, period, startTime, endTime).',
   ),
 };
 

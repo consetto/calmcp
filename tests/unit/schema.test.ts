@@ -154,4 +154,22 @@ describe('tool schemas', () => {
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain('projectId');
   });
+
+  it('names the 1.0 replacement of a renamed parameter', async () => {
+    const client = await connect({ writeEnabled: false });
+    for (const [old, now] of [
+      ['limit', 'top'],
+      ['offset', 'skip'],
+      ['filters', 'rest_filters'],
+      ['count', 'with_count'],
+    ] as const) {
+      const value = old === 'filters' ? { a: 'b' } : old === 'count' ? true : 1;
+      const result = await client.callTool({
+        name: 'calm_list',
+        arguments: { resource: 'landscape_objects', [old]: value },
+      });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain(`'${old}' is now '${now}'`);
+    }
+  });
 });

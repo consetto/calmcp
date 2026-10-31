@@ -64,6 +64,24 @@ describe('counting via calm_analytics', () => {
     expect(body.complete).toBe(true);
   });
 
+  it('sends no resolution to ConfigurationItems, which has none', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: (path) =>
+          path.startsWith(`${ANALYTICS}/ConfigurationItems?`) &&
+          new URLSearchParams(path.split('?')[1]).get('$filter') === "period eq 'C1D'",
+      })
+      .reply(200, { value: [{ sciId: 'a' }, { sciId: 'b' }, { sciId: 'c' }] });
+
+    const result = await handleCalmAnalytics(makeClients(), {
+      provider: 'ConfigurationItems',
+      count_only: true,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(parse(result)).toMatchObject({ total: 3, unit: 'rows' });
+  });
+
   it('coerces a string count annotation to a number', async () => {
     agent
       .get(ORIGIN)
@@ -271,7 +289,7 @@ describe('counting via calm_analytics', () => {
       .reply(200, { '@count': 9, value: [{ id: 'a' }] });
 
     const body = parse(
-      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', top: 1, count: true }),
+      await handleCalmAnalytics(makeClients(), { provider: 'Tasks', top: 1, with_count: true }),
     ) as Record<string, unknown>;
     expect(body['@count']).toBe(9);
   });
@@ -489,11 +507,11 @@ describe('counting via calm_list', () => {
     expect(textOf(result)).toContain('status');
   });
 
-  it('rejects count on a REST resource and points at count_only', async () => {
+  it('rejects with_count on a REST resource and points at count_only', async () => {
     const result = await handleCalmList(makeClients(), {
       resource: 'tasks',
       project_id: 'p1',
-      count: true,
+      with_count: true,
     });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('count_only');
