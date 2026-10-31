@@ -79,9 +79,7 @@ export async function handleCalmCreate(
 
   let data: Record<string, unknown>;
   try {
-    const resolved = await resolveDisplayIds(clients, def, parsed.data);
-    if ('refused' in resolved) return resolved.refused;
-    data = resolved.data;
+    data = await resolveDisplayIds(clients, def, parsed.data);
     if (def.exists && (await def.exists(clients, data))) {
       return errorResult(
         `An equal ${args.resource} already exists, and Cloud ALM would store a second one. ` +
@@ -141,29 +139,28 @@ export async function handleCalmCreate(
 }
 
 /**
- * The payload with each display id replaced by the uuid it names, or the error result when one
- * names no object or several.
+ * The payload with each display id replaced by the uuid it names.
+ *
+ * @throws {LookupError} When a display id names no object, or several.
  */
 async function resolveDisplayIds(
   clients: CalmClients,
   def: CreateResource,
   payload: Record<string, unknown>,
-): Promise<{ data: Record<string, unknown> } | { refused: CallToolResult }> {
+): Promise<Record<string, unknown>> {
   const data = { ...payload };
   for (const [field, lookup] of Object.entries(def.displayIds ?? {})) {
     const value = data[field];
     if (typeof value !== 'string' || isGuid(value)) continue;
-    const uuid = await uuidByDisplayId(
+    data[field] = await uuidByDisplayId(
       clients,
       lookup.service,
       lookup.entitySet,
       lookup.noun,
       value,
     );
-    if (typeof uuid !== 'string') return { refused: uuid };
-    data[field] = uuid;
   }
-  return { data };
+  return data;
 }
 
 /**

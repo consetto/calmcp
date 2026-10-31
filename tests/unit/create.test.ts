@@ -659,6 +659,26 @@ describe('calm_create links', () => {
     expect(parse(result)).toMatchObject({ error: 'NOT_FOUND' });
   });
 
+  it('refuses a lookup answered with another feature, before any POST', async () => {
+    featureLookup([{ uuid: OTHER, displayId: '6-1' }]);
+    const result = await create('task_feature_link', { taskId: TASK, featureId: '6-132' });
+    expect(parse(result)).toMatchObject({ error: 'UPSTREAM_ERROR', retryable: false });
+  });
+
+  it('refuses a task reference when the existing links come back in an unknown shape', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${TASKS}/${TASK}/references` })
+      .reply(200, { items: [{ url: 'https://example.com/spec' }] });
+    const result = await create('task_reference', {
+      taskId: TASK,
+      name: 'Spec',
+      url: 'https://example.com/spec',
+    });
+    expect(parse(result)).toMatchObject({ error: 'UPSTREAM_ERROR' });
+    expect(textOf(result)).toContain('nothing was sent');
+  });
+
   it('refuses a display id that names two features, never picking one', async () => {
     featureLookup([
       { uuid: FEATURE, displayId: '6-132' },

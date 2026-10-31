@@ -250,14 +250,48 @@ describe('handleCalmGet', () => {
     expect((parse(result) as { uuid: string }).uuid).toBe(uuid);
   });
 
-  it('resolves a feature by display id via a filter', async () => {
+  /** Intercept the display-id lookup of features and answer with these rows. */
+  const featureLookup = (displayId: string, rows: unknown[]) =>
     agent
       .get(ORIGIN)
-      .intercept({ path: "/api/calm-features/v1/Features?$filter=displayId%20eq%20'6-123'&$top=1" })
-      .reply(200, { value: [{ uuid: 'abc', displayId: '6-123' }] });
+      .intercept({
+        path: (path) =>
+          path.startsWith('/api/calm-features/v1/Features?') &&
+          new URLSearchParams(path.split('?')[1]).get('$filter') ===
+            `displayId eq '${displayId}'` &&
+          new URLSearchParams(path.split('?')[1]).get('$top') === '2',
+      })
+      .reply(200, { value: rows });
+
+  it('resolves a feature by display id, then reads it by its key', async () => {
+    featureLookup('6-123', [{ uuid: '11111111-2222-4333-8444-555555555555', displayId: '6-123' }]);
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-features/v1/Features/11111111-2222-4333-8444-555555555555' })
+      .reply(200, {
+        uuid: '11111111-2222-4333-8444-555555555555',
+        displayId: '6-123',
+        title: 'Close periods',
+      });
 
     const result = await handleCalmGet(makeClients(), { resource: 'feature', id: '6-123' });
-    expect((parse(result) as { displayId: string }).displayId).toBe('6-123');
+    expect(parse(result)).toMatchObject({ displayId: '6-123', title: 'Close periods' });
+  });
+
+  it('refuses a display id two features carry, never picking one', async () => {
+    featureLookup('6-123', [
+      { uuid: '11111111-2222-4333-8444-555555555555', displayId: '6-123' },
+      { uuid: '11111111-2222-4333-8444-666666666666', displayId: '6-123' },
+    ]);
+    const result = await handleCalmGet(makeClients(), { resource: 'feature', id: '6-123' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('exactly one');
+  });
+
+  it('refuses a lookup answered with another object, as if the filter had been ignored', async () => {
+    featureLookup('6-123', [{ uuid: '11111111-2222-4333-8444-555555555555', displayId: '6-1' }]);
+    const result = await handleCalmGet(makeClients(), { resource: 'feature', id: '6-123' });
+    expect(parse(result)).toMatchObject({ error: 'UPSTREAM_ERROR', retryable: false });
   });
 
   it('gets a task (defect) by id via REST', async () => {

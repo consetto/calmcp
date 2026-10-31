@@ -123,11 +123,14 @@ describe('network-backed hardening', () => {
     agent
       .get(ORIGIN)
       .intercept({
-        path: `${FEATURES}?$filter=${encodeURIComponent(`displayId eq ${odataString(hostile)}`)}&$top=1`,
+        path: (path) =>
+          path.startsWith(`${FEATURES}?`) &&
+          new URLSearchParams(path.split('?')[1]).get('$filter') ===
+            `displayId eq ${odataString(hostile)}`,
       })
       .reply(200, { value: [] });
     const result = await handleCalmGet(makeClients(), { resource: 'feature', id: hostile });
-    expect(textOf(result)).toContain('No feature found');
+    expect(textOf(result)).toContain('No feature has the display id');
   });
 
   it('keeps paging past a short page when the service announces a next link', async () => {

@@ -50,6 +50,21 @@ export class ConfigError extends CalmError {
   }
 }
 
+/**
+ * An object named by the caller (a display id, say) could not be resolved to exactly one record.
+ * Carries the code the tool result should report.
+ */
+export class LookupError extends CalmError {
+  override readonly name = 'LookupError';
+
+  constructor(
+    message: string,
+    readonly code: ErrorCode = 'INVALID_ARGUMENT',
+  ) {
+    super(message);
+  }
+}
+
 /** Authentication / token acquisition failed. */
 export class AuthError extends CalmError {
   override readonly name = 'AuthError';
@@ -176,6 +191,7 @@ export interface ErrorInfo {
 export function describeError(error: unknown): ErrorInfo {
   const message = errorMessage(error);
   if (error instanceof ApiError) return describeApiError(error, message);
+  if (error instanceof LookupError) return { error: error.code, retryable: false, message };
   if (error instanceof AuthError) {
     return {
       error: 'AUTH',
