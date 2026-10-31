@@ -1,5 +1,6 @@
 // MCP server assembly: builds the shared Cloud ALM client container and an `McpServer` with the
-// four read tools registered, plus `calm_create` when write access is enabled. The client
+// four read tools registered, plus `calm_create` and `calm_update` when the operator enabled them
+// and the caller may use them. The client
 // container is created once (so token caches persist); a fresh `McpServer` can be built per HTTP
 // request while reusing those clients.
 
@@ -14,7 +15,7 @@ import { configureResults } from './tools/result.js';
 
 /** XSUAA scope (local name) every HTTP caller needs. */
 export const VIEWER_SCOPE = 'Viewer';
-/** XSUAA scope (local name) an HTTP caller needs to be offered `calm_create`. */
+/** XSUAA scope (local name) an HTTP caller needs to be offered `calm_create` and `calm_update`. */
 export const WRITER_SCOPE = 'Writer';
 
 /** Server name advertised to MCP clients. */

@@ -1,7 +1,7 @@
 // `calm_resources` — discovery tool. Returns the catalog of resources/providers, the static code
 // lists (task types/statuses/priorities), worked recipes, and (when write or update access is on)
-// the payload fields of every `calm_create` resource and the changeable fields of `calm_update`, so an AI client can build correct calls without
-// guessing. Purely static; no API calls.
+// the payload fields of every `calm_create` resource and the changeable fields of `calm_update`,
+// so an AI client can build correct calls without guessing. Purely static; no API calls.
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
@@ -15,6 +15,7 @@ import {
   TASK_TYPES,
 } from './constants.js';
 import { CREATE_RESOURCES, type CreateResource } from './create.js';
+import { MAX_PAGES_COUNT, PAGE_SIZE } from './paging.js';
 import {
   GET_RESOURCES,
   LIST_RESOURCE_NAMES,
@@ -146,7 +147,7 @@ function describeListResource(name: string, def: ListResource) {
     countMethod:
       def.kind === 'odata'
         ? 'server-side $count, one request'
-        : 'calmcp pages through the collection (up to 20000 records)',
+        : `calmcp pages through the collection (up to ${MAX_PAGES_COUNT * PAGE_SIZE} records)`,
     description: def.description,
   };
 }

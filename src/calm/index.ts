@@ -1,6 +1,6 @@
 // SAP Cloud ALM client container.
 //
-// Holds one HTTP client per Cloud ALM service and exposes four request primitives that the MCP
+// Holds one HTTP client per Cloud ALM service and exposes five request primitives that the MCP
 // tool layer composes via the resource registry:
 //   - `listOData`   — GET an OData entity set with system query options.
 //   - `getOData`    — GET a single OData entity by key, optionally expanding navigations.

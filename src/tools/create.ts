@@ -31,12 +31,30 @@ const uuid = z.guid();
  * A link target. Only http(s): a `javascript:` or `data:` URL would be stored in Cloud ALM and
  * rendered as a clickable link in its UI.
  */
-function httpUrl(max: number) {
+function httpUrl(max: number, { httpsOnly = false } = {}) {
   return z
     .string()
     .max(max)
-    .regex(/^https?:\/\/\S+$/i, 'must be an http:// or https:// URL');
+    .regex(
+      httpsOnly ? /^https:\/\/\S+$/i : /^https?:\/\/\S+$/i,
+      httpsOnly ? 'must be an https:// URL' : 'must be an http:// or https:// URL',
+    );
 }
+
+/** A priority code: 10 very high, 20 high, 30 medium, 40 low (documents, features, tasks). */
+const priorityCode = () => z.union([z.literal(10), z.literal(20), z.literal(30), z.literal(40)]);
+
+/**
+ * An external system identifier of a feature or a task. These two services call the identifier
+ * field `id`; documents and library entries use {@link externalReference}.
+ */
+const idExternalReference = z
+  .object({
+    id: z.string().min(1).max(255).describe('Identifier in the external system'),
+    name: z.string().min(1).max(255).describe('Name of the external system'),
+    url: httpUrl(1000).optional().describe('URL pointing into the external system'),
+  })
+  .strict();
 
 /** A link (display name + URL) attached to the new entity. Same shape in every service. */
 const urlReference = z
@@ -95,8 +113,7 @@ export const documentCreateSchema = z
       .union([z.literal(10), z.literal(20), z.literal(30)])
       .optional()
       .describe('Status code (default 10); calm_list resource:document_statuses lists the labels'),
-    priorityCode: z
-      .union([z.literal(10), z.literal(20), z.literal(30), z.literal(40)])
+    priorityCode: priorityCode()
       .optional()
       .describe(
         'Priority code (default 30); calm_list resource:document_priorities lists the labels',
@@ -303,7 +320,7 @@ export const xlibApplicationCreateSchema = z
   })
   .strict();
 
-export const xlibConfigurationCreateSchema = z
+const xlibConfigurationCreateSchema = z
   .object({
     ...xlibBase,
     configurationTypeCode: z
@@ -323,7 +340,7 @@ export const xlibConfigurationCreateSchema = z
   })
   .strict();
 
-export const xlibConfigurationActivityCreateSchema = z
+const xlibConfigurationActivityCreateSchema = z
   .object({
     title: xlibBase.title,
     description: xlibBase.description,
@@ -353,7 +370,7 @@ export const xlibConfigurationActivityCreateSchema = z
   })
   .strict();
 
-export const xlibDevelopmentCreateSchema = z
+const xlibDevelopmentCreateSchema = z
   .object({
     ...xlibBase,
     developmentTypeCode: z
@@ -381,7 +398,7 @@ export const xlibDevelopmentCreateSchema = z
   })
   .strict();
 
-export const xlibInterfaceCreateSchema = z
+const xlibInterfaceCreateSchema = z
   .object({
     ...xlibBase,
     interfaceTypeCode: z
@@ -455,22 +472,11 @@ export const featureEditableFields = {
       'Status: CREATED (In Specification), NOT_PLANNED, IN_REALIZATION, IN_TESTING, ' +
         'SUCCESSFULLY_TESTED, APPROVED_FOR_DEPLOYMENT, CONFIRMED',
     ),
-  priorityCode: z
-    .union([z.literal(10), z.literal(20), z.literal(30), z.literal(40)])
-    .describe('Priority: 10 very high, 20 high, 30 medium, 40 low'),
+  priorityCode: priorityCode().describe('Priority: 10 very high, 20 high, 30 medium, 40 low'),
   responsibleId: z.string().min(1).max(255).describe('User id of the responsible person'),
   releaseId: uuid.describe('UUID of the release'),
   workstreamId: z.string().min(1).max(255).describe('Workstream id'),
 };
-
-/** A feature's external reference: here the identifier field is called `id`. */
-const featureExternalReference = z
-  .object({
-    id: z.string().min(1).max(255).describe('Identifier in the external system'),
-    name: z.string().min(1).max(255).describe('Name of the external system'),
-    url: httpUrl(1000).optional().describe('URL pointing into the external system'),
-  })
-  .strict();
 
 export const featureCreateSchema = z
   .object({
@@ -485,7 +491,7 @@ export const featureCreateSchema = z
     workstreamId: featureEditableFields.workstreamId.optional(),
     toURLReferences: z.array(urlReference).optional().describe('Links to attach'),
     toExternalReferences: z
-      .array(featureExternalReference)
+      .array(idExternalReference)
       .optional()
       .describe('External system identifiers to attach'),
   })
@@ -557,21 +563,12 @@ const RISK_FIELDS = ['owner', 'impact', 'probability', 'mitigationStrategyId', '
 /** ISO date (YYYY-MM-DD), as the Tasks API expects for start and due dates. */
 const isoDate = z.iso.date();
 
-/** A task's external reference: the identifier field is called `id`, as on features. */
-const taskExternalReference = z
-  .object({
-    id: z.string().min(1).max(255).describe('Identifier in the external system'),
-    name: z.string().min(1).max(255).describe('Name of the external system'),
-    url: httpUrl(1000).optional().describe('URL pointing into the external system'),
-  })
-  .strict();
-
 /**
  * New task, user story, sub-task, requirement, defect or risk. Left out of the spec's request body:
  * `source` (calmcp's tasks are MANUAL, the default), `externalIntegration` (set by integrations),
  * `answer` (checklist items only) and the tenant-specific `customField1..20`.
  */
-export const taskCreateSchema = z
+const taskCreateSchema = z
   .object({
     title: z.string().min(1).max(180).describe('Task title'),
     projectId: uuid.describe('UUID of the project the task belongs to'),
@@ -585,8 +582,7 @@ export const taskCreateSchema = z
     parentId: uuid
       .optional()
       .describe('UUID of the parent task; required for a sub-task, and not itself a sub-task'),
-    priorityId: z
-      .union([z.literal(10), z.literal(20), z.literal(30), z.literal(40)])
+    priorityId: priorityCode()
       .optional()
       .describe('Priority: 10 very high, 20 high, 30 medium, 40 low'),
     assigneeId: z.string().min(1).max(255).optional().describe('User id of the assignee'),
@@ -672,7 +668,7 @@ export const taskCreateSchema = z
       .optional()
       .describe('Risks only: category'),
     externalReferences: z
-      .array(taskExternalReference)
+      .array(idExternalReference)
       .optional()
       .describe('External system identifiers to attach'),
   })
@@ -726,7 +722,7 @@ export const taskCreateSchema = z
   });
 
 /** A comment on an existing task. `taskId` goes into the path, `text` is the body. */
-export const taskCommentCreateSchema = z
+const taskCommentCreateSchema = z
   .object({
     taskId: uuid.describe('UUID of the task (incl. defect, user story) to comment on'),
     text: z.string().min(1).max(100_000).describe('The comment; HTML formatting is allowed'),
@@ -750,21 +746,21 @@ const uuidOrDisplayId = z.string().refine((value) => isGuid(value) || DISPLAY_ID
 
 const linkTaskId = uuid.describe('UUID of the task (incl. defect, user story); calm_list tasks');
 
-export const taskFeatureLinkSchema = z
+const taskFeatureLinkSchema = z
   .object({
     taskId: linkTaskId,
     featureId: uuidOrDisplayId.describe('UUID or display id (e.g. 6-132) of the feature'),
   })
   .strict();
 
-export const taskDocumentLinkSchema = z
+const taskDocumentLinkSchema = z
   .object({
     taskId: linkTaskId,
     documentId: uuidOrDisplayId.describe('UUID or display id (e.g. 7-1) of the document'),
   })
   .strict();
 
-export const taskProcessLinkSchema = z
+const taskProcessLinkSchema = z
   .object({
     taskId: linkTaskId,
     hierarchyNodeId: uuidOrDisplayId.describe(
@@ -780,7 +776,7 @@ export const taskProcessLinkSchema = z
  * and parent (10) are accepted by Cloud ALM between any two tasks, but build a hierarchy beside the
  * sub-tasks, so they are left out: a sub-task is a `task` with `parentId`.
  */
-export const taskRelationSchema = z
+const taskRelationSchema = z
   .object({
     taskId: uuid.describe('UUID of the task, defect or user story the relation is added to'),
     type: z
@@ -798,26 +794,22 @@ export const taskRelationSchema = z
   });
 
 /** A link on a task. The spec allows https only. */
-export const taskReferenceSchema = z
+const taskReferenceSchema = z
   .object({
     taskId: linkTaskId,
     name: z.string().min(1).max(500).describe('Display name of the link'),
-    url: z
-      .string()
-      .max(2048)
-      .regex(/^https:\/\/\S+$/i, 'must be an https:// URL')
-      .describe('Target URL, starting with https://'),
+    url: httpUrl(2048, { httpsOnly: true }).describe('Target URL, starting with https://'),
   })
   .strict();
 
-export const featureUrlReferenceSchema = z
+const featureUrlReferenceSchema = z
   .object({
     featureId: uuidOrDisplayId.describe('UUID or display id (e.g. 6-132) of the feature'),
     ...urlReference.shape,
   })
   .strict();
 
-export const testCaseTaskLinkSchema = z
+const testCaseTaskLinkSchema = z
   .object({
     testCaseId: uuidOrDisplayId.describe(
       'UUID of the manual or automated test case, or display id of a manual one',

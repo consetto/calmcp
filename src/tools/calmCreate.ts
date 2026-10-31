@@ -10,7 +10,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { isGuid } from '../calm/odata.js';
-import { describeError } from '../errors.js';
+import { ConfigError, describeError } from '../errors.js';
 import { CREATE_RESOURCES, type CreateResource } from './create.js';
 import { uuidByDisplayId } from './displayId.js';
 import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from './result.js';
@@ -48,11 +48,7 @@ export async function handleCalmCreate(
 ): Promise<CallToolResult> {
   // Belt and braces: the tool is not registered without the switch, but the HTTP transport builds a
   // server per request and a stale client could still hold the tool name.
-  if (!clients.writeEnabled) {
-    return errorResult(
-      'Write access is disabled: calmcp is read-only unless CALM_WRITE_ENABLED=true is set.',
-    );
-  }
+  if (!clients.writeEnabled) return errorResultFrom(ConfigError.writeDisabled());
 
   const def = CREATE_RESOURCES[args.resource];
   if (!def) {

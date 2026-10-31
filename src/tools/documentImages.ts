@@ -24,7 +24,7 @@ const CHECK_BATCH = 50;
 const CHECK_CONCURRENCY = 3;
 
 /** Shown on every document whose images the API left out. */
-export const IMAGES_NOTE =
+const IMAGES_NOTE =
   'This document contains images that the Cloud ALM API does not return: `content` is ' +
   'incomplete where they were. Do not copy it into a new document or treat it as the whole ' +
   'document; open it in Cloud ALM to see the images.';

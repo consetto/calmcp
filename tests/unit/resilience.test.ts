@@ -18,6 +18,8 @@ describe('throttling and cancellation', () => {
     setGlobalDispatcher(agent);
   });
   afterEach(async () => {
+    // A leftover interceptor is a request the code stopped making.
+    agent.assertNoPendingInterceptors();
     await agent.close();
   });
 
