@@ -54,6 +54,13 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 - **Tags** on tasks and documents (`/tasks/updateTags`, `/updateTags`). These replace the tag list,
   so they need the same care as a PATCH.
 - **Timeboxes and workstreams** (`POST /projects/{id}/timeboxes`, `POST /workstreams`).
+- **Changing and removing links** (needs research). Most links cannot be changed in place: task
+  assignments to features, documents and process nodes, task relations, test case to task links and
+  feature URLs have only POST and DELETE, so changing one means removing it. Only task URL
+  references (`PATCH /tasks/references/{id}`) and task comments (`PATCH /tasks/comments/{id}`) can
+  be changed in place; these fit `calm_update`. Removing links would break "nothing is ever
+  deleted": it would need its own switch, a tool limited to link objects, and changes to AGENTS.md,
+  the README and the server instructions. Transports of features are read-only in the API.
 
 ## Reliability
 
