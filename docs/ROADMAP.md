@@ -14,6 +14,53 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 - **Display ids in `calm_get` for documents, process nodes and test cases**, with the lookup
   `calm_create` already uses (only features take one today).
 
+## Architecture
+
+From the architecture review of 2026-11-05, in the order proposed.
+
+- **Strict configuration.** A malformed number in the environment falls back to the default
+  without a word (`CALM_MAX_RESPONSE_BYTES=100kb`), and nothing checks ranges
+  (`CALM_TIMEOUT_SECONDS=0` times every request out). Refuse both at startup. Read every variable
+  in `Config`, including the ones `src/index.ts` reads itself (`CALM_HTTP_API_KEY`,
+  `CALM_CORS_ORIGINS`, `CALM_DCR_SIGNING_SECRET`, `CALM_PUBLIC_URL`, `CALM_TRANSPORT`,
+  `CALM_HTTP_ALLOW_UNAUTHENTICATED`). Require `CALM_DCR_SIGNING_SECRET` on Cloud Foundry, or warn,
+  instead of reusing the XSUAA client secret.
+- **Destination token renewal after a 401.** `DestinationAuthProvider.invalidate()` sets one shared
+  flag that the next `authorize()` of any concurrent call consumes, so the call that was refused may
+  retry with the cached token. Track the refused token as `ClientCredentialsAuthProvider` does; test
+  with two concurrent calls.
+- **Declarative resources and domain modules.** Parameters of REST resources declared as data
+  instead of probed from `build` closures, explicit paging styles, and one file per Cloud ALM area
+  for list, get, create and update entries, with services, paths and scopes in one `SERVICES`
+  table. A refactor first that agents cannot notice, then deliberate changes in a minor release.
+  Before the next batch of "More reads". See [the design](REGISTRY-DESIGN.md).
+- **`rest_filters` accepts any key** (`landscape_objects`, `landscape_access_control_lists`,
+  `bsm_events`), and Cloud ALM ignores the ones it does not know. Tenant check 2026-11-05 on
+  `/landscapeObjects` (11 objects, 1 of type BusinessService): `objectType=BusinessService` returns
+  1; `objecttype`, `OBJECTTYPE`, `object_type` and `bogusKey` all return HTTP 200 with all 11, so a
+  misspelled filter answers with an unfiltered list that looks filtered. An unknown value
+  (`objectType=NO_SUCH_TYPE`) is refused with 400. `/events` also answers 200 to `bogusKey`; whether
+  its keys are case-sensitive could not be seen (one service in the data). Fix now, without waiting
+  for the refactor: in #64 (refuses keys outside the spec, names the right spelling). Remove this
+  item when #64 merges.
+- **Spec drift check.** A local script comparing the registries and the create and update schemas
+  with `YAML/` (paths, query parameters, required fields, enums, lengths, scopes where the spec has
+  them), run with every spec refresh.
+- **One context per tool call.** The response budget is module state (`configureResults`), so it
+  cannot differ per client although Copilot Studio and Claude have different limits. Pass a context
+  (clients, budget, signal, audit, logger, caller) to the handlers; choose the budget by the
+  client's `clientInfo`. Fold `ShapeError` and `LookupError` into `CalmError` with a code.
+- **Outbound rate limit and cache.** Cloud ALM allows 500 requests per 5 seconds per tenant, shared
+  with every other integration; nothing in calmcp limits concurrent calls across users. A token
+  bucket in `CalmHttpClient`, and a short-lived cache for projects, timeboxes, code lists and
+  display id to uuid lookups (which never change). The inbound rate limit is per instance; document
+  that or move it to a shared store.
+- **Audit log retention.** Writes are audited only in the application log, which Cloud Foundry
+  keeps briefly. Document a log drain as a requirement for write-enabled deployments, or add a
+  separate audit sink.
+- **Tool schemas per access level.** Every HTTP request builds a server and converts the input
+  schemas again; there are three access levels, so the converted schemas can be cached.
+
 ## Watch
 
 - **Feature descriptions with images cannot be changed through the API.** Cloud ALM's image service
@@ -54,10 +101,20 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 - **Tags** on tasks and documents (`/tasks/updateTags`, `/updateTags`). These replace the tag list,
   so they need the same care as a PATCH.
 - **Timeboxes and workstreams** (`POST /projects/{id}/timeboxes`, `POST /workstreams`).
+- **Changing and removing links** (needs research). Most links cannot be changed in place: task
+  assignments to features, documents and process nodes, task relations, test case to task links and
+  feature URLs have only POST and DELETE, so changing one means removing it. Only task URL
+  references (`PATCH /tasks/references/{id}`) and task comments (`PATCH /tasks/comments/{id}`) can
+  be changed in place; these fit `calm_update`. Removing links would break "nothing is ever
+  deleted": it would need its own switch, a tool limited to link objects, and changes to AGENTS.md,
+  the README and the server instructions. Transports of features are read-only in the API.
 
 ## Reliability
 
 - **Progress notifications** during long walks, so clients keep waiting and users see progress.
+  Over HTTP the server is stateless, one server per POST, so it cannot send them today. Answer the
+  POST as an SSE stream (Streamable HTTP allows that without sessions) rather than switching to
+  sessions with sticky routing.
 
 ## Security and operations
 
@@ -72,7 +129,6 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 
 ## Smaller
 
-- A short-lived cache for slow-changing lookups (projects, timeboxes, code lists).
 - The recipes as MCP prompts, so clients can offer them as slash commands.
 - `structuredContent` with an `outputSchema` for count and group-by results.
 - A coverage floor in `vitest.config.ts`.
