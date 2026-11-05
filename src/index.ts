@@ -5,15 +5,12 @@
 import 'dotenv/config';
 import { loadXsuaaCredentials, resolveAppUrl, type XsuaaCredentials } from '@arc-mcp/xsuaa-auth';
 import { Command } from 'commander';
-import { Config } from './config.js';
+import { Config, httpSettingsFromEnv, transportFromEnv } from './config.js';
 import { createLogger } from './logging.js';
 import { buildMcpServer, createClients, VIEWER_SCOPE, WRITER_SCOPE } from './server.js';
-import { createHttpApp, parseCorsOrigins } from './transport/http.js';
-import { redirectPatterns } from './transport/redirects.js';
+import { createHttpApp } from './transport/http.js';
 import { startStdio } from './transport/stdio.js';
 
-/** Default HTTP port when neither `--port` nor `PORT` is set. */
-const DEFAULT_PORT = 8080;
 /** Default per-client rate limit (requests/minute) for the HTTP transport. */
 const DEFAULT_RATE_LIMIT = 120;
 
@@ -53,23 +50,23 @@ async function main(): Promise<void> {
     .parse();
   const options = program.opts<CliOptions>();
 
+  // Every setting is read and checked before anything starts, so a typo stops the server here.
   const config = Config.fromEnv();
+  const transport = transportFromEnv(process.env, options.http === true);
+  const http = transport === 'http' ? httpSettingsFromEnv(process.env, options.port) : undefined;
   const logger = createLogger(config.debug);
   // The Cloud ALM clients (and their token caches) are created once and shared across requests.
   const clients = createClients(config, logger);
 
-  const useHttp = options.http === true || process.env.CALM_TRANSPORT === 'http';
-
-  if (useHttp) {
-    const port = Number(options.port ?? process.env.PORT ?? DEFAULT_PORT);
-    const onCloudFoundry = Boolean(process.env.VCAP_APPLICATION);
+  if (http) {
+    const { port } = http;
     // Protect /mcp with a static API key (CALM_HTTP_API_KEY) and/or XSUAA + MCP-native OAuth when an
     // XSUAA service is bound (BTP). Without either, startup fails unless the operator explicitly opts
     // into an open endpoint for local development, which is then bound to loopback only. On Cloud
     // Foundry the opt-in is ignored: a lost xsuaa binding must never expose Cloud ALM publicly.
-    const allowOpen = !onCloudFoundry && process.env.CALM_HTTP_ALLOW_UNAUTHENTICATED === 'true';
+    const allowOpen = http.allowUnauthenticated;
     const xsuaaCredentials = loadXsuaaIfBound();
-    const httpApiKey = process.env.CALM_HTTP_API_KEY?.trim() || undefined;
+    const httpApiKey = http.apiKey;
     const open = !xsuaaCredentials && !httpApiKey;
     if (open && !allowOpen) {
       throw new Error(
@@ -78,14 +75,22 @@ async function main(): Promise<void> {
           '127.0.0.1 without auth.',
       );
     }
+    if (xsuaaCredentials && !http.dcrSigningSecret) {
+      // The XSUAA client secret changes with every `cf deploy`, which invalidates every client
+      // registered before. Not required, so existing deployments keep starting.
+      logger.warn(
+        'CALM_DCR_SIGNING_SECRET is not set: client registrations are signed with the XSUAA ' +
+          'client secret and are lost when it rotates (e.g. on cf deploy). Set a secret of its own.',
+      );
+    }
     const app = createHttpApp({
       buildServer: (authInfo) => buildMcpServer(clients, logger, authInfo),
-      corsOrigins: parseCorsOrigins(process.env.CALM_CORS_ORIGINS),
+      corsOrigins: http.corsOrigins,
       rateLimitPerMinute: DEFAULT_RATE_LIMIT,
       logger,
       requireAuth: !allowOpen,
       localOnly: open,
-      trustProxy: onCloudFoundry,
+      trustProxy: http.onCloudFoundry,
       auth: {
         // Entry form (not a bare string) so the key carries the Viewer scope and passes
         // requiredScopes when XSUAA is also bound. Never Writer: the key is shared and static.
@@ -100,10 +105,9 @@ async function main(): Promise<void> {
               scopesSupported: [VIEWER_SCOPE, WRITER_SCOPE],
               requiredScopes: [VIEWER_SCOPE],
               resourceName: 'calmcp (SAP Cloud ALM MCP Server)',
-              dcrSigningSecret:
-                process.env.CALM_DCR_SIGNING_SECRET?.trim() || xsuaaCredentials.clientsecret,
-              redirectUriPatterns: redirectPatterns(process.env),
-              dcrRedirectUriPatterns: redirectPatterns(process.env),
+              dcrSigningSecret: http.dcrSigningSecret ?? xsuaaCredentials.clientsecret,
+              redirectUriPatterns: http.redirectPatterns,
+              dcrRedirectUriPatterns: http.redirectPatterns,
             }
           : undefined,
       },

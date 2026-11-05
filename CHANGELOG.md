@@ -4,6 +4,20 @@ calmcp follows [semantic versioning](https://semver.org) from 1.0 on; the README
 "Versioning and stability" says what counts as the public interface. Releases before 1.0 are
 described on the [GitHub releases page](https://github.com/consetto/calmcp/releases).
 
+## Unreleased
+
+### Fixes
+
+- Configuration is checked at startup. A malformed or out-of-range number (`CALM_TIMEOUT_SECONDS=0`,
+  `CALM_MAX_RESPONSE_BYTES=100kb`, `PORT=99999`), a switch that is neither true nor false
+  (`CALM_WRITE_ENABLED=ture`) and an unknown `CALM_TRANSPORT` now stop calmcp with a message naming
+  the variable. Before, a number fell back to its default, a switch read as false and an unknown
+  transport started stdio. `CALM_TRANSPORT` and `CALM_HTTP_ALLOW_UNAUTHENTICATED` now accept the same
+  spellings as the other switches (`HTTP`, `1`, `yes`). A deployment with such a value stops
+  starting after the upgrade; that is intended.
+- With XSUAA bound and no `CALM_DCR_SIGNING_SECRET`, calmcp logs a warning that client
+  registrations are lost when the XSUAA client secret rotates.
+
 ## 1.0.0
 
 The first stable release. It settles the parameter names before semver locks them, adds links

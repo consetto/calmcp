@@ -18,13 +18,9 @@ narrow what it partly does, and remove what it completes. Link the PR or analysi
 
 From the architecture review of 2026-11-05, in the order proposed.
 
-- **Strict configuration.** A malformed number in the environment falls back to the default
-  without a word (`CALM_MAX_RESPONSE_BYTES=100kb`), and nothing checks ranges
-  (`CALM_TIMEOUT_SECONDS=0` times every request out). Refuse both at startup. Read every variable
-  in `Config`, including the ones `src/index.ts` reads itself (`CALM_HTTP_API_KEY`,
-  `CALM_CORS_ORIGINS`, `CALM_DCR_SIGNING_SECRET`, `CALM_PUBLIC_URL`, `CALM_TRANSPORT`,
-  `CALM_HTTP_ALLOW_UNAUTHENTICATED`). Require `CALM_DCR_SIGNING_SECRET` on Cloud Foundry, or warn,
-  instead of reusing the XSUAA client secret.
+- **`CALM_DCR_SIGNING_SECRET` required on Cloud Foundry.** Today calmcp falls back to the XSUAA
+  client secret and logs a warning; requiring it stops existing deployments from starting, so it
+  waits for a minor release.
 - **Destination token renewal after a 401.** `DestinationAuthProvider.invalidate()` sets one shared
   flag that the next `authorize()` of any concurrent call consumes, so the call that was refused may
   retry with the cached token. Track the refused token as `ClientCredentialsAuthProvider` does; test
