@@ -34,15 +34,6 @@ From the architecture review of 2026-11-05, in the order proposed.
   for list, get, create and update entries, with services, paths and scopes in one `SERVICES`
   table. A refactor first that agents cannot notice, then deliberate changes in a minor release.
   Before the next batch of "More reads". See [the design](REGISTRY-DESIGN.md).
-- **`rest_filters` accepts any key** (`landscape_objects`, `landscape_access_control_lists`,
-  `bsm_events`), and Cloud ALM ignores the ones it does not know. Tenant check 2026-11-05 on
-  `/landscapeObjects` (11 objects, 1 of type BusinessService): `objectType=BusinessService` returns
-  1; `objecttype`, `OBJECTTYPE`, `object_type` and `bogusKey` all return HTTP 200 with all 11, so a
-  misspelled filter answers with an unfiltered list that looks filtered. An unknown value
-  (`objectType=NO_SUCH_TYPE`) is refused with 400. `/events` also answers 200 to `bogusKey`; whether
-  its keys are case-sensitive could not be seen (one service in the data). Fix now, without waiting
-  for the refactor: in #64 (refuses keys outside the spec, names the right spelling). Remove this
-  item when #64 merges.
 - **Spec drift check.** A local script comparing the registries and the create and update schemas
   with `YAML/` (paths, query parameters, required fields, enums, lengths, scopes where the spec has
   them), run with every spec refresh.
