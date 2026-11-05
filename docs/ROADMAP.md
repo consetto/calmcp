@@ -25,10 +25,6 @@ From the architecture review of 2026-11-05, in the order proposed.
   `CALM_CORS_ORIGINS`, `CALM_DCR_SIGNING_SECRET`, `CALM_PUBLIC_URL`, `CALM_TRANSPORT`,
   `CALM_HTTP_ALLOW_UNAUTHENTICATED`). Require `CALM_DCR_SIGNING_SECRET` on Cloud Foundry, or warn,
   instead of reusing the XSUAA client secret.
-- **Destination token renewal after a 401.** `DestinationAuthProvider.invalidate()` sets one shared
-  flag that the next `authorize()` of any concurrent call consumes, so the call that was refused may
-  retry with the cached token. Track the refused token as `ClientCredentialsAuthProvider` does; test
-  with two concurrent calls.
 - **Declarative resources and domain modules.** Parameters of REST resources declared as data
   instead of probed from `build` closures, explicit paging styles, and one file per Cloud ALM area
   for list, get, create and update entries, with services, paths and scopes in one `SERVICES`
