@@ -4,6 +4,17 @@ calmcp follows [semantic versioning](https://semver.org) from 1.0 on; the README
 "Versioning and stability" says what counts as the public interface. Releases before 1.0 are
 described on the [GitHub releases page](https://github.com/consetto/calmcp/releases).
 
+## Unreleased
+
+### Fixes
+
+- BTP destination: after Cloud ALM refused a token (401), for example after the client secret was
+  rotated, calmcp kept getting the refused token from the Cloud SDK's destination cache, which does
+  not store an uncached lookup. Every later request was refused once before its retry, and of
+  several requests refused at the same time only one was sure to retry with a fresh token. calmcp
+  now remembers the refused token, fetches the destination afresh once for all waiting requests,
+  and uses the fresh token until it expires.
+
 ## 1.0.0
 
 The first stable release. It settles the parameter names before semver locks them, adds links
