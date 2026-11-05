@@ -43,6 +43,26 @@ describe('refused before any request', () => {
       "may not set 'limit'",
     ],
     [
+      'a rest_filters key in the wrong case',
+      { resource: 'landscape_objects', rest_filters: { objecttype: 'BusinessService' } },
+      "'objecttype' (did you mean 'objectType'?)",
+    ],
+    [
+      'an unknown rest_filters key',
+      { resource: 'bsm_events', rest_filters: { service_name: 'x' } },
+      "rest_filters key 'service_name' not taken by resource 'bsm_events'",
+    ],
+    [
+      'an unknown rest_filters key on access control lists',
+      { resource: 'landscape_access_control_lists', rest_filters: { filter: 'x' } },
+      'Accepted: displayName, id.',
+    ],
+    [
+      'an unknown rest_filters key when counting',
+      { resource: 'landscape_objects', count_only: true, rest_filters: { bogusKey: 'x' } },
+      "'bogusKey'",
+    ],
+    [
       'a timebox on another resource',
       { resource: 'features', timebox_name: 'Sprint 5' },
       "apply to resource 'tasks' only",
