@@ -4,6 +4,16 @@ calmcp follows [semantic versioning](https://semver.org) from 1.0 on; the README
 "Versioning and stability" says what counts as the public interface. Releases before 1.0 are
 described on the [GitHub releases page](https://github.com/consetto/calmcp/releases).
 
+## Unreleased
+
+### Behaviour changes
+
+- `calm_list` refuses a `rest_filters` key that the endpoint does not take, naming the accepted
+  keys and the right spelling of one that differs only in case. Cloud ALM ignores an unknown key
+  and answers with the unfiltered list (`objecttype=BusinessService` on `landscape_objects`
+  returned every object), so a misspelled filter looked applied. `calm_resources` lists the
+  accepted keys of each resource as `restFilters`.
+
 ## 1.0.0
 
 The first stable release. It settles the parameter names before semver locks them, adds links
