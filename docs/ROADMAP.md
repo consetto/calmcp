@@ -115,6 +115,9 @@ From the architecture review of 2026-11-05, in the order proposed.
   Over HTTP the server is stateless, one server per POST, so it cannot send them today. Answer the
   POST as an SSE stream (Streamable HTTP allows that without sessions) rather than switching to
   sessions with sticky routing.
+- **Shutdown on SIGTERM.** Cloud Foundry stops an instance on every restage and deploy; calmcp
+  exits at once, so a write in flight is cut and reported as "outcome unknown". Stop accepting
+  requests, let running calls finish within the grace period, then exit.
 
 ## Security and operations
 
@@ -126,6 +129,37 @@ From the architecture review of 2026-11-05, in the order proposed.
   without the private-project and `*.personal.read` scopes, picked by a new XSUAA role. User
   propagation is not possible: the Cloud ALM API accepts client credentials only, and project
   visibility is a scope of the service instance (SAP API guide, 2026-09-29).
+
+From the security review of 2026-11-11 (fixed there: #72, #73, #74):
+
+- **`.env` is loaded from the working directory in every mode** (`import 'dotenv/config'` in
+  `src/index.ts`). An MCP host often starts a stdio server in the project folder, so a `.env` in a
+  repository someone else wrote can set whatever the host left unset: `CALM_WRITE_ENABLED`,
+  `CALM_UPDATE_ENABLED`, `NODE_TLS_REJECT_UNAUTHORIZED`. Reasoned from dotenv's defaults, not yet
+  reproduced. Load it only for `npm run dev` and the integration tests, or from an explicit path.
+- **`data-mce-*` attributes pass the rich-text allowlist** (`src/tools/richText.ts`, any `data-`
+  attribute is allowed). `<img src="/ui/imageServiceAPI/…" data-mce-src="https://elsewhere/p.png">`
+  and `data-mce-style="background:url(…)"` are accepted today. TinyMCE keeps the original `src`,
+  `href` and `style` in these attributes and writes them back when it saves, so the foreign URL
+  could become the real one once a user edits the object. Needs a tenant check (does Cloud ALM's
+  sanitiser strip them, does the editor restore them); refusing `data-mce-*` is safe either way.
+  Also accepted: a link styled `position:fixed` over the whole page.
+- **`CALM_HTTP_API_KEY` has no minimum length**, so `test` protects a public endpoint; CI itself
+  starts the image with `placeholder`. Require a length (32 characters, say) at startup. String
+  settings also skip the check for an unfilled `${user_config.…}` placeholder that booleans and
+  numbers get.
+- **Inbound rate limit by caller.** The limit is per client address. Hosted clients (claude.ai,
+  Copilot Studio) presumably call from a few shared addresses, so all their users would share one
+  bucket of 120 requests a minute; not measured. Keep the address limit ahead of sign-in and add
+  one per token subject or API key behind it.
+- **A log line per read.** Only writes are audited. Every caller reads with the one technical
+  identity, so calmcp's log is the only place that can say who read what: caller, tool and resource
+  at `info`, no parameters or values. Goes with "Audit log retention" above.
+- Smaller: `node-forge` has a moderate advisory through `@sap-cloud-sdk/connectivity` and `jks-js`
+  (`npm audit fix`; CI gates on high only). The `ignore` list in `mta.yaml` lacks the `*.local`
+  entry `.cfignore` has. The Dockerfile's base image is not pinned by digest and its `npm ci` runs
+  install scripts. `trust proxy` is set on Cloud Foundry only, so a container behind another
+  reverse proxy puts every client into one rate-limit bucket.
 
 ## Smaller
 
