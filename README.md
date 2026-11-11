@@ -348,6 +348,7 @@ auth modes, plus a BTP destination mode:
 | `CALM_SANDBOX` | `true` to use the SAP Business Accelerator Hub sandbox with `CALM_API_KEY`. |
 | `CALM_API_KEY` | Sandbox API key (sandbox mode). |
 | `CALM_TENANT`, `CALM_REGION` | Tenant subdomain and region (e.g. `eu10`) for OAuth2 mode. |
+| `CALM_AUTH_REGION` | Region of the token host, if it differs. Defaults to `CALM_REGION` without its suffix: an `eu10-004` tenant authenticates at `authentication.eu10`. |
 | `CALM_CLIENT_ID`, `CALM_CLIENT_SECRET` | OAuth2 client-credentials from the service binding. |
 | `CALM_DESTINATION_NAME` | Name of a bound BTP Destination (BTP mode; takes precedence). |
 | `PORT`, `CALM_CORS_ORIGINS` | HTTP transport port (default 8080; `--port`/`-p` overrides), and the exact origins of browser-based clients allowed by CORS (comma-separated, e.g. `http://localhost:6274`). Unset sends no CORS headers, which is right for MCP clients such as Claude Desktop. A wildcard (`*`) is refused at startup: on the local unauthenticated endpoint it would let any website read Cloud ALM data through the developer's browser. |
@@ -585,7 +586,7 @@ API service key (an OAuth2 client-credentials key for the Cloud ALM API):
 | **Authentication** | `OAuth2ClientCredentials` |
 | **Client ID** | `clientid` from the service key |
 | **Client Secret** | `clientsecret` from the service key |
-| **Token Service URL** | the service key's `url` plus `/oauth/token`: `https://<tenant>.authentication.<region>.hana.ondemand.com/oauth/token` |
+| **Token Service URL** | the service key's `url` plus `/oauth/token`: `https://<tenant>.authentication.<region>.hana.ondemand.com/oauth/token`. Copy it from the service key: its region can differ from the one in the API URL (an `eu10-004` tenant authenticates at `authentication.eu10`) |
 | **Token Service URL Type** | `Dedicated` |
 
 Notes:

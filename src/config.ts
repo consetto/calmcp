@@ -69,6 +69,11 @@ export interface ConfigValues {
   tenant?: string;
   /** SAP Cloud ALM region (e.g. "eu10"); required in OAuth2 mode. */
   region?: string;
+  /**
+   * Region of the XSUAA token host, when it differs from `region`. Defaults to `region` without
+   * its data-centre suffix: an `eu10-004` tenant authenticates at `authentication.eu10`.
+   */
+  authRegion?: string;
   /** OAuth2 client ID from the service binding; required in OAuth2 mode. */
   clientId?: string;
   /** OAuth2 client secret from the service binding; required in OAuth2 mode. */
@@ -110,6 +115,7 @@ export class Config {
   readonly apiKey?: string;
   readonly tenant?: string;
   readonly region?: string;
+  readonly authRegion?: string;
   readonly clientId?: string;
   readonly clientSecret?: string;
   readonly debug: boolean;
@@ -125,6 +131,7 @@ export class Config {
     this.apiKey = values.apiKey;
     this.tenant = values.tenant;
     this.region = values.region;
+    this.authRegion = values.authRegion ?? values.region?.replace(/-\d+$/, '');
     this.clientId = values.clientId;
     this.clientSecret = values.clientSecret;
     this.debug = values.debug;
@@ -150,6 +157,7 @@ export class Config {
       apiKey: env.CALM_API_KEY?.trim() || undefined,
       tenant: env.CALM_TENANT?.trim() || undefined,
       region: env.CALM_REGION?.trim() || undefined,
+      authRegion: env.CALM_AUTH_REGION?.trim() || undefined,
       clientId: env.CALM_CLIENT_ID?.trim() || undefined,
       clientSecret: env.CALM_CLIENT_SECRET?.trim() || undefined,
       debug: parseBool(env.CALM_DEBUG),
@@ -203,6 +211,12 @@ export class Config {
         `Invalid region '${this.region}'. Valid regions: ${VALID_REGIONS.join(', ')}`,
       );
     }
+    // Like the tenant, the auth region is part of the hostname the client secret is sent to.
+    if (!this.authRegion || !/^[a-z]{2}\d{2}(-\d{3})?$/.test(this.authRegion)) {
+      throw ConfigError.invalid(
+        `Invalid CALM_AUTH_REGION '${this.authRegion}': expected a region such as eu10`,
+      );
+    }
   }
 
   /**
@@ -214,7 +228,7 @@ export class Config {
     if (this.sandbox) {
       return undefined;
     }
-    return `https://${this.tenant}.authentication.${this.region}.hana.ondemand.com/oauth/token`;
+    return `https://${this.tenant}.authentication.${this.authRegion}.hana.ondemand.com/oauth/token`;
   }
 
   /**

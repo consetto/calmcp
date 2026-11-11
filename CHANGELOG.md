@@ -4,6 +4,14 @@ calmcp follows [semantic versioning](https://semver.org) from 1.0 on; the README
 "Versioning and stability" says what counts as the public interface. Releases before 1.0 are
 described on the [GitHub releases page](https://github.com/consetto/calmcp/releases).
 
+## Unreleased
+
+### Fixes
+
+- Tenants in `eu10-004` can sign in with tenant and region. calmcp requested the token from
+  `authentication.eu10-004.hana.ondemand.com`, which does not exist; it now uses the region without
+  its data-centre suffix (`authentication.eu10`). `CALM_AUTH_REGION` overrides the token host region.
+
 ## 1.0.0
 
 The first stable release. It settles the parameter names before semver locks them, adds links
