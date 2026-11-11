@@ -63,6 +63,36 @@ describe('createHttpApp with XSUAA auth', () => {
   });
 });
 
+describe('CORS for a browser-based MCP client', () => {
+  const app = createHttpApp({
+    buildServer: () => undefined as unknown as McpServer,
+    corsOrigins: ['http://localhost:6274'],
+    rateLimitPerMinute: 100,
+    logger,
+    auth: { apiKeys: [{ key: 'super-secret-key', scopes: ['Viewer'] }] },
+  });
+  const preflight = (origin: string) =>
+    request(app)
+      .options('/mcp')
+      .set('Origin', origin)
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'authorization,content-type,mcp-protocol-version');
+
+  it('allows every header the MCP client sends after initialize', async () => {
+    const res = await preflight('http://localhost:6274');
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:6274');
+    const allowed = String(res.headers['access-control-allow-headers']).toLowerCase().split(',');
+    expect(allowed).toEqual(
+      expect.arrayContaining(['authorization', 'content-type', 'mcp-protocol-version']),
+    );
+  });
+
+  it('sends no allow-origin to an origin that is not listed', async () => {
+    const res = await preflight('https://elsewhere.example');
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
 describe('createHttpApp without auth (local dev)', () => {
   it('does not mount OAuth discovery when no method is configured', async () => {
     const app = createHttpApp({
