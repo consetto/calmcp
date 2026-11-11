@@ -111,6 +111,20 @@ describe('upstream error summaries', () => {
   });
 });
 
+describe('upstream error summaries of a large body', () => {
+  it('summarises 8 MB of unclosed <script> tags without stalling', () => {
+    const started = Date.now();
+    const text = summarizeBody('<script>'.repeat(1_000_000));
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(text.endsWith('(truncated)')).toBe(true);
+  });
+
+  it('marks a body as truncated when the cut part was markup only', () => {
+    const text = summarizeBody(`Bad Gateway${' <br>'.repeat(20_000)}`);
+    expect(text).toBe('Bad Gateway…(truncated)');
+  });
+});
+
 describe('network-backed hardening', () => {
   let agent: MockAgent;
   beforeEach(() => {
