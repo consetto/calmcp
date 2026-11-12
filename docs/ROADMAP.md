@@ -145,11 +145,10 @@ From the security review of 2026-11-11 (fixed there: #72, #73, #74):
 - **A log line per read.** Only writes are audited. Every caller reads with the one technical
   identity, so calmcp's log is the only place that can say who read what: caller, tool and resource
   at `info`, no parameters or values. Goes with "Audit log retention" above.
-- Smaller: `node-forge` has a moderate advisory through `@sap-cloud-sdk/connectivity` and `jks-js`
-  (`npm audit fix`; CI gates on high only). The `ignore` list in `mta.yaml` lacks the `*.local`
-  entry `.cfignore` has. The Dockerfile's base image is not pinned by digest and its `npm ci` runs
-  install scripts. `trust proxy` is set on Cloud Foundry only, so a container behind another
-  reverse proxy puts every client into one rate-limit bucket.
+- Smaller: the `ignore` list in `mta.yaml` lacks the `*.local` entry `.cfignore` has. The
+  Dockerfile's base image is not pinned by digest and its `npm ci` runs install scripts.
+  `trust proxy` is set on Cloud Foundry only, so a container behind another reverse proxy puts
+  every client into one rate-limit bucket.
 
 ## Smaller
 

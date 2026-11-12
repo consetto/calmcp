@@ -4,6 +4,15 @@ calmcp follows [semantic versioning](https://semver.org) from 1.0 on; the README
 "Versioning and stability" says what counts as the public interface. Releases before 1.0 are
 described on the [GitHub releases page](https://github.com/consetto/calmcp/releases).
 
+## Unreleased
+
+### Security
+
+- `node-forge` 1.4.3 by a lockfile update, for four advisories in its TLS client, `forge.http` and
+  Ed25519 code (GHSA-j8rw-jp99-435v, GHSA-6cv4-p8m7-4r25, GHSA-w4xr-hqv8-ch44,
+  GHSA-6889-vf6x-f3g5). calmcp does not reach that code: the library comes in through the SAP
+  Cloud SDK, which uses it only to read a Java keystore of a BTP destination.
+
 ## 1.1.0
 
 Tags of tasks and requirement assignments, stricter handling of what calmcp cannot honour
