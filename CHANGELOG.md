@@ -6,6 +6,14 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ## Unreleased
 
+### Fixes
+
+- BTP destination: after Cloud ALM refused a token (401), for example after the client secret was
+  rotated, calmcp kept getting the refused token from the Cloud SDK's destination cache, which does
+  not store an uncached lookup. Every later request was refused once before its retry, and of
+  several requests refused at the same time only one was sure to retry with a fresh token. calmcp
+  now remembers the refused token, fetches the destination afresh once for all waiting requests,
+  and uses the fresh token until it expires.
 ### Behaviour changes
 
 - `calm_list` refuses a `rest_filters` key that the endpoint does not take, naming the accepted
