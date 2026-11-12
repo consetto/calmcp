@@ -79,8 +79,10 @@ export function createHttpApp(options: HttpAppOptions): Express {
   app.use(
     cors({
       origin: corsOrigins,
-      // Allow the MCP session header and standard auth/content headers through.
-      allowedHeaders: ['Content-Type', 'mcp-session-id', 'authorization'],
+      // The headers a browser-based MCP client sends: content type and token, and from the second
+      // request on the protocol version it agreed in `initialize`. A header missing here fails the
+      // browser's preflight, so the client connects and then every later call is blocked.
+      allowedHeaders: ['Content-Type', 'authorization', 'mcp-protocol-version', 'mcp-session-id'],
       exposedHeaders: ['Mcp-Session-Id'],
     }),
   );
