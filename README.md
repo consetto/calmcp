@@ -358,6 +358,12 @@ auth modes, plus a BTP destination mode:
 | `CALM_WRITE_ENABLED` | `true` registers `calm_create` (create-only). Default `false`: read-only. See [Write access](#write-access-opt-in). |
 | `CALM_UPDATE_ENABLED` | `true` registers `calm_update` (change fields of existing features). Default `false`. See [Update access](#update-access-opt-in). |
 
+A value calmcp cannot honour stops it at startup with a message naming the variable, rather than
+being replaced by the default: a switch other than `true`/`false` (also `1`/`0`, `yes`/`no`), a
+`CALM_TRANSPORT` other than `stdio` or `http`, or a number outside its range
+(`CALM_TIMEOUT_SECONDS` 1 to 600, `CALM_MAX_RESPONSE_BYTES` at least 1000,
+`CALM_TOKEN_REFRESH_BUFFER_SECONDS` 0 to 3600, `PORT` 1 to 65535).
+
 ### Cloud ALM API scopes
 
 What calmcp can read is decided by the scopes of the SAP Cloud ALM API service instance behind the
@@ -632,7 +638,7 @@ Relevant environment variables (HTTP transport):
 | Variable | Description |
 | --- | --- |
 | `CALM_PUBLIC_URL` | Public base URL used in OAuth metadata and the callback. Defaults to the first route in `VCAP_APPLICATION`, so it's normally not needed. |
-| `CALM_DCR_SIGNING_SECRET` | Secret for HMAC-signing dynamic client registrations. Set it (e.g. `cf set-env calmcp-srv CALM_DCR_SIGNING_SECRET "$(openssl rand -base64 48)"`) so registered clients survive a `cf deploy` (which rotates the XSUAA `clientsecret`). Defaults to the XSUAA `clientsecret`. |
+| `CALM_DCR_SIGNING_SECRET` | Secret for HMAC-signing dynamic client registrations. Set it (e.g. `cf set-env calmcp-srv CALM_DCR_SIGNING_SECRET "$(openssl rand -base64 48)"`) so registered clients survive a `cf deploy` (which rotates the XSUAA `clientsecret`). Defaults to the XSUAA `clientsecret`, with a warning in the log at startup. |
 | `CALM_HTTP_ALLOW_UNAUTHENTICATED` | `true` allows an open `/mcp` on `127.0.0.1` when no auth is configured. Local development only; ignored on Cloud Foundry. |
 | `CALM_OAUTH_REDIRECT_PATTERNS` | Extra redirect URIs (comma-separated globs, `*` within a segment, `**` across) an MCP client may receive its OAuth code at. calmcp accepts localhost, Claude, ChatGPT, Cursor, VS Code, Mistral and Copilot Studio; any other `https://` redirect is refused at registration, so a link to someone else's app cannot carry a user's code there. |
 | `CALM_HTTP_API_KEY` | Shared secret for the alternative API-key path. Generate with `openssl rand -base64 48`. Leave empty to rely on XSUAA only. See the [Copilot Studio guide](docs/copilot-studio.md). |

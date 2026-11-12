@@ -49,44 +49,8 @@ export interface HttpAppOptions {
   trustProxy?: boolean;
 }
 
-/** One origin as a browser sends it: scheme, host and optional port, nothing else. */
-const ORIGIN = /^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i;
-
-/**
- * Parse `CALM_CORS_ORIGINS` into the origins the `cors` middleware may allow. Unset means no CORS
- * headers: MCP clients call the endpoint server-side, so only browser-based clients need an entry.
- *
- * A wildcard is refused rather than honoured. Behind auth it gains nothing, and on the open local
- * endpoint (`CALM_HTTP_ALLOW_UNAUTHENTICATED`) it would let any website the developer visits call
- * 127.0.0.1 from the browser and read Cloud ALM data: without CORS headers the browser's preflight
- * blocks that. A malformed entry is refused too, so a typo cannot quietly disable a client.
- *
- * @param value - The raw environment value, a comma-separated list of origins.
- * @returns The origins, or `false` when none are configured.
- * @throws {Error} On `*` or an entry that is not `http(s)://host[:port]`.
- */
-export function parseCorsOrigins(value: string | undefined): string[] | false {
-  const origins = (value ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-  if (origins.length === 0) return false;
-  for (const origin of origins) {
-    if (origin.includes('*')) {
-      throw new Error(
-        `CALM_CORS_ORIGINS must list exact origins; the wildcard "${origin}" is not supported. ` +
-          'Name each browser client, e.g. CALM_CORS_ORIGINS=http://localhost:6274.',
-      );
-    }
-    if (!ORIGIN.test(origin)) {
-      throw new Error(
-        `CALM_CORS_ORIGINS entry "${origin}" is not an origin: use scheme://host[:port] with no ` +
-          'path or trailing slash, e.g. https://client.example.com.',
-      );
-    }
-  }
-  return origins;
-}
+// Parsed with the rest of the HTTP settings in `config.ts`; re-exported for existing importers.
+export { parseCorsOrigins } from '../config.js';
 
 /** A JSON-RPC error body for non-POST methods and failures. */
 function jsonRpcError(code: number, message: string) {

@@ -5,6 +5,7 @@
 // Destination instead of these variables (see `auth/`).
 
 import { ConfigError } from './errors.js';
+import { redirectPatterns } from './transport/redirects.js';
 
 /** Sandbox API base URL for SAP Cloud ALM (SAP Business Accelerator Hub). */
 const SANDBOX_BASE_URL = 'https://sandbox.api.sap.com/SAPCALM';
@@ -144,7 +145,7 @@ export class Config {
    * @throws {ConfigError} If a required field is missing or a value is invalid.
    */
   static fromEnv(env: NodeJS.ProcessEnv = process.env): Config {
-    const sandbox = parseBool(env.CALM_SANDBOX);
+    const sandbox = parseBool(env, 'CALM_SANDBOX');
     const values: ConfigValues = {
       sandbox,
       apiKey: env.CALM_API_KEY?.trim() || undefined,
@@ -152,13 +153,21 @@ export class Config {
       region: env.CALM_REGION?.trim() || undefined,
       clientId: env.CALM_CLIENT_ID?.trim() || undefined,
       clientSecret: env.CALM_CLIENT_SECRET?.trim() || undefined,
-      debug: parseBool(env.CALM_DEBUG),
-      timeoutSeconds: parseNumber(env.CALM_TIMEOUT_SECONDS, 30),
-      tokenRefreshBufferSeconds: parseNumber(env.CALM_TOKEN_REFRESH_BUFFER_SECONDS, 5),
+      debug: parseBool(env, 'CALM_DEBUG'),
+      // A timeout of 0 would end every request at once; one beyond 10 minutes outlasts any client.
+      timeoutSeconds: parseNumber(env, 'CALM_TIMEOUT_SECONDS', 30, { min: 1, max: 600 }),
+      tokenRefreshBufferSeconds: parseNumber(env, 'CALM_TOKEN_REFRESH_BUFFER_SECONDS', 5, {
+        min: 0,
+        max: 3600,
+      }),
       destinationName: env.CALM_DESTINATION_NAME?.trim() || undefined,
-      maxResponseBytes: parseNumber(env.CALM_MAX_RESPONSE_BYTES, DEFAULT_MAX_RESPONSE_BYTES),
-      writeEnabled: parseBool(env.CALM_WRITE_ENABLED),
-      updateEnabled: parseBool(env.CALM_UPDATE_ENABLED),
+      // Below 1000 bytes not even the summary of a withheld result fits.
+      maxResponseBytes: parseNumber(env, 'CALM_MAX_RESPONSE_BYTES', DEFAULT_MAX_RESPONSE_BYTES, {
+        min: 1000,
+        integer: true,
+      }),
+      writeEnabled: parseBool(env, 'CALM_WRITE_ENABLED'),
+      updateEnabled: parseBool(env, 'CALM_UPDATE_ENABLED'),
     };
 
     const config = new Config(values);
@@ -251,16 +260,183 @@ export class Config {
   }
 }
 
-/** Parse a boolean env var ("true"/"1"/"yes" → true). */
-function parseBool(value: string | undefined): boolean {
-  if (!value) return false;
-  const v = value.trim().toLowerCase();
-  return v === 'true' || v === '1' || v === 'yes';
+/**
+ * The trimmed value of a variable, or undefined when it is unset, empty, or a placeholder the host
+ * left unfilled. The MCPB bundle passes its settings as `${user_config.<name>}`; a host that leaves
+ * one in place would otherwise stop the server that used to start with the default.
+ */
+function setValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const value = env[name]?.trim();
+  return value && !/^\$\{[^}]*\}$/.test(value) ? value : undefined;
 }
 
-/** Parse a numeric env var, falling back to `fallback` when empty or invalid. */
-function parseNumber(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
+/** Values accepted as true and as false; anything else is a startup error. */
+const TRUE_VALUES = ['true', '1', 'yes'];
+const FALSE_VALUES = ['false', '0', 'no'];
+
+/**
+ * Read a boolean environment variable. Unset or empty is false. Any other value outside the
+ * accepted ones is refused rather than read as false: `CALM_WRITE_ENABLED=ture` would otherwise
+ * start a read-only server that looks configured for writes.
+ *
+ * @param env - The environment.
+ * @param name - The variable.
+ * @returns The value.
+ * @throws {ConfigError} On a value that is neither true nor false.
+ */
+export function parseBool(env: NodeJS.ProcessEnv, name: string): boolean {
+  const value = setValue(env, name)?.toLowerCase();
+  if (!value) return false;
+  if (TRUE_VALUES.includes(value)) return true;
+  if (FALSE_VALUES.includes(value)) return false;
+  throw ConfigError.invalid(
+    `${name} must be true or false (also accepted: 1/0, yes/no), not '${env[name]}'`,
+  );
+}
+
+/**
+ * Read a numeric environment variable. Unset or empty gives the default. A value that is not a
+ * number, or outside the range, is refused rather than replaced by the default: the operator set it
+ * for a reason, and running with a different value than the one configured is the wrong-but-plausible
+ * failure calmcp avoids elsewhere.
+ *
+ * @param env - The environment.
+ * @param name - The variable.
+ * @param fallback - The default.
+ * @param range - Inclusive bounds, and whether only whole numbers are accepted.
+ * @returns The value.
+ * @throws {ConfigError} On a malformed or out-of-range value.
+ */
+export function parseNumber(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+  range: { min?: number; max?: number; integer?: boolean } = {},
+): number {
+  const raw = setValue(env, name);
+  if (!raw) return fallback;
+  const n = Number(raw);
+  const bounds =
+    range.max !== undefined
+      ? `between ${range.min ?? 0} and ${range.max}`
+      : `at least ${range.min ?? 0}`;
+  if (!Number.isFinite(n) || (range.integer && !Number.isInteger(n))) {
+    throw ConfigError.invalid(
+      `${name} must be ${range.integer ? 'a whole number' : 'a number'} ${bounds}, not '${raw}'`,
+    );
+  }
+  if ((range.min !== undefined && n < range.min) || (range.max !== undefined && n > range.max)) {
+    throw ConfigError.invalid(`${name} must be ${bounds}, not ${raw}`);
+  }
+  return n;
+}
+
+/** Default HTTP port when neither `--port` nor `PORT` is set. */
+const DEFAULT_PORT = 8080;
+
+/** Which transport to start. */
+export type Transport = 'stdio' | 'http';
+
+/**
+ * The transport: `--http`, else `CALM_TRANSPORT`, else stdio. An unknown value is refused, so
+ * `CALM_TRANSPORT=HTTPS` does not quietly start stdio on a server that waits for HTTP.
+ *
+ * @param env - The environment.
+ * @param cliHttp - Whether `--http` was given.
+ * @returns The transport.
+ * @throws {ConfigError} On a value other than stdio or http.
+ */
+export function transportFromEnv(env: NodeJS.ProcessEnv, cliHttp?: boolean): Transport {
+  if (cliHttp) return 'http';
+  const value = env.CALM_TRANSPORT?.trim().toLowerCase();
+  if (!value || value === 'stdio') return 'stdio';
+  if (value === 'http') return 'http';
+  throw ConfigError.invalid(`CALM_TRANSPORT must be stdio or http, not '${env.CALM_TRANSPORT}'`);
+}
+
+/** Settings of the HTTP transport, read and checked before it starts. */
+export interface HttpSettings {
+  port: number;
+  /** Running on Cloud Foundry (`VCAP_APPLICATION` set). */
+  onCloudFoundry: boolean;
+  /**
+   * `CALM_HTTP_ALLOW_UNAUTHENTICATED`, already false on Cloud Foundry: a lost xsuaa binding must
+   * never expose Cloud ALM publicly.
+   */
+  allowUnauthenticated: boolean;
+  /** `CALM_HTTP_API_KEY`, the shared key of the API-key path. */
+  apiKey?: string;
+  /** Exact CORS origins, or false for no CORS headers. */
+  corsOrigins: string[] | false;
+  /** `CALM_DCR_SIGNING_SECRET`; when unset, the XSUAA client secret is used. */
+  dcrSigningSecret?: string;
+  /** OAuth redirect URI patterns: the known clients plus `CALM_OAUTH_REDIRECT_PATTERNS`. */
+  redirectPatterns: string[];
+}
+
+/**
+ * Read and check the HTTP transport settings. `CALM_PUBLIC_URL` is read by the auth package's
+ * `resolveAppUrl` itself, and the XSUAA binding from `VCAP_SERVICES`.
+ *
+ * @param env - The environment.
+ * @param cliPort - The `--port` option, which takes precedence over `PORT`.
+ * @returns The settings.
+ * @throws {ConfigError} On a malformed port or boolean.
+ * @throws {Error} On a malformed CORS origin (see {@link parseCorsOrigins}).
+ */
+export function httpSettingsFromEnv(env: NodeJS.ProcessEnv, cliPort?: string): HttpSettings {
+  // `--port` overrides PORT; an error names whichever was given.
+  const [source, name] = cliPort !== undefined ? [{ '--port': cliPort }, '--port'] : [env, 'PORT'];
+  const port = parseNumber(source, name, DEFAULT_PORT, { min: 1, max: 65535, integer: true });
+  const onCloudFoundry = Boolean(env.VCAP_APPLICATION);
+  // Parsed on Cloud Foundry too, so a typo is reported there as well, then ignored.
+  const allowOpen = parseBool(env, 'CALM_HTTP_ALLOW_UNAUTHENTICATED');
+  return {
+    port,
+    onCloudFoundry,
+    allowUnauthenticated: allowOpen && !onCloudFoundry,
+    apiKey: env.CALM_HTTP_API_KEY?.trim() || undefined,
+    corsOrigins: parseCorsOrigins(env.CALM_CORS_ORIGINS),
+    dcrSigningSecret: env.CALM_DCR_SIGNING_SECRET?.trim() || undefined,
+    redirectPatterns: redirectPatterns(env),
+  };
+}
+
+/** One origin as a browser sends it: scheme, host and optional port, nothing else. */
+const ORIGIN = /^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i;
+
+/**
+ * Parse `CALM_CORS_ORIGINS` into the origins the `cors` middleware may allow. Unset means no CORS
+ * headers: MCP clients call the endpoint server-side, so only browser-based clients need an entry.
+ *
+ * A wildcard is refused rather than honoured. Behind auth it gains nothing, and on the open local
+ * endpoint (`CALM_HTTP_ALLOW_UNAUTHENTICATED`) it would let any website the developer visits call
+ * 127.0.0.1 from the browser and read Cloud ALM data: without CORS headers the browser's preflight
+ * blocks that. A malformed entry is refused too, so a typo cannot quietly disable a client.
+ *
+ * @param value - The raw environment value, a comma-separated list of origins.
+ * @returns The origins, or `false` when none are configured.
+ * @throws {Error} On `*` or an entry that is not `http(s)://host[:port]`.
+ */
+export function parseCorsOrigins(value: string | undefined): string[] | false {
+  const origins = (value ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (origins.length === 0) return false;
+  for (const origin of origins) {
+    if (origin.includes('*')) {
+      throw new Error(
+        `CALM_CORS_ORIGINS must list exact origins; the wildcard "${origin}" is not supported. ` +
+          'Name each browser client, e.g. CALM_CORS_ORIGINS=http://localhost:6274.',
+      );
+    }
+    if (!ORIGIN.test(origin)) {
+      throw new Error(
+        `CALM_CORS_ORIGINS entry "${origin}" is not an origin: use scheme://host[:port] with no ` +
+          'path or trailing slash, e.g. https://client.example.com.',
+      );
+    }
+  }
+  return origins;
 }

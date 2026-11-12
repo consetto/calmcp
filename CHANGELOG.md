@@ -8,6 +8,15 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ### Fixes
 
+- Configuration is checked at startup. A malformed or out-of-range number (`CALM_TIMEOUT_SECONDS=0`,
+  `CALM_MAX_RESPONSE_BYTES=100kb`, `PORT=99999`), a switch that is neither true nor false
+  (`CALM_WRITE_ENABLED=ture`) and an unknown `CALM_TRANSPORT` now stop calmcp with a message naming
+  the variable. Before, a number fell back to its default, a switch read as false and an unknown
+  transport started stdio. `CALM_TRANSPORT` and `CALM_HTTP_ALLOW_UNAUTHENTICATED` now accept the same
+  spellings as the other switches (`HTTP`, `1`, `yes`). A deployment with such a value stops
+  starting after the upgrade; that is intended.
+- With XSUAA bound and no `CALM_DCR_SIGNING_SECRET`, calmcp logs a warning that client
+  registrations are lost when the XSUAA client secret rotates.
 - BTP destination: after Cloud ALM refused a token (401), for example after the client secret was
   rotated, calmcp kept getting the refused token from the Cloud SDK's destination cache, which does
   not store an uncached lookup. Every later request was refused once before its retry, and of
