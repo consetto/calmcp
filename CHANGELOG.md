@@ -14,6 +14,13 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
   several requests refused at the same time only one was sure to retry with a fresh token. calmcp
   now remembers the refused token, fetches the destination afresh once for all waiting requests,
   and uses the fresh token until it expires.
+### Behaviour changes
+
+- `calm_list` refuses a `rest_filters` key that the endpoint does not take, naming the accepted
+  keys and the right spelling of one that differs only in case. Cloud ALM ignores an unknown key
+  and answers with the unfiltered list (`objecttype=BusinessService` on `landscape_objects`
+  returned every object), so a misspelled filter looked applied. `calm_resources` lists the
+  accepted keys of each resource as `restFilters`.
 
 ## 1.0.0
 
