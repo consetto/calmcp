@@ -98,6 +98,12 @@ From the architecture review of 2026-11-05, in the order proposed.
 
 - **Manual test cases** with activities and actions (`ManualTestCases`, `toActivities`). One POST
   takes the whole structure (tenant test 2026-10-31); it needs `projectId` and `scopeId`.
+- **`parentId` of a new task is not checked.** `calm_create` passes it on for every task type, and
+  Cloud ALM uses it for sub-tasks and for the requirement of a project task or user story (tenant,
+  2026-11-11). Read the parent first, as `task_requirement_link` does, and refuse a parent that
+  fits neither, in another project, or below a defect or risk. A narrowing of what 1.0 accepts,
+  so it needs a look at what Cloud ALM does with the other combinations first.
+- **Removing a task from its requirement**, with "Changing and removing links" below.
 - **Tags on documents** (`/updateTags` of the Documents API), like the `task_tags` resource of
   `calm_update`. The call replaces the tag list, so it needs the same add and remove interface;
   check on a tenant whether it also drops tags silently, as the Tasks call does.

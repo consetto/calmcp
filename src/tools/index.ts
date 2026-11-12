@@ -221,7 +221,7 @@ function registerCreate(
         'Create a NEW SAP Cloud ALM document, feature, task (user story, defect, requirement, ' +
         'sub-task, risk), comment on a task, or library entry (cross-library application, ' +
         'configuration, configuration activity, development or interface), or a link between ' +
-        'existing objects (task to feature, document, process node or task, a URL on a task or ' +
+        'existing objects (task to feature, document, process node, requirement or task, a URL on a task or ' +
         'feature, test case to user story). It never changes or deletes an existing object, so ' +
         'calling it twice makes two entries; an existing link is refused. ' +
         'Pass "resource" and a "data" object; calm_resources({ topic: "<resource>" }) lists the ' +

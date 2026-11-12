@@ -91,6 +91,35 @@ export const RECIPES: Recipe[] = [
     ],
   },
   {
+    question: 'Which tasks implement requirement X, and which requirement does task Y belong to?',
+    steps: [
+      "Tasks of a requirement: calm_list({ resource: 'task_relations', task_id: '<requirement " +
+        "uuid>' }) and keep the entries of type '0' (child); relationTaskId is the task.",
+      "Requirement of a task: calm_list({ resource: 'task_relations', task_id: '<task uuid>' }) " +
+        "and take the entry of type '10' (parent). A task has at most one. For a sub-task the " +
+        'parent is its task, not a requirement.',
+      "Counts without ids, tenant-wide: calm_analytics({ provider: 'Tasks', filter: " +
+        "\"requirementId eq '3-52'\", group_by: 'typeID' }) takes the requirement's display id.",
+    ],
+  },
+  {
+    question: 'Create a project task for requirement X with the same assignee and tags',
+    steps: [
+      'Needs write access (calm_create) and, for the tags, update access (calm_update).',
+      "1) calm_get({ resource: 'task', id: '<requirement uuid>', fields: " +
+        "'id,projectId,title,assigneeId,tags' })",
+      "2) calm_create({ resource: 'task', data: { type: 'CALMTASK', projectId, title, assigneeId, " +
+        "parentId: '<requirement uuid>' } }). parentId assigns the new task to the requirement " +
+        'in the same call. Confirm title and project with the user first. The answer shows ' +
+        'parentId: null under storedDiffersFromSent: Cloud ALM keeps the assignment as a ' +
+        'relation, not in parentId, so check task_relations of the new task (type 10).',
+      "3) calm_update({ resource: 'task_tags', id: '<new task id>', changes: { add: [<the " +
+        "requirement's tags>] } }). Tags cannot be set while creating.",
+      "For a task that already exists use calm_create({ resource: 'task_requirement_link', " +
+        'data: { taskId, requirementId } }) instead of step 2.',
+    ],
+  },
+  {
     question:
       'Which transports belong to feature 6-123, and which feature carries transport K900123?',
     steps: [

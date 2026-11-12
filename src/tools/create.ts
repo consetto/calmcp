@@ -5,7 +5,10 @@
 //
 // Scope is deliberately narrow: new documents, features, tasks, task comments, library entries
 // (cross-library applications, configurations, configuration activities, developments,
-// interfaces) and links between existing objects. Nothing here changes or deletes an existing
+// interfaces) and links between existing objects. One of those links is checked against the
+// objects it connects before it is sent: a task's assignment to a requirement
+// (`task_requirement_link`), because Cloud ALM stores it as a parent relation and would accept one
+// between tasks that have nothing to do with requirements. Nothing here changes or deletes an existing
 // record; changing fields of a feature is `calm_update`
 // (`update.ts`), behind its own switch. Documents cannot be changed through the API at all.
 //
@@ -16,7 +19,7 @@ import { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { isGuid, odataString } from '../calm/odata.js';
 import type { ServiceName } from '../config.js';
-import { LookupError } from '../errors.js';
+import { type ErrorCode, LookupError } from '../errors.js';
 import { DISPLAY_ID } from './displayId.js';
 
 // ---------------------------------------------------------------------------------------------
@@ -581,7 +584,10 @@ const taskCreateSchema = z
     description: z.string().max(500_000).optional().describe('HTML rich-text description'),
     parentId: uuid
       .optional()
-      .describe('UUID of the parent task; required for a sub-task, and not itself a sub-task'),
+      .describe(
+        'UUID of the parent task; required for a sub-task, and not itself a sub-task. On a ' +
+          'project task or user story: the requirement it is assigned to',
+      ),
     priorityId: priorityCode()
       .optional()
       .describe('Priority: 10 very high, 20 high, 30 medium, 40 low'),
@@ -773,8 +779,9 @@ const taskProcessLinkSchema = z
  * Relation types a caller may create. The code names what `relationTaskId` is to `taskId`, as the
  * Cloud ALM UI shows it (checked on a tenant): 2 predecessor, 12 successor, 1 peer. The spec's
  * description calls the successor 20, which Cloud ALM refuses; its enum's 12 is right. Child (0)
- * and parent (10) are accepted by Cloud ALM between any two tasks, but build a hierarchy beside the
- * sub-tasks, so they are left out: a sub-task is a `task` with `parentId`.
+ * and parent (10) build the hierarchy of tasks, so they are left out here: a sub-task is a `task`
+ * with `parentId`, and a task is assigned to a requirement with `task_requirement_link`, which
+ * checks both ends first.
  */
 const taskRelationSchema = z
   .object({
@@ -792,6 +799,114 @@ const taskRelationSchema = z
     path: ['relationTaskId'],
     message: 'a task cannot be related to itself',
   });
+
+/**
+ * The assignment of a project task or user story to a requirement. Cloud ALM stores it as a
+ * relation: type 10 (parent) seen from the task, type 0 (child) seen from the requirement. Posting
+ * either creates the same one relation (tenant, 2026-11-11).
+ */
+const taskRequirementLinkSchema = z
+  .object({
+    taskId: uuid.describe('UUID of the project task or user story'),
+    requirementId: uuid.describe('UUID of the requirement (a task of type CALMREQU)'),
+  })
+  .strict()
+  .refine((link) => link.taskId !== link.requirementId, {
+    path: ['requirementId'],
+    message: 'a task cannot be assigned to itself',
+  });
+
+/** Task types a requirement is assigned: project tasks and user stories. */
+const REQUIREMENT_CHILD_TYPES = ['CALMTASK', 'CALMUS'];
+
+/** Why a write is refused before it is sent. */
+export interface Refusal {
+  message: string;
+  code?: ErrorCode;
+}
+
+/**
+ * Why a task must not be assigned to a requirement, or undefined when it may. Cloud ALM would
+ * accept more than this allows (a defect, a risk or another requirement below a requirement), and
+ * answers "The relationship already exists" both to a repeat and to a task that already has
+ * another requirement, so the cases are told apart here, from three reads.
+ */
+async function requirementLinkRefusal(
+  clients: CalmClients,
+  data: Record<string, unknown>,
+): Promise<Refusal | undefined> {
+  const taskId = String(data.taskId);
+  const requirementId = String(data.requirementId);
+  const read = async (id: string) =>
+    (await clients.getRest('tasks', `/tasks/${encodeURIComponent(id)}`)) as {
+      type?: unknown;
+      projectId?: unknown;
+    } | null;
+  const [task, requirement] = [await read(taskId), await read(requirementId)];
+  for (const [name, entity] of [
+    ['taskId', task],
+    ['requirementId', requirement],
+  ] as const) {
+    if (typeof entity?.type !== 'string' || typeof entity.projectId !== 'string') {
+      return {
+        message: `Cloud ALM returned ${name} without a type and project, so calmcp could not check the link. Nothing was sent.`,
+        code: 'UPSTREAM_ERROR',
+      };
+    }
+  }
+  const taskType = String(task?.type);
+  const requirementType = String(requirement?.type);
+  if (requirementType !== 'CALMREQU') {
+    return {
+      message:
+        taskType === 'CALMREQU'
+          ? 'taskId names the requirement and requirementId the task: swap them.'
+          : `requirementId names a ${requirementType}, not a requirement (CALMREQU).`,
+    };
+  }
+  if (!REQUIREMENT_CHILD_TYPES.includes(taskType)) {
+    return {
+      message:
+        `taskId names a ${taskType}. Only a project task (CALMTASK) or a user story (CALMUS) is ` +
+        'assigned to a requirement' +
+        (taskType === 'CALMST' ? '; a sub-task belongs to its task, so assign that task.' : '.'),
+    };
+  }
+  if (task?.projectId !== requirement?.projectId) {
+    return { message: 'The task and the requirement are in different projects.' };
+  }
+
+  const relations = await clients.getRest(
+    'tasks',
+    `/tasks/${encodeURIComponent(taskId)}/relations`,
+  );
+  if (!Array.isArray(relations)) {
+    return {
+      message:
+        "Cloud ALM answered the check of the task's relations in an unknown shape, so nothing was sent.",
+      code: 'UPSTREAM_ERROR',
+    };
+  }
+  const parent = (relations as { type?: unknown; relationTaskId?: unknown }[]).find(
+    (relation) => String(relation?.type) === '10',
+  );
+  if (parent?.relationTaskId === requirementId) {
+    return {
+      message: 'The task is already assigned to this requirement. Nothing was sent.',
+      code: 'CONFLICT',
+    };
+  }
+  if (parent) {
+    return {
+      message:
+        `The task is already assigned to another requirement (${String(parent.relationTaskId)}), ` +
+        'and a task has one. calmcp does not remove an assignment; change it in Cloud ALM. ' +
+        'Nothing was sent.',
+      code: 'CONFLICT',
+    };
+  }
+  return undefined;
+}
 
 /** A link on a task. The spec allows https only. */
 const taskReferenceSchema = z
@@ -859,6 +974,13 @@ export interface CreateResource {
   displayIds?: Record<string, { service: ServiceName; entitySet: string; noun: string }>;
   /** Payload fields the spec names differently, sent under the spec's name. */
   sendAs?: Record<string, string>;
+  /** Body fields the caller does not choose, e.g. the relation type of a dedicated link. */
+  fixed?: Record<string, unknown>;
+  /**
+   * A check against the objects the payload names, run before anything is sent: why the write is
+   * refused, or undefined when it may go ahead.
+   */
+  refuse?: (clients: CalmClients, data: Record<string, unknown>) => Promise<Refusal | undefined>;
   /**
    * Whether an equal link already exists. Only for links Cloud ALM stores twice when asked twice;
    * it refuses duplicate assignments and relations itself.
@@ -978,6 +1100,19 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     textFields: [],
     description:
       'Relate two existing tasks, defects or user stories as predecessor, successor or peer',
+  },
+  task_requirement_link: {
+    service: 'tasks',
+    entitySet: 'tasks/{taskId}/relations',
+    schema: taskRequirementLinkSchema,
+    textFields: [],
+    sendAs: { requirementId: 'relationTaskId' },
+    fixed: { type: '10' },
+    refuse: requirementLinkRefusal,
+    description:
+      'Assign an existing project task or user story to a requirement of the same project. A ' +
+      'task has one requirement. To create a task already assigned, pass the requirement as ' +
+      'parentId of a new task instead',
   },
   task_reference: {
     service: 'tasks',

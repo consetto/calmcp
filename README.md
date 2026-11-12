@@ -199,6 +199,7 @@ extra tool is registered:
 | | `task_document_link` | `POST /calm-tasks/v1/tasks/{taskId}/documentAssignments` |
 | | `task_process_link` | `POST /calm-tasks/v1/tasks/{taskId}/hierarchyNodeAssignments` |
 | | `task_relation` | `POST /calm-tasks/v1/tasks/{taskId}/relations` |
+| | `task_requirement_link` | `POST /calm-tasks/v1/tasks/{taskId}/relations` (type `10`) |
 | | `task_reference` | `POST /calm-tasks/v1/tasks/{taskId}/references` |
 | | `feature_url_reference` | `POST /calm-features/v1/Features/{featureId}/toURLReferences` |
 | | `test_case_task_link` | `POST /calm-testmanagement/v1/TaskAssignments` |
@@ -229,8 +230,21 @@ What it does and does not do:
   relation itself, but stores a URL twice, so calmcp refuses a `task_reference` or
   `feature_url_reference` whose URL the object already has. `task_relation` takes `2` (the
   related task is the predecessor), `12` (successor) and `1` (peer, project task and user story
-  only); child and parent relations are refused, because Cloud ALM would accept them between any
-  two tasks beside the sub-task hierarchy. A sub-task is a `task` with `parentId`.
+  only); child and parent relations are refused there, because they build the hierarchy of tasks.
+  A sub-task is a `task` with `parentId`.
+- **A task's requirement.** `task_requirement_link` assigns an existing project task or user
+  story to a requirement (`taskId`, `requirementId`, both uuids). Cloud ALM stores this as a
+  parent relation and would also accept a defect, a risk or another requirement below a
+  requirement, which its UI does not offer. calmcp therefore reads both tasks and the task's
+  relations first and refuses, before sending anything, unless the one is a requirement
+  (`CALMREQU`), the other a project task or user story, both are in the same project, and the task
+  has no requirement yet (a task has one; a repeat is a `CONFLICT`). To create a task already
+  assigned, pass the requirement as `parentId` of a new `task` (`CALMTASK` or `CALMUS`): Cloud ALM
+  then creates the task and the assignment in one call (the answer shows `parentId: null` under
+  `storedDiffersFromSent`, because Cloud ALM keeps the assignment as a relation). Reading it back:
+  `calm_list({ resource: "task_relations", task_id })` shows type `0` (child) on the requirement
+  and type `10` (parent) on the task; `calm_analytics` provider `Tasks` filters by
+  `requirementId`.
 - **Deep create.** Links (`toURLReferences`) and assignments (`toLibraryAssignments`,
   `toProcessHierarchyAssignments`, `toTaskAssignments`, …) can be included in the same `data`
   object and are created together with the entity, exactly as the OData API allows.
