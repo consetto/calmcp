@@ -11,6 +11,28 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 - Tenants in `eu10-004` can sign in with tenant and region. calmcp requested the token from
   `authentication.eu10-004.hana.ondemand.com`, which does not exist; it now uses the region without
   its data-centre suffix (`authentication.eu10`). `CALM_AUTH_REGION` overrides the token host region.
+- Configuration is checked at startup. A malformed or out-of-range number (`CALM_TIMEOUT_SECONDS=0`,
+  `CALM_MAX_RESPONSE_BYTES=100kb`, `PORT=99999`), a switch that is neither true nor false
+  (`CALM_WRITE_ENABLED=ture`) and an unknown `CALM_TRANSPORT` now stop calmcp with a message naming
+  the variable. Before, a number fell back to its default, a switch read as false and an unknown
+  transport started stdio. `CALM_TRANSPORT` and `CALM_HTTP_ALLOW_UNAUTHENTICATED` now accept the same
+  spellings as the other switches (`HTTP`, `1`, `yes`). A deployment with such a value stops
+  starting after the upgrade; that is intended.
+- With XSUAA bound and no `CALM_DCR_SIGNING_SECRET`, calmcp logs a warning that client
+  registrations are lost when the XSUAA client secret rotates.
+- BTP destination: after Cloud ALM refused a token (401), for example after the client secret was
+  rotated, calmcp kept getting the refused token from the Cloud SDK's destination cache, which does
+  not store an uncached lookup. Every later request was refused once before its retry, and of
+  several requests refused at the same time only one was sure to retry with a fresh token. calmcp
+  now remembers the refused token, fetches the destination afresh once for all waiting requests,
+  and uses the fresh token until it expires.
+### Behaviour changes
+
+- `calm_list` refuses a `rest_filters` key that the endpoint does not take, naming the accepted
+  keys and the right spelling of one that differs only in case. Cloud ALM ignores an unknown key
+  and answers with the unfiltered list (`objecttype=BusinessService` on `landscape_objects`
+  returned every object), so a misspelled filter looked applied. `calm_resources` lists the
+  accepted keys of each resource as `restFilters`.
 
 ## 1.0.0
 

@@ -64,8 +64,19 @@ const LINK_SCHEME = /^(https?|mailto):/i;
 const STYLE_LOADS =
   /\\|\/\*|url\s*\(|image(-set)?\s*\(|cross-fade\s*\(|element\s*\(|src\s*\(|expression\s*\(|@import|binding|behavior/i;
 
-/** The start of a tag: `<`, an optional closing slash, the element name. */
-const TAG_START = /<\s*\/?\s*([a-z][a-z0-9:-]*)/iy;
+/**
+ * The start of a tag: `<`, an optional closing slash, the element name. Whitespace is matched in one
+ * place per position (`\s*(?:\/\s*)?`, never `\s*\/?\s*`): two adjacent `\s*` split a run of spaces
+ * in every possible way before giving up, which took minutes for a `<` followed by 500 KB of spaces.
+ */
+const TAG_START_SOURCE = '<\\s*(?:\\/\\s*)?';
+const TAG_START = new RegExp(`${TAG_START_SOURCE}([a-z][a-z0-9:-]*)`, 'iy');
+/** Every tag start in a text, to compare with the number of tags the parser could read. */
+const TAG_STARTS = new RegExp(`${TAG_START_SOURCE}[a-z]`, 'gi');
+/** A forbidden element's tag start, anywhere in a text. */
+const FORBIDDEN_START = new RegExp(`${TAG_START_SOURCE}(${FORBIDDEN_ELEMENTS.join('|')})\\b`, 'i');
+/** A script or data URL as an attribute value; whitespace matched once per position, as above. */
+const ACTIVE_URL = /=\s*(?:["'`]\s*)?(javascript|vbscript|data)\s*:/i;
 
 /**
  * The only named entities a `style`, `href` or `src` value may use. A browser decodes every HTML5
@@ -291,18 +302,16 @@ export function unsafeHtml(html: unknown, current?: unknown): string[] {
 
   // Second layer: the same patterns anywhere in the text, after decoding entities.
   const text = decodeEntities(html);
-  const element = new RegExp(`<\\s*\\/?\\s*(${FORBIDDEN_ELEMENTS.join('|')})\\b`, 'i').exec(
-    text,
-  )?.[1];
+  const element = FORBIDDEN_START.exec(text)?.[1];
   if (element) problems.add(`<${element.toLowerCase()}> elements are not allowed`);
   const handler = /<[a-z][^<]*?\s(on[a-z]+)\s*=/i.exec(text)?.[1];
   if (handler)
     problems.add(`event handler attributes such as ${handler.toLowerCase()}= are not allowed`);
   // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is stripped.
-  if (/=\s*["'`]?\s*(javascript|vbscript|data)\s*:/i.test(text.replace(/[\u0000-\u001f]/g, ''))) {
+  if (ACTIVE_URL.test(text.replace(/[\u0000-\u001f]/g, ''))) {
     problems.add('URLs with javascript:, vbscript: or data: are not allowed');
   }
-  if ((html.match(/<\s*\/?\s*[a-z]/gi) ?? []).length !== parsed.length) {
+  if ((html.match(TAG_STARTS) ?? []).length !== parsed.length) {
     problems.add(
       'a tag could not be read (unterminated quote or stray "<"); write "&lt;" for a literal "<"',
     );

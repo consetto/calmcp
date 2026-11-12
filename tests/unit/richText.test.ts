@@ -194,6 +194,27 @@ describe('unsafeHtml', () => {
     expect(Date.now() - started).toBeLessThan(1000);
   });
 
+  // Each of these once took time quadratic in the padding: minutes for one 500 KB description,
+  // during which the server answered nobody.
+  it.each([
+    ['a "<" followed by spaces', (pad: string) => `<${pad}1`],
+    ['a "</" followed by spaces', (pad: string) => `</${pad}1`],
+    ['a "=" followed by spaces', (pad: string) => `<p>a</p>=${pad}x`],
+    ['a quote after "=" followed by spaces', (pad: string) => `<p>a</p>="${pad}x`],
+    ['an attribute followed by spaces', (pad: string) => `<a ona${pad}x>`],
+    ['a scheme followed by spaces', (pad: string) => `<p>a</p>=data${pad}x`],
+  ])('reads %s in linear time', (_, build) => {
+    const started = Date.now();
+    unsafeHtml(build(' '.repeat(300_000)));
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('still refuses a closing or spaced tag and a spaced scheme', () => {
+    expect(unsafeHtml('< / script >').join(' ')).toContain('<script>');
+    expect(unsafeHtml('<a href= " javascript :x()">a</a>').join(' ')).toContain('javascript:');
+    expect(unsafeHtml("<a title=x data-x= ' data :x'>a</a>").join(' ')).toContain('javascript:');
+  });
+
   it('does not take an image id from a foreign URL', () => {
     expect(imageKeys('<img src="https://evil.example/x?imageId=abc">')).toEqual([
       'src:https://evil.example/x?imageId=abc',

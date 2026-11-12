@@ -49,44 +49,8 @@ export interface HttpAppOptions {
   trustProxy?: boolean;
 }
 
-/** One origin as a browser sends it: scheme, host and optional port, nothing else. */
-const ORIGIN = /^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i;
-
-/**
- * Parse `CALM_CORS_ORIGINS` into the origins the `cors` middleware may allow. Unset means no CORS
- * headers: MCP clients call the endpoint server-side, so only browser-based clients need an entry.
- *
- * A wildcard is refused rather than honoured. Behind auth it gains nothing, and on the open local
- * endpoint (`CALM_HTTP_ALLOW_UNAUTHENTICATED`) it would let any website the developer visits call
- * 127.0.0.1 from the browser and read Cloud ALM data: without CORS headers the browser's preflight
- * blocks that. A malformed entry is refused too, so a typo cannot quietly disable a client.
- *
- * @param value - The raw environment value, a comma-separated list of origins.
- * @returns The origins, or `false` when none are configured.
- * @throws {Error} On `*` or an entry that is not `http(s)://host[:port]`.
- */
-export function parseCorsOrigins(value: string | undefined): string[] | false {
-  const origins = (value ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-  if (origins.length === 0) return false;
-  for (const origin of origins) {
-    if (origin.includes('*')) {
-      throw new Error(
-        `CALM_CORS_ORIGINS must list exact origins; the wildcard "${origin}" is not supported. ` +
-          'Name each browser client, e.g. CALM_CORS_ORIGINS=http://localhost:6274.',
-      );
-    }
-    if (!ORIGIN.test(origin)) {
-      throw new Error(
-        `CALM_CORS_ORIGINS entry "${origin}" is not an origin: use scheme://host[:port] with no ` +
-          'path or trailing slash, e.g. https://client.example.com.',
-      );
-    }
-  }
-  return origins;
-}
+// Parsed with the rest of the HTTP settings in `config.ts`; re-exported for existing importers.
+export { parseCorsOrigins } from '../config.js';
 
 /** A JSON-RPC error body for non-POST methods and failures. */
 function jsonRpcError(code: number, message: string) {
@@ -115,15 +79,14 @@ export function createHttpApp(options: HttpAppOptions): Express {
   app.use(
     cors({
       origin: corsOrigins,
-      // Allow the MCP session header and standard auth/content headers through.
-      allowedHeaders: ['Content-Type', 'mcp-session-id', 'authorization'],
+      // The headers a browser-based MCP client sends: content type and token, and from the second
+      // request on the protocol version it agreed in `initialize`. A header missing here fails the
+      // browser's preflight, so the client connects and then every later call is blocked.
+      allowedHeaders: ['Content-Type', 'authorization', 'mcp-protocol-version', 'mcp-session-id'],
       exposedHeaders: ['Mcp-Session-Id'],
     }),
   );
-  // Tool arguments are small; only calm_create's document content needs more than a few KB.
-  app.use(express.json({ limit: '1mb' }));
-  // The OAuth token/registration endpoints accept form-encoded bodies.
-  app.use(express.urlencoded({ extended: false }));
+  // Before anything reads a body, so a request that fails to parse counts like any other.
   app.use(
     rateLimit({
       windowMs: 60_000,
@@ -132,6 +95,24 @@ export function createHttpApp(options: HttpAppOptions): Express {
       legacyHeaders: false,
     }),
   );
+  // No MCP or OAuth client compresses what it sends. Refusing a compressed body here keeps the
+  // decompressors (gzip, deflate, Brotli) away from callers who have not signed in; the parsers
+  // below and those of the OAuth routes would otherwise inflate it first.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const encoding = req.headers['content-encoding'];
+    if (encoding !== undefined && encoding.toLowerCase() !== 'identity') {
+      logger.warn({ status: 415, encoding }, 'HTTP request refused');
+      res.status(415).json(jsonRpcError(-32600, 'Compressed request bodies are not accepted'));
+      return;
+    }
+    next();
+  });
+  // The OAuth token/registration endpoints accept form-encoded bodies.
+  app.use(express.urlencoded({ extended: false }));
+  // Tool arguments are small; only calm_create's document content needs more than a few KB. Mounted
+  // on /mcp behind the bearer check, so a caller who has not signed in gets 401 without a megabyte
+  // of JSON being parsed for them.
+  const jsonBody = express.json({ limit: '1mb' });
 
   // Cloud Foundry health check — always unauthenticated.
   app.get('/health', (_req: Request, res: Response) => {
@@ -170,12 +151,12 @@ export function createHttpApp(options: HttpAppOptions): Express {
   // Mounts any OAuth routes and returns the bearer-auth guard, or undefined when no method is set.
   const bearerAuth = setupHttpAuth(app, { ...auth, required: options.requireAuth }, authLogger);
   if (bearerAuth) {
-    app.post('/mcp', bearerAuth, mcpHandler);
+    app.post('/mcp', bearerAuth, jsonBody, mcpHandler);
   } else {
     logger.warn(
       'HTTP transport is UNAUTHENTICATED (no API key or XSUAA configured). Do not expose publicly.',
     );
-    app.post('/mcp', mcpHandler);
+    app.post('/mcp', jsonBody, mcpHandler);
   }
 
   // Stateless mode does not support the server-initiated SSE stream or session deletion.

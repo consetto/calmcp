@@ -157,6 +157,27 @@ describe('LIST_RESOURCES', () => {
   });
 });
 
+describe('restFilters', () => {
+  // A resource that forwards rest_filters without an allowlist would send a misspelled key, which
+  // Cloud ALM ignores, and answer with the unfiltered list.
+  it('is declared by every resource that reads rest_filters, and only by those', () => {
+    for (const name of LIST_RESOURCE_NAMES) {
+      const def = LIST_RESOURCES[name] as ListResource;
+      if (def.kind !== 'rest') continue;
+      expect(Boolean(def.restFilters), name).toBe(readParams(def).includes('rest_filters'));
+    }
+  });
+
+  it('names no paging key, which calmcp sets itself', () => {
+    for (const def of Object.values(LIST_RESOURCES)) {
+      if (def.kind !== 'rest' || !def.restFilters) continue;
+      for (const key of def.restFilters) {
+        expect(['limit', 'offset', 'count', 'startindex']).not.toContain(key.toLowerCase());
+      }
+    }
+  });
+});
+
 describe('readParams', () => {
   const rest = (name: string) => LIST_RESOURCES[name] as RestListResource;
 
