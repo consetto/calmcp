@@ -4,7 +4,11 @@ calmcp follows [semantic versioning](https://semver.org) from 1.0 on; the README
 "Versioning and stability" says what counts as the public interface. Releases before 1.0 are
 described on the [GitHub releases page](https://github.com/consetto/calmcp/releases).
 
-## Unreleased
+## 1.1.0
+
+Tags of tasks and requirement assignments, stricter handling of what calmcp cannot honour
+(configuration values, `rest_filters` keys), and hardening of the HTTP transport and the rich-text
+check after a security review.
 
 ### Added
 
@@ -21,11 +25,14 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
   (`task_relations`, types `0` and `10`), with two new recipes.
 - `expected_modified_at` of `calm_update` is optional in the tool schema. `feature` still requires
   it and refuses a call without it; `task_tags` refuses a call with it.
-### Fixes
 
-- Tenants in `eu10-004` can sign in with tenant and region. calmcp requested the token from
-  `authentication.eu10-004.hana.ondemand.com`, which does not exist; it now uses the region without
-  its data-centre suffix (`authentication.eu10`). `CALM_AUTH_REGION` overrides the token host region.
+### Behaviour changes
+
+- `calm_list` refuses a `rest_filters` key that the endpoint does not take, naming the accepted
+  keys and the right spelling of one that differs only in case. Cloud ALM ignores an unknown key
+  and answers with the unfiltered list (`objecttype=BusinessService` on `landscape_objects`
+  returned every object), so a misspelled filter looked applied. `calm_resources` lists the
+  accepted keys of each resource as `restFilters`.
 - Configuration is checked at startup. A malformed or out-of-range number (`CALM_TIMEOUT_SECONDS=0`,
   `CALM_MAX_RESPONSE_BYTES=100kb`, `PORT=99999`), a switch that is neither true nor false
   (`CALM_WRITE_ENABLED=ture`) and an unknown `CALM_TRANSPORT` now stop calmcp with a message naming
@@ -35,19 +42,30 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
   starting after the upgrade; that is intended.
 - With XSUAA bound and no `CALM_DCR_SIGNING_SECRET`, calmcp logs a warning that client
   registrations are lost when the XSUAA client secret rotates.
+
+### Security
+
+- Rich text is checked in linear time. One `calm_create` or `calm_update` call with a `<` or `=`
+  followed by a long run of spaces took minutes and stalled the server for every caller. The
+  summary of an upstream error body is bounded the same way.
+- HTTP transport: the rate limit and the bearer check now come before a request body is parsed, a
+  request whose body fails to parse counts towards the rate limit, and a compressed request body
+  is refused with 415 instead of being inflated. A caller without a valid token gets 401 where a
+  malformed body used to give 400.
+
+### Fixes
+
+- Tenants in `eu10-004` can sign in with tenant and region. calmcp requested the token from
+  `authentication.eu10-004.hana.ondemand.com`, which does not exist; it now uses the region without
+  its data-centre suffix (`authentication.eu10`). `CALM_AUTH_REGION` overrides the token host region.
 - BTP destination: after Cloud ALM refused a token (401), for example after the client secret was
   rotated, calmcp kept getting the refused token from the Cloud SDK's destination cache, which does
   not store an uncached lookup. Every later request was refused once before its retry, and of
   several requests refused at the same time only one was sure to retry with a fresh token. calmcp
   now remembers the refused token, fetches the destination afresh once for all waiting requests,
   and uses the fresh token until it expires.
-### Behaviour changes
-
-- `calm_list` refuses a `rest_filters` key that the endpoint does not take, naming the accepted
-  keys and the right spelling of one that differs only in case. Cloud ALM ignores an unknown key
-  and answers with the unfiltered list (`objecttype=BusinessService` on `landscape_objects`
-  returned every object), so a misspelled filter looked applied. `calm_resources` lists the
-  accepted keys of each resource as `restFilters`.
+- A browser-based MCP client (listed in `CALM_CORS_ORIGINS`) can call the server after
+  `initialize`: CORS now allows the `mcp-protocol-version` header.
 
 ## 1.0.0
 
