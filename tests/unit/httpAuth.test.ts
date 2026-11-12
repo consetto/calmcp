@@ -6,6 +6,7 @@
 // /health stays open, /mcp rejects missing/invalid bearer tokens, the OAuth discovery metadata is
 // served only when XSUAA is configured, and a valid API key reaches the MCP handler.
 
+import { brotliCompressSync, gzipSync } from 'node:zlib';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import pino from 'pino';
 import request from 'supertest';
@@ -90,6 +91,7 @@ describe('createHttpApp with API-key auth', () => {
   it('answers a body that is not JSON with a JSON-RPC parse error, not a stack trace', async () => {
     const res = await request(app)
       .post('/mcp')
+      .set('Authorization', 'Bearer super-secret-key')
       .set('Content-Type', 'application/json')
       .send('{bad');
     expect(res.status).toBe(400);
@@ -313,5 +315,66 @@ describe('OAuth redirect URIs', () => {
     expect(
       redirectPatterns({ CALM_OAUTH_REDIRECT_PATTERNS: ' https://my.example/cb , ' }),
     ).toContain('https://my.example/cb');
+  });
+});
+
+describe('what an HTTP caller costs before signing in', () => {
+  const build = (rateLimitPerMinute = 100) => {
+    const built: unknown[] = [];
+    const app = createHttpApp({
+      buildServer: () => {
+        built.push(1);
+        throw new Error('no MCP server in this test');
+      },
+      corsOrigins: false,
+      rateLimitPerMinute,
+      logger,
+      auth: { apiKeys: [{ key: 'super-secret-key', scopes: ['Viewer'] }] },
+    });
+    return { app, built };
+  };
+
+  it('answers 401 to a caller without a token before parsing the body', async () => {
+    const { app, built } = build();
+    const res = await request(app)
+      .post('/mcp')
+      .set('Content-Type', 'application/json')
+      .send('{bad');
+    expect(res.status).toBe(401);
+    expect(built).toEqual([]);
+  });
+
+  it.each([
+    ['br', brotliCompressSync(Buffer.from('{}'))],
+    ['gzip', gzipSync(Buffer.from('{}'))],
+  ])(
+    'refuses a %s-compressed body without inflating it, signed in or not',
+    async (encoding, body) => {
+      const { app, built } = build();
+      for (const token of [undefined, 'Bearer super-secret-key']) {
+        const req = request(app)
+          .post('/mcp')
+          .set('Content-Type', 'application/json')
+          .set('Content-Encoding', encoding);
+        if (token) req.set('Authorization', token);
+        const res = await req.send(body);
+        expect(res.status).toBe(415);
+        expect(res.body.error.message).toBe('Compressed request bodies are not accepted');
+      }
+      expect(built).toEqual([]);
+    },
+  );
+
+  it('counts a request whose body does not parse towards the rate limit', async () => {
+    const { app } = build(2);
+    const send = () =>
+      request(app)
+        .post('/mcp')
+        .set('Authorization', 'Bearer super-secret-key')
+        .set('Content-Type', 'application/json')
+        .send('{bad');
+    expect((await send()).status).toBe(400);
+    expect((await send()).status).toBe(400);
+    expect((await send()).status).toBe(429);
   });
 });

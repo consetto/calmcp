@@ -84,10 +84,7 @@ export function createHttpApp(options: HttpAppOptions): Express {
       exposedHeaders: ['Mcp-Session-Id'],
     }),
   );
-  // Tool arguments are small; only calm_create's document content needs more than a few KB.
-  app.use(express.json({ limit: '1mb' }));
-  // The OAuth token/registration endpoints accept form-encoded bodies.
-  app.use(express.urlencoded({ extended: false }));
+  // Before anything reads a body, so a request that fails to parse counts like any other.
   app.use(
     rateLimit({
       windowMs: 60_000,
@@ -96,6 +93,24 @@ export function createHttpApp(options: HttpAppOptions): Express {
       legacyHeaders: false,
     }),
   );
+  // No MCP or OAuth client compresses what it sends. Refusing a compressed body here keeps the
+  // decompressors (gzip, deflate, Brotli) away from callers who have not signed in; the parsers
+  // below and those of the OAuth routes would otherwise inflate it first.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const encoding = req.headers['content-encoding'];
+    if (encoding !== undefined && encoding.toLowerCase() !== 'identity') {
+      logger.warn({ status: 415, encoding }, 'HTTP request refused');
+      res.status(415).json(jsonRpcError(-32600, 'Compressed request bodies are not accepted'));
+      return;
+    }
+    next();
+  });
+  // The OAuth token/registration endpoints accept form-encoded bodies.
+  app.use(express.urlencoded({ extended: false }));
+  // Tool arguments are small; only calm_create's document content needs more than a few KB. Mounted
+  // on /mcp behind the bearer check, so a caller who has not signed in gets 401 without a megabyte
+  // of JSON being parsed for them.
+  const jsonBody = express.json({ limit: '1mb' });
 
   // Cloud Foundry health check — always unauthenticated.
   app.get('/health', (_req: Request, res: Response) => {
@@ -134,12 +149,12 @@ export function createHttpApp(options: HttpAppOptions): Express {
   // Mounts any OAuth routes and returns the bearer-auth guard, or undefined when no method is set.
   const bearerAuth = setupHttpAuth(app, { ...auth, required: options.requireAuth }, authLogger);
   if (bearerAuth) {
-    app.post('/mcp', bearerAuth, mcpHandler);
+    app.post('/mcp', bearerAuth, jsonBody, mcpHandler);
   } else {
     logger.warn(
       'HTTP transport is UNAUTHENTICATED (no API key or XSUAA configured). Do not expose publicly.',
     );
-    app.post('/mcp', mcpHandler);
+    app.post('/mcp', jsonBody, mcpHandler);
   }
 
   // Stateless mode does not support the server-initiated SSE stream or session deletion.
