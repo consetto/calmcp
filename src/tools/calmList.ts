@@ -301,6 +301,8 @@ function validateListArgs(def: ListResource, args: CalmListArgs): string | undef
   if (pagingKey !== undefined) {
     return `rest_filters may not set '${pagingKey}': page with top and skip instead.`;
   }
+  const unknownKeys = unknownRestFilterKeys(args.resource, def, args.rest_filters);
+  if (unknownKeys) return unknownKeys;
   // A parameter the resource does not read would be dropped on the way out, and the answer would
   // come back unfiltered while looking filtered. Reject it and name what the resource does read.
   const ignored = ignoredParams(def, args);
@@ -347,6 +349,38 @@ function validateListArgs(def: ListResource, args: CalmListArgs): string | undef
     }
   }
   return undefined;
+}
+
+/**
+ * Refuse `rest_filters` keys the endpoint does not take. Cloud ALM ignores an unknown query key and
+ * answers 200 with the unfiltered list (tenant check 2026-11-05: `objecttype=BusinessService` on
+ * `/landscapeObjects` returned all objects), so a misspelled filter would look applied. Keys are
+ * case-sensitive upstream; one that differs only in case is answered with the right spelling.
+ *
+ * @param resource - The public resource name.
+ * @param def - The resource definition.
+ * @param filters - The caller's `rest_filters`.
+ * @returns The error message, or undefined when every key is accepted.
+ */
+function unknownRestFilterKeys(
+  resource: string,
+  def: ListResource,
+  filters: Record<string, string> | undefined,
+): string | undefined {
+  if (def.kind !== 'rest' || !def.restFilters || !filters) return undefined;
+  const accepted = def.restFilters;
+  const unknown = Object.keys(filters).filter((key) => !accepted.includes(key));
+  if (unknown.length === 0) return undefined;
+  const named = unknown.map((key) => {
+    const spelling = accepted.find((name) => name.toLowerCase() === key.toLowerCase());
+    return spelling ? `'${key}' (did you mean '${spelling}'?)` : `'${key}'`;
+  });
+  return (
+    `rest_filters ${unknown.length > 1 ? 'keys' : 'key'} ${named.join(', ')} not taken by ` +
+    `resource '${resource}'. Cloud ALM ignores an unknown key and returns the list unfiltered, ` +
+    'so calmcp rejects the call instead. Keys are case-sensitive. Accepted: ' +
+    `${accepted.join(', ')}.`
+  );
 }
 
 /** Answer a count_only/group_by call without returning records. */
