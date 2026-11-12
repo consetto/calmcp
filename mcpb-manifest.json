@@ -111,6 +111,8 @@
       "title": "Request Timeout (seconds)",
       "description": "HTTP request timeout for Cloud ALM calls.",
       "default": 30,
+      "min": 1,
+      "max": 600,
       "required": false
     },
     "calm_write_enabled": {

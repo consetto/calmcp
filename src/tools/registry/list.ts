@@ -66,17 +66,23 @@ function childCollection(
   };
 }
 
-/** A REST collection that takes free-form `rest_filters`, paged by `top`/`skip` as `limit`/`offset`. */
+/**
+ * A REST collection filtered through `rest_filters`, paged by `top`/`skip` as `limit`/`offset`.
+ * `keys` are the endpoint's query parameters from its spec, paging excluded; the description names
+ * them so they are written down once.
+ */
 function filteredCollection(
   service: ServiceName,
   path: string,
+  keys: readonly string[],
   description: string,
 ): RestListResource {
   return {
     kind: 'rest',
     service,
     required: [],
-    description,
+    restFilters: keys,
+    description: `${description} REST filters via \`rest_filters\` (${keys.join(', ')}).`,
     build: (p) => ({
       path,
       query: buildQueryString({ ...(p.rest_filters ?? {}), limit: p.top, offset: p.skip }),
@@ -479,11 +485,22 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
   },
 
   // --- Landscape (REST) ---
+  // Keys from the `/landscapeObjects` GET in YAML/CALM_LMS.yaml.
   landscape_objects: filteredCollection(
     'landscape',
     '/landscapeObjects',
-    'Landscape objects (cloud services, technical/logical systems). REST filters via `rest_filters` ' +
-      '(objectType, role, serviceType, name, source, externalId, deploymentModel).',
+    [
+      'objectType',
+      'source',
+      'lmsId',
+      'serviceType',
+      'systemNumber',
+      'name',
+      'role',
+      'externalId',
+      'deploymentModel',
+    ],
+    'Landscape objects (cloud services, technical/logical systems).',
   ),
   // Access control lists arrived in the Landscape spec of September 2025 (SCIM 2.0, RFC 7643/7644).
   // The response is a SCIM ListResponse (`Resources`, `totalResults`), which `locateRecords` in
@@ -494,6 +511,8 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     kind: 'rest',
     service: 'landscape',
     required: [],
+    // Keys from the `/scim/v2/Groups` GET in YAML/CALM_LMS.yaml; startIndex/count are the paging.
+    restFilters: ['displayName', 'id'],
     description:
       'Landscape access control lists (SCIM groups) with their members and grant levels. REST ' +
       'filters via `rest_filters` (displayName, id).',
@@ -508,11 +527,12 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
   },
 
   // --- BSM / Status Events (REST) ---
+  // Keys from the `/events` GET in YAML/CALM_BSM.yaml.
   bsm_events: filteredCollection(
     'bsm',
     '/events',
-    'Business service status events (disruptions, degradations, maintenance). REST filters via ' +
-      '`rest_filters` (type, serviceName, eventType, serviceType, period, startTime, endTime).',
+    ['type', 'serviceName', 'eventType', 'serviceType', 'period', 'startTime', 'endTime'],
+    'Business service status events (disruptions, degradations, maintenance).',
   ),
 };
 

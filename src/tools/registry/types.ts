@@ -68,6 +68,12 @@ export interface RestListResource {
   required: string[];
   /** Build the service-relative path and query string from the supplied params. */
   build: (params: ListParams) => { path: string; query: string };
+  /**
+   * The keys `rest_filters` may carry: the query parameters of the endpoint in its spec, paging
+   * excluded. Cloud ALM ignores a key it does not know and answers with the unfiltered list, so
+   * `calm_list` refuses any other key. Absent when the resource takes no `rest_filters`.
+   */
+  restFilters?: readonly string[];
   description: string;
 }
 
