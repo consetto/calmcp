@@ -246,7 +246,7 @@ function registerUpdate(
   server.registerTool(
     'calm_update',
     {
-      title: 'Change fields of a SAP Cloud ALM feature',
+      title: 'Change a SAP Cloud ALM feature or the tags of a task',
       // Changes an existing record; repeating the same change leaves it as it is.
       annotations: {
         readOnlyHint: false,
@@ -262,7 +262,10 @@ function registerUpdate(
         'responsible, release or workstream. A description change that drops an image (<img> ' +
         "tag) is refused unless remove_images names it, which needs the user's confirmation; " +
         'scripts, event handlers and foreign images are always refused. Confirm every change ' +
-        'with the user before calling. Returns each changed field before and after.',
+        'with the user before calling. Returns each changed field before and after. ' +
+        'resource "task_tags" adds and removes tags of a task of any type: pass the task uuid ' +
+        'and changes { add: [...], remove: [...] }, no expected_modified_at. Other tags stay; ' +
+        'a new tag is created. Returns the tags before and after.',
       inputSchema: strictInput(calmUpdateShape),
     },
     traced('calm_update', (args: CalmUpdateArgs) =>

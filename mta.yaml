@@ -66,7 +66,8 @@ modules:
       # Writer scope (role collection CALMCP_Editor). Viewers and the API key never get it.
       CALM_WRITE_ENABLED: 'false'
       # Off by default and separate from writes: 'true' offers calm_update, which changes fields of
-      # existing features, to callers holding the Writer scope. See docs/UPDATES.md.
+      # existing features and the tags of tasks, to callers holding the Writer scope. See
+      # docs/UPDATES.md.
       CALM_UPDATE_ENABLED: 'false'
     provides:
       - name: oauth-api

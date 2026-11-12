@@ -4,6 +4,18 @@ calmcp follows [semantic versioning](https://semver.org) from 1.0 on; the README
 "Versioning and stability" says what counts as the public interface. Releases before 1.0 are
 described on the [GitHub releases page](https://github.com/consetto/calmcp/releases).
 
+## Unreleased
+
+### Added
+
+- `calm_update` takes a second resource, `task_tags`: add tags to and remove tags from a task of
+  any type (project task, user story, defect, requirement, sub-task, risk), with
+  `changes: { add: [...], remove: [...] }`. The task's other tags stay; a tag that does not exist
+  yet is created. Needs `CALM_UPDATE_ENABLED=true` and the `calm-api.tasks.write` scope. See the
+  README, "Tags of a task".
+- `expected_modified_at` of `calm_update` is optional in the tool schema. `feature` still requires
+  it and refuses a call without it; `task_tags` refuses a call with it.
+
 ## 1.0.0
 
 The first stable release. It settles the parameter names before semver locks them, adds links
