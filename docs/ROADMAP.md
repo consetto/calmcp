@@ -81,8 +81,9 @@ From the architecture review of 2026-11-05, in the order proposed.
 
 - **Manual test cases** with activities and actions (`ManualTestCases`, `toActivities`). One POST
   takes the whole structure (tenant test 2026-10-31); it needs `projectId` and `scopeId`.
-- **Tags** on tasks and documents (`/tasks/updateTags`, `/updateTags`). These replace the tag list,
-  so they need the same care as a PATCH.
+- **Tags on documents** (`/updateTags` of the Documents API), like the `task_tags` resource of
+  `calm_update`. The call replaces the tag list, so it needs the same add and remove interface;
+  check on a tenant whether it also drops tags silently, as the Tasks call does.
 - **Timeboxes and workstreams** (`POST /projects/{id}/timeboxes`, `POST /workstreams`).
 - **Changing and removing links** (needs research). Most links cannot be changed in place: task
   assignments to features, documents and process nodes, task relations, test case to task links and

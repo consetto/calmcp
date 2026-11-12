@@ -37,9 +37,11 @@ const INSTRUCTIONS =
 
 /** Extra instructions when this caller gets `calm_update`. */
 const UPDATE_INSTRUCTIONS =
-  ' Update access is enabled for features: calm_update changes fields of an existing feature. ' +
-  'Read the feature with calm_get first, confirm the exact change with the user, send only the ' +
-  'fields that change, and keep every <img> tag of a description you rewrite.';
+  ' Update access is enabled for features and task tags: calm_update changes fields of an ' +
+  'existing feature. Read the feature with calm_get first, confirm the exact change with the ' +
+  'user, send only the fields that change, and keep every <img> tag of a description you ' +
+  'rewrite. It also adds and removes tags of a task (resource task_tags): name only those ' +
+  'tags, the rest stay.';
 
 /** Extra instructions when the operator enabled `calm_create`. */
 const WRITE_INSTRUCTIONS =

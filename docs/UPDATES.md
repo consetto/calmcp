@@ -19,6 +19,14 @@ Implemented on this basis:
   update tool would need" below: PATCH of only the changed fields, a field allowlist, the image
   guard, the change check against `modifiedAt`, no target-state endpoints, documents excluded, an
   audit log, and the Writer scope on HTTP. Tasks and the other objects are not covered yet.
+- **Tags of tasks** (`calm_update` resource `task_tags`), with the add and remove interface of
+  point 5 below. Checked on a tenant on 2026-11-11: `POST /tasks/updateTags` replaces the list,
+  creates a tag that does not exist, and works for every task type. It answers 200 with an echo of
+  the payload whatever it stored: a tag that differs only in capitalisation from an existing one,
+  or is longer than 256 characters, is dropped without an error. A task's `lastChangedTimestamp`
+  does not change with its tags, so point 4 (the change check) cannot be applied to them; calmcp
+  reads the tags right before the write and reads them back after it. Tags cannot be set on create
+  (`TaskCreationRequest` has no `tags`). Document tags are not covered.
 - **After review:** rich text written by `calm_create` and `calm_update` is checked against an
   allowlist of formatted-text elements, attributes and URL schemes (1.0), so active content
   (scripts, event handlers, `javascript:`/`data:` URLs, CSS `url(...)`, entity-disguised hosts) and

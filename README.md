@@ -11,7 +11,7 @@ remotely, and deploys to **SAP BTP Cloud Foundry**.
 > can opt in to **creating** documents, features, tasks, task comments, library entries and links
 > between existing objects with
 > `CALM_WRITE_ENABLED=true` ([Write access](#write-access-opt-in)), and separately to **changing
-> fields of existing features** with `CALM_UPDATE_ENABLED=true`
+> fields of existing features and the tags of tasks** with `CALM_UPDATE_ENABLED=true`
 > ([Update access](#update-access-opt-in)). Nothing is ever deleted.
 
 `calmcp` is my second SAP Cloud ALM MCP bridge. It succeeds an earlier
@@ -28,7 +28,7 @@ The architecture is based on [`marianfoo's`](https://github.com/marianfoo) [`arc
 | `calm_analytics` | Query an analytics provider (`Defects`, `Tasks`, `Tests`, …). Providers span the whole tenant, so `count_only`/`group_by` here answer "how many across all projects". It aggregates but does **not** sort: `$orderby` is silently ignored by the service, so it is not offered. |
 | `calm_resources` | Discovery: the catalog of resources/providers, per-provider analytics dimensions and measures, the task type/status/priority code lists, and worked recipes. With write or update access on, also the fields `calm_create` and `calm_update` accept, per resource by `topic`. |
 | `calm_create` | **Only when `CALM_WRITE_ENABLED=true`.** Create a new document, feature, task (incl. user story, defect, requirement, sub-task, risk), task comment or library entry (cross-library application, configuration, configuration activity, development, interface), or link existing objects. Never changes or deletes. See [Write access](#write-access-opt-in). |
-| `calm_update` | **Only when `CALM_UPDATE_ENABLED=true`.** Change fields of an existing feature, guarded against overwriting concurrent edits and losing images. See [Update access](#update-access-opt-in). |
+| `calm_update` | **Only when `CALM_UPDATE_ENABLED=true`.** Change fields of an existing feature, guarded against overwriting concurrent edits and losing images, or add and remove tags of a task (user story, defect, ...). See [Update access](#update-access-opt-in). |
 
 ### Worked examples
 
@@ -207,8 +207,9 @@ What it does and does not do:
 
 - **Create only.** `calm_create` never changes or deletes an existing record. Calling it twice
   makes two entries. A `task_comment` adds a comment to an existing task and leaves the task as
-  it is. Changing fields of a feature is the separate
-  [`calm_update`](#update-access-opt-in).
+  it is. Changing fields of a feature or the tags of a task is the separate
+  [`calm_update`](#update-access-opt-in). Tags cannot be set when a task is created: the Tasks
+  API takes them only through its own call.
 - **Document images are not copied.** The Documents API returns a document body without its images
   (see [docs/UPDATES.md](docs/UPDATES.md)); `calm_get` and `calm_list` flag such documents with
   `imagesOmitted: true`. A new document built from that body would have none of the images.
@@ -274,15 +275,17 @@ Example:
 Changing an existing object can lose what creating one cannot: a newer edit made in the Cloud ALM
 UI, or images in a rich-text description. calmcp therefore offers updates only behind their own
 switch, `CALM_UPDATE_ENABLED=true` (or **Update Access** in the Claude Desktop extension), separate
-from write access, and only for features so far. [docs/UPDATES.md](docs/UPDATES.md) has the
+from write access, and only for features and the tags of tasks so far. [docs/UPDATES.md](docs/UPDATES.md) has the
 analysis behind this: which objects the Cloud ALM APIs can change at all (documents cannot), and
 where images live.
 
 | Tool | Resource | Fields it may change | Cloud ALM call |
 | --- | --- | --- | --- |
 | `calm_update` | `feature` | `title`, `description` (HTML), `statusCode`, `priorityCode`, `scopeId`, `responsibleId`, `releaseId`, `workstreamId` | `PATCH /calm-features/v1/Features/{uuid}` |
+| `calm_update` | `task_tags` | the tags of a task of any type: `add` and `remove` | `POST /calm-tasks/v1/tasks/updateTags` |
 
-Every call goes through the same checks, in order:
+Every `feature` call goes through the same checks, in order ([task tags](#tags-of-a-task) have
+their own):
 
 - **Display id or uuid.** `id` takes the uuid or the display id (e.g. `6-123`). A display id is
   resolved to the uuid first; one that matches no feature, or more than one, is refused.
@@ -325,7 +328,8 @@ Other fields of such a feature, and descriptions of features without images, can
 those descriptions in the Cloud ALM UI. Reported to SAP.
 
 Like `calm_create`, `calm_update` is offered over HTTP only to callers with the `Writer` scope
-(role collection `CALMCP_Editor`), and the OAuth2 client needs `calm-api.features.write`.
+(role collection `CALMCP_Editor`), and the OAuth2 client needs `calm-api.features.write` for
+features and `calm-api.tasks.write` for task tags.
 
 Example:
 
@@ -337,6 +341,41 @@ Example:
   "changes": { "statusCode": "IN_TESTING", "priorityCode": 20 }
 }
 ```
+
+#### Tags of a task
+
+`task_tags` adds tags to and removes tags from a task of any type: project task, user story,
+defect, requirement, sub-task or risk. A tag that does not exist yet is created by adding it.
+
+```json
+{
+  "resource": "task_tags",
+  "id": "<task uuid>",
+  "changes": { "add": ["Release: Wave 2"], "remove": ["Release: Wave 1"] }
+}
+```
+
+Cloud ALM has one call for tags, and it replaces the whole list: a tag missing from the payload is
+unassigned. calmcp therefore never takes a list. The caller names the tags to add and to remove,
+calmcp reads the task, and sends the merged list. What else it does, and why (checked on a tenant,
+2026-11-11):
+
+- **The task's uuid, not its display id.** The Tasks API has no lookup by display id;
+  `calm_list` with `resource: "tasks"` returns the uuid as `id`.
+- **No `expected_modified_at`.** Cloud ALM does not change a task's `lastChangedTimestamp` when its
+  tags change, so the timestamp cannot show that someone else edited the tags; the parameter is
+  refused instead of accepted for show. calmcp reads the tags right before it writes, which leaves
+  a window of milliseconds in which a tag added by someone else would be lost.
+- **Tags compare without regard to case,** as in Cloud ALM. A tag the task already has is kept in
+  its stored spelling and reported as `alreadyPresent`; a tag to remove that the task does not
+  have is reported as `notOnTask`. When nothing would change, nothing is sent.
+- **The stored tags are read back.** Cloud ALM answers 200 and echoes the payload whatever it
+  stored. It drops, without an error, a tag that differs only in capitalisation from a tag that
+  already exists (also one on another task), and a tag longer than 256 characters. The result
+  shows the tags before and after and lists such a tag as `notStored`; if nothing changed at all,
+  the call answers with an error. `calm_list` with `group_by: "tags"` shows the spellings in use.
+- **Plain labels only.** At most 256 characters, no `<`, `>` or control characters.
+- **Never retried, and audited** like a feature update, with the tags before and after.
 
 ## Configuration
 
@@ -357,7 +396,7 @@ auth modes, plus a BTP destination mode:
 | `CALM_TOKEN_REFRESH_BUFFER_SECONDS` | Renew the OAuth token this many seconds before it expires (default 5). |
 | `CALM_TRANSPORT` | `http` starts the HTTP transport, like `--http`. |
 | `CALM_WRITE_ENABLED` | `true` registers `calm_create` (create-only). Default `false`: read-only. See [Write access](#write-access-opt-in). |
-| `CALM_UPDATE_ENABLED` | `true` registers `calm_update` (change fields of existing features). Default `false`. See [Update access](#update-access-opt-in). |
+| `CALM_UPDATE_ENABLED` | `true` registers `calm_update` (change fields of existing features, add and remove tags of tasks). Default `false`. See [Update access](#update-access-opt-in). |
 
 A value calmcp cannot honour stops it at startup with a message naming the variable, rather than
 being replaced by the default: a switch other than `true`/`false` (also `1`/`0`, `yes`/`no`), a

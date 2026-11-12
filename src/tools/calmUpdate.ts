@@ -2,7 +2,8 @@
 // enabled it (`CALM_UPDATE_ENABLED=true`) and, over HTTP, only for callers with the Writer scope.
 //
 // An update can lose what a create cannot, so every call goes through the same checks, in order
-// (docs/UPDATES.md):
+// (docs/UPDATES.md). The tags of a task are the exception: Cloud ALM replaces that list as a whole
+// and gives it no timestamp, so `taskTags.ts` has checks of its own.
 //   1. the changes are validated against the resource's allowlist; an unknown field is an error;
 //   2. the object is read again, and the call is refused when it changed since the caller read it:
 //      Cloud ALM offers no ETag/If-Match, so this is the only protection against overwriting an
@@ -25,6 +26,7 @@ import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from '
 import { droppedImages, imageKeys, unsafeHtml } from './richText.js';
 import type { calmUpdateShape } from './schemas.js';
 import type { Record_ } from './shape.js';
+import { handleTaskTags } from './taskTags.js';
 import { UPDATE_RESOURCES, type UpdateResource } from './update.js';
 import { acceptedUnreadable, outcomeUnknown } from './writeOutcome.js';
 
@@ -74,9 +76,18 @@ export async function handleCalmUpdate(
   if (!parsed.success) {
     return invalidPayloadResult('changes', args.resource, parsed.error.issues, 'calm_update');
   }
+  // Tags are a list Cloud ALM replaces as a whole: merged and sent by their own handler.
+  if (def.kind === 'tags') return handleTaskTags(clients, def, args, parsed.data, audit);
+
   const requested = Object.entries(parsed.data).filter(([, value]) => value !== undefined);
   if (requested.length === 0) {
     return errorResult('changes is empty: name at least one field to change.');
+  }
+  if (args.expected_modified_at === undefined) {
+    return errorResult(
+      `${args.resource} needs expected_modified_at: the ${def.modifiedField} that calm_get ` +
+        'returned when you read it. Without it calmcp cannot tell whether the object changed since.',
+    );
   }
 
   let id: string;

@@ -30,6 +30,7 @@ to change it without breaking what models rely on.
 | `src/tools/registry/` | `calm_list` and `calm_get` resources: one entry per Cloud ALM collection or entity |
 | `src/tools/create.ts` | `calm_create` resources and their strict payload schemas |
 | `src/tools/update.ts`, `calmUpdate.ts` | `calm_update` resources, field allowlists, the change check and the image guard |
+| `src/tools/taskTags.ts` | `calm_update` for a task's tags: merge add and remove into the list Cloud ALM replaces, read back what it stored |
 | `src/tools/richText.ts` | The rich-text allowlist and image keys, used by create and update |
 | `src/tools/writeOutcome.ts`, `displayId.ts` | How an uncertain write is reported; the one display-id lookup |
 | `src/tools/analyticsCatalog.ts`, `recipes.ts`, `codeLists.ts` | Static knowledge surfaced by `calm_resources` |

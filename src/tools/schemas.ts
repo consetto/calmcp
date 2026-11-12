@@ -255,27 +255,31 @@ export const calmUpdateShape = {
   resource: z
     .enum(toEnumValues(UPDATE_RESOURCE_NAMES))
     .describe(
-      'What to change: "feature". calm_resources({ topic: "<resource>" }) lists the fields',
+      'What to change: "feature" (its fields) or "task_tags" (the tags of a task of any type). ' +
+        'calm_resources({ topic: "<resource>" }) lists the fields',
     ),
-  id: z.string().min(1).describe('uuid or display id (e.g. "6-123") of the object'),
+  id: z.string().min(1).describe('uuid of the object; a feature also by display id (e.g. "6-123")'),
   changes: z
     .record(z.string(), z.unknown())
     .describe(
       'Only the fields to change, with their new values, e.g. { "statusCode": "IN_TESTING" }. ' +
-        'Fields not named stay as they are. Unknown fields are rejected, never dropped',
+        'Fields not named stay as they are. Unknown fields are rejected, never dropped. ' +
+        'task_tags: { "add": ["Release: Wave 2"], "remove": ["Old"] }; other tags stay',
     ),
   expected_modified_at: z
     .string()
     .min(1)
+    .optional()
     .describe(
-      'modifiedAt exactly as calm_get returned it when you read the object. The update is refused ' +
-        'if the object changed since, so an edit made in the meantime is never overwritten',
+      'Required for feature: modifiedAt exactly as calm_get returned it when you read the object. ' +
+        'The update is refused if the object changed since, so an edit made in the meantime is ' +
+        'never overwritten. Not for task_tags',
     ),
   remove_images: z
     .array(z.string().min(1))
     .optional()
     .describe(
-      'Only after the user confirmed removing exactly these images: the image keys (e.g. ' +
+      'feature only. Only after the user confirmed removing exactly these images: the image keys (e.g. ' +
         '"imageId:4e4b…") a new description may drop. A refused call lists them. Any other ' +
         'dropped image is still refused',
     ),

@@ -8,6 +8,8 @@
 //   - `create`      — POST a new OData entity or REST item (only when write access is enabled).
 //   - `updateOData` — PATCH fields of an existing OData entity (only when update access is enabled).
 //
+//   - `postChange`: POST to an endpoint that changes an existing object (same switch as PATCH).
+//
 // Keeping the per-resource knowledge in the registry (see `tools/registry.ts`) keeps these
 // primitives small and avoids duplicating one method per entity set.
 
@@ -146,5 +148,23 @@ export class CalmClients {
       throw ConfigError.updateDisabled();
     }
     return this.clients[service].patch(`/${entitySet}/${encodeURIComponent(key)}`, body);
+  }
+
+  /**
+   * POST to an endpoint that changes an existing object rather than creating one, such as
+   * `/tasks/updateTags`, which replaces a task's tag list. It is an update by effect, so it sits
+   * behind the update switch, not the write switch: `calm_create` must never reach it.
+   *
+   * @param service - The owning service.
+   * @param path - Service-relative path beginning with `/`.
+   * @param body - The payload, already checked by the tool layer.
+   * @returns The response body.
+   * @throws {ConfigError} When update access is disabled.
+   */
+  async postChange(service: ServiceName, path: string, body: unknown): Promise<unknown> {
+    if (!this.updateEnabled) {
+      throw ConfigError.updateDisabled();
+    }
+    return this.clients[service].post(path, body);
   }
 }

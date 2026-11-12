@@ -9,7 +9,7 @@
     },
     {
       "name": "$XSAPPNAME.Writer",
-      "description": "Create objects via calm_create and change features via calm_update (each needs its switch: CALM_WRITE_ENABLED, CALM_UPDATE_ENABLED)"
+      "description": "Create objects via calm_create and change features and task tags via calm_update (each needs its switch: CALM_WRITE_ENABLED, CALM_UPDATE_ENABLED)"
     }
   ],
   "role-templates": [

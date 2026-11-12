@@ -27,7 +27,7 @@ import {
 } from './registry.js';
 import { jsonResult } from './result.js';
 import type { calmResourcesShape } from './schemas.js';
-import { UPDATE_RESOURCES, type UpdateResource } from './update.js';
+import { type TagUpdateResource, UPDATE_RESOURCES, type UpdateResource } from './update.js';
 import { describeObject } from './zodDoc.js';
 
 /** Arguments accepted by the `calm_resources` tool. */
@@ -74,7 +74,28 @@ function requiredFields(def: CreateResource): string {
 }
 
 /** Describe one `calm_update` resource with the fields a caller may change. */
-function describeUpdateResource(name: string, def: UpdateResource) {
+function describeUpdateResource(name: string, def: UpdateResource | TagUpdateResource) {
+  if (def.kind === 'tags') {
+    return {
+      resource: name,
+      tool: 'calm_update',
+      service: def.service,
+      description: def.description,
+      fields: describeObject(def.schema),
+      guards: [
+        'Name only the tags to add and to remove; calmcp reads the current tags and keeps the rest.',
+        'id is the uuid of the task (calm_list resource:"tasks" returns it as id), not a display id.',
+        "No expected_modified_at: a task's lastChangedTimestamp does not move when tags change.",
+        'Tags compare without regard to case. Use the exact spelling of an existing tag: Cloud ALM ' +
+          'drops a tag that differs only in capitalisation from an existing one. The result names ' +
+          'any tag that was not stored.',
+        'calm_list({ resource: "tasks", project_id, group_by: "tags" }) lists the tags in use.',
+      ],
+      example:
+        `calm_update({ resource: '${name}', id: '<task uuid>', ` +
+        "changes: { add: ['Release: Wave 2'], remove: ['Release: Wave 1'] } })",
+    };
+  }
   return {
     resource: name,
     tool: 'calm_update',
