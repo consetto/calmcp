@@ -8,6 +8,9 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ### Fixes
 
+- Tenants in `eu10-004` can sign in with tenant and region. calmcp requested the token from
+  `authentication.eu10-004.hana.ondemand.com`, which does not exist; it now uses the region without
+  its data-centre suffix (`authentication.eu10`). `CALM_AUTH_REGION` overrides the token host region.
 - Configuration is checked at startup. A malformed or out-of-range number (`CALM_TIMEOUT_SECONDS=0`,
   `CALM_MAX_RESPONSE_BYTES=100kb`, `PORT=99999`), a switch that is neither true nor false
   (`CALM_WRITE_ENABLED=ture`) and an unknown `CALM_TRANSPORT` now stop calmcp with a message naming

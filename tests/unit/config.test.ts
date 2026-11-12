@@ -68,6 +68,47 @@ describe('Config.fromEnv validation', () => {
     expect(config.region).toBe('us20');
   });
 
+  it('authenticates an eu10-004 tenant at the eu10 token host', () => {
+    const config = Config.fromEnv({
+      CALM_SANDBOX: 'false',
+      CALM_TENANT: 'acme',
+      CALM_REGION: 'eu10-004',
+      CALM_CLIENT_ID: 'id',
+      CALM_CLIENT_SECRET: 'secret',
+    });
+    expect(config.tokenUrl()).toBe(
+      'https://acme.authentication.eu10.hana.ondemand.com/oauth/token',
+    );
+    expect(config.apiBaseUrl()).toBe('https://acme.eu10-004.alm.cloud.sap/api');
+  });
+
+  it('lets CALM_AUTH_REGION override the token host region', () => {
+    const config = Config.fromEnv({
+      CALM_SANDBOX: 'false',
+      CALM_TENANT: 'acme',
+      CALM_REGION: 'eu10',
+      CALM_AUTH_REGION: 'eu10-004',
+      CALM_CLIENT_ID: 'id',
+      CALM_CLIENT_SECRET: 'secret',
+    });
+    expect(config.tokenUrl()).toBe(
+      'https://acme.authentication.eu10-004.hana.ondemand.com/oauth/token',
+    );
+  });
+
+  it('rejects a CALM_AUTH_REGION that is not a region', () => {
+    expect(() =>
+      Config.fromEnv({
+        CALM_SANDBOX: 'false',
+        CALM_TENANT: 'acme',
+        CALM_REGION: 'eu10',
+        CALM_AUTH_REGION: 'evil.example.com/x',
+        CALM_CLIENT_ID: 'id',
+        CALM_CLIENT_SECRET: 'secret',
+      }),
+    ).toThrow(/CALM_AUTH_REGION/);
+  });
+
   it('rejects an unknown region', () => {
     expect(() =>
       Config.fromEnv({
