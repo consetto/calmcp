@@ -59,6 +59,21 @@ describe('handleCalmList', () => {
     expect((parse(result) as { value: unknown[] }).value).toHaveLength(1);
   });
 
+  it('sends an accepted rest_filters key unchanged', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({
+        path: '/api/calm-landscape/v1/landscapeObjects?objectType=BusinessService&limit=500',
+      })
+      .reply(200, [{ objectType: 'BusinessService' }]);
+
+    const result = await handleCalmList(makeClients(), {
+      resource: 'landscape_objects',
+      rest_filters: { objectType: 'BusinessService' },
+    });
+    expect(parse(result)).toEqual([{ objectType: 'BusinessService' }]);
+  });
+
   it('resolves task feature assignments (recipe step 1)', async () => {
     agent
       .get(ORIGIN)
