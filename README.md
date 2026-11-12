@@ -240,8 +240,11 @@ What it does and does not do:
   (`CALMREQU`), the other a project task or user story, both are in the same project, and the task
   has no requirement yet (a task has one; a repeat is a `CONFLICT`). To create a task already
   assigned, pass the requirement as `parentId` of a new `task` (`CALMTASK` or `CALMUS`): Cloud ALM
-  then creates the task and the assignment in one call (the answer shows `parentId: null` under
-  `storedDiffersFromSent`, because Cloud ALM keeps the assignment as a relation). Reading it back:
+  then creates the task and the assignment in one call. Cloud ALM stores the assignment as a
+  relation and leaves `parentId` of the task null, so the created task cannot confirm it: calmcp
+  reads the new task's relations and answers with `requirement: { linked: true }`, with
+  `linked: false` and the follow-up call when the link is missing, or with `linked: "unknown"` when
+  the relations could not be read. `calm_get` on such a task shows `parentId: null`. Reading it back:
   `calm_list({ resource: "task_relations", task_id })` shows type `0` (child) on the requirement
   and type `10` (parent) on the task; `calm_analytics` provider `Tasks` filters by
   `requirementId`.

@@ -190,3 +190,122 @@ describe('calm_create task_requirement_link', () => {
     expect(recipes).toContain('task_tags');
   });
 });
+
+// Creating a task with a requirement as parentId. Cloud ALM stores that link as a relation and
+// returns the new task with parentId null, so the echo cannot confirm it: calmcp reads the new
+// task's relations and reports what they show.
+describe('calm_create task with a requirement as parentId', () => {
+  const NEW = '55555555-5555-5555-5555-555555555555';
+  let agent: MockAgent;
+  beforeEach(() => {
+    agent = new MockAgent();
+    agent.disableNetConnect();
+    setGlobalDispatcher(agent);
+  });
+  afterEach(async () => {
+    agent.assertNoPendingInterceptors();
+    await agent.close();
+  });
+
+  const data = (extra: Record<string, unknown> = {}) => ({
+    type: 'CALMTASK',
+    title: 'Build it',
+    projectId: PROJECT,
+    parentId: REQUIREMENT,
+    ...extra,
+  });
+  const create = (payload: Record<string, unknown> = data()) =>
+    handleCalmCreate(makeClients({ writeEnabled: true }), { resource: 'task', data: payload });
+  /** The POST answers with the new task as Cloud ALM echoes it. */
+  const posted = (echo: Record<string, unknown>) =>
+    agent
+      .get(ORIGIN)
+      .intercept({ path: TASKS, method: 'POST' })
+      .reply(201, { id: NEW, displayId: '3-99', title: 'Build it', projectId: PROJECT, ...echo });
+  const parentIs = (body: object, status = 200) =>
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${TASKS}/${REQUIREMENT}` })
+      .reply(status, body);
+  const relationsAre = (body: object, status = 200) =>
+    agent
+      .get(ORIGIN)
+      .intercept({ path: `${TASKS}/${NEW}/relations` })
+      .reply(status, body);
+
+  it.each([['CALMTASK'], ['CALMUS']])(
+    'reports the requirement of a new %s as linked, from its relations, not from parentId',
+    async (type) => {
+      posted({ type, parentId: null });
+      parentIs({ id: REQUIREMENT, type: 'CALMREQU', displayId: '3-52' });
+      relationsAre([{ id: 'r-1', type: '10', relationTaskId: REQUIREMENT }]);
+      const result = await create(data({ type }));
+      expect(result.isError).toBeFalsy();
+      const body = parse(result) as Record<string, unknown> & { set: Record<string, unknown> };
+      expect(body).toMatchObject({
+        created: true,
+        id: NEW,
+        requirement: { id: REQUIREMENT, displayId: '3-52', linked: true },
+      });
+      expect(body.storedDiffersFromSent).toBeUndefined();
+      expect(body.set).not.toHaveProperty('parentId');
+      expect(body.note).toBeUndefined();
+    },
+  );
+
+  it('says so when the task exists but the requirement link was not stored', async () => {
+    posted({ type: 'CALMTASK', parentId: null });
+    parentIs({ id: REQUIREMENT, type: 'CALMREQU', displayId: '3-52' });
+    relationsAre([{ id: 'r-0', type: '1', relationTaskId: OTHER }]);
+    const body = parse(await create()) as { note: string; storedDiffersFromSent?: unknown };
+    expect(body).toMatchObject({ created: true, requirement: { id: REQUIREMENT, linked: false } });
+    expect(body.note).toContain('NOT stored');
+    expect(body.note).toContain('task_requirement_link');
+    expect(body.note).toContain('Do not create the task again');
+    expect(body.storedDiffersFromSent).toBeUndefined();
+  });
+
+  it.each([
+    ['fails', { message: 'boom' }, 500],
+    ['is no list', { message: 'x' }, 200],
+  ])('reports the link as unknown when reading the relations %s', async (_, relations, status) => {
+    posted({ type: 'CALMTASK', parentId: null });
+    parentIs({ id: REQUIREMENT, type: 'CALMREQU', displayId: '3-52' });
+    relationsAre(relations, status);
+    const result = await create();
+    expect(result.isError).toBeFalsy();
+    const body = parse(result) as { note: string; storedDiffersFromSent?: unknown };
+    expect(body).toMatchObject({ created: true, requirement: { linked: 'unknown' } });
+    expect(body.note).toContain('unknown');
+    expect(body.note).toContain('Do not create the task again');
+    expect(body.storedDiffersFromSent).toBeUndefined();
+  });
+
+  it('still confirms the link when the parent itself cannot be read', async () => {
+    posted({ type: 'CALMTASK', parentId: null });
+    parentIs({ message: 'boom' }, 500);
+    relationsAre([{ id: 'r-1', type: '10', relationTaskId: REQUIREMENT }]);
+    expect(parse(await create())).toMatchObject({
+      created: true,
+      parent: { id: REQUIREMENT, linked: true },
+    });
+  });
+
+  it('leaves a sub-task as it was: parentId comes back on the task, and nothing else is read', async () => {
+    posted({ type: 'CALMST', parentId: REQUIREMENT });
+    const body = parse(await create(data({ type: 'CALMST' }))) as Record<string, unknown> & {
+      set: Record<string, unknown>;
+    };
+    expect(body.set.parentId).toBe(REQUIREMENT);
+    expect(body.storedDiffersFromSent).toBeUndefined();
+    expect(body).not.toHaveProperty('requirement');
+    expect(body).not.toHaveProperty('parent');
+  });
+
+  it('reads nothing after creating a task without a parent', async () => {
+    posted({ type: 'CALMTASK', parentId: null });
+    const body = parse(await create({ type: 'CALMTASK', title: 'Build it', projectId: PROJECT }));
+    expect(body).toMatchObject({ created: true, id: NEW });
+    expect(body).not.toHaveProperty('requirement');
+  });
+});

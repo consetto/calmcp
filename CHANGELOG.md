@@ -21,6 +21,11 @@ check after a security review.
   a requirement of the same project. calmcp reads both first and refuses anything else, a second
   requirement for a task, and a repeat. The README, "Write access", also says how to create a task
   already assigned (the requirement as `parentId`).
+- Creating a task with a requirement as `parentId` answers with `requirement: { linked: true }`.
+  Cloud ALM stores that link as a relation and leaves `parentId` null, so 1.0.0 reported
+  `parentId` under `storedDiffersFromSent` although the link existed. calmcp now reads the new
+  task's relations and says what they show: linked, not linked (with the call that links it), or
+  unknown. A sub-task, whose parent Cloud ALM keeps in `parentId`, is reported as before.
 - `calm_resources` says how to read the tasks of a requirement and the requirement of a task
   (`task_relations`, types `0` and `10`), with two new recipes.
 - `expected_modified_at` of `calm_update` is optional in the tool schema. `feature` still requires

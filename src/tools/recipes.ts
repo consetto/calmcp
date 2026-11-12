@@ -110,9 +110,9 @@ export const RECIPES: Recipe[] = [
         "'id,projectId,title,assigneeId,tags' })",
       "2) calm_create({ resource: 'task', data: { type: 'CALMTASK', projectId, title, assigneeId, " +
         "parentId: '<requirement uuid>' } }). parentId assigns the new task to the requirement " +
-        'in the same call. Confirm title and project with the user first. The answer shows ' +
-        'parentId: null under storedDiffersFromSent: Cloud ALM keeps the assignment as a ' +
-        'relation, not in parentId, so check task_relations of the new task (type 10).',
+        'in the same call. Confirm title and project with the user first. The answer says ' +
+        'requirement: { linked: true } once calmcp has seen the link. Cloud ALM keeps it as a ' +
+        'relation (type 10 in task_relations of the new task); parentId of the task stays null.',
       "3) calm_update({ resource: 'task_tags', id: '<new task id>', changes: { add: [<the " +
         "requirement's tags>] } }). Tags cannot be set while creating.",
       "For a task that already exists use calm_create({ resource: 'task_requirement_link', " +
