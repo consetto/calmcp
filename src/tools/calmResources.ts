@@ -142,6 +142,8 @@ function describeListResource(name: string, def: ListResource) {
     service: def.service,
     required: def.kind === 'rest' ? def.required : [],
     parameters,
+    // The only keys rest_filters may carry here; any other is rejected.
+    ...(def.kind === 'rest' && def.restFilters ? { restFilters: def.restFilters } : {}),
     supportsFilter: parameters.includes('filter'),
     supportsOrderby: parameters.includes('orderby'),
     // Both forms are exact; only the cost differs, so the caller can judge when to narrow first.
