@@ -11,7 +11,7 @@ import type { z } from 'zod';
 import type { CalmClients } from '../calm/index.js';
 import { isGuid } from '../calm/odata.js';
 import { ConfigError, describeError } from '../errors.js';
-import { CREATE_RESOURCES, type CreateResource } from './create.js';
+import { type Confirmation, CREATE_RESOURCES, type CreateResource } from './create.js';
 import { uuidByDisplayId } from './displayId.js';
 import { errorResult, errorResultFrom, invalidPayloadResult, jsonResult } from './result.js';
 import { imageKeys, unsafeHtml } from './richText.js';
@@ -124,7 +124,9 @@ export async function handleCalmCreate(
   };
   audit({ ...entry, id: uuid ?? id, displayId, outcome: 'applied' });
   try {
-    return jsonResult(createdSummary(args.resource, def.textFields, data, created));
+    // What the echo cannot confirm is looked up; a failure there never unsays the create.
+    const confirmation = await def.confirm?.(clients, data, created).catch(() => undefined);
+    return jsonResult(createdSummary(args.resource, def.textFields, data, created, confirmation));
   } catch {
     return jsonResult({
       created: true,
@@ -197,6 +199,7 @@ function createdSummary(
   textFields: string[],
   sent: Record<string, unknown>,
   created: unknown,
+  confirmation?: Confirmation,
 ): Record<string, unknown> {
   const stored = (created !== null && typeof created === 'object' ? created : {}) as Record<
     string,
@@ -208,7 +211,8 @@ function createdSummary(
       : textFields.includes(field) && typeof value === 'string'
         ? { length: value.length, images: imageKeys(value).length }
         : value;
-  const fields = Object.keys(sent);
+  // A field confirmed some other way is reported by that confirmation, not by the echo.
+  const fields = Object.keys(sent).filter((field) => !confirmation?.omit.includes(field));
   const differs = fields.filter(
     (field) =>
       field in stored &&
@@ -224,5 +228,6 @@ function createdSummary(
       fields.map((field) => [field, summary(field, field in stored ? stored[field] : sent[field])]),
     ),
     ...(differs.length > 0 ? { storedDiffersFromSent: differs } : {}),
+    ...confirmation?.result,
   };
 }

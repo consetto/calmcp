@@ -586,7 +586,8 @@ const taskCreateSchema = z
       .optional()
       .describe(
         'UUID of the parent task; required for a sub-task, and not itself a sub-task. On a ' +
-          'project task or user story: the requirement it is assigned to',
+          'project task or user story: the requirement it is assigned to, which Cloud ALM ' +
+          'stores as a relation (read task_relations; parentId stays null)',
       ),
     priorityId: priorityCode()
       .optional()
@@ -908,6 +909,88 @@ async function requirementLinkRefusal(
   return undefined;
 }
 
+/** What a create's `confirm` hook adds to the answer. */
+export interface Confirmation {
+  /** Fields left out of `set` and `storedDiffersFromSent`: the entity's echo cannot speak for them. */
+  omit: string[];
+  /** Entries added to the answer in their place. */
+  result: Record<string, unknown>;
+}
+
+/**
+ * Whether the parent of a new task was stored.
+ *
+ * Cloud ALM keeps a sub-task's parent in `parentId`, where the echoed task confirms it. The
+ * requirement of a project task or user story it keeps as a relation instead (type 10 on the task)
+ * and leaves `parentId` null (tenant, 2026-11-12). Comparing `parentId` then reports a link that was
+ * stored as not stored, and a model acting on that creates it again. So when the echo does not
+ * carry the parent, the task's relations are read, and the answer says what they show: linked, not
+ * linked, or unknown when they could not be read.
+ */
+async function confirmTaskParent(
+  clients: CalmClients,
+  sent: Record<string, unknown>,
+  created: unknown,
+): Promise<Confirmation | undefined> {
+  const parentId = sent.parentId;
+  const task = (created ?? {}) as { id?: unknown; parentId?: unknown };
+  if (typeof parentId !== 'string' || task.parentId === parentId) return undefined;
+
+  // What the parent is, for the name of the entry. Not needed for the verdict, so a failure is fine.
+  const parent = (await clients
+    .getRest('tasks', `/tasks/${encodeURIComponent(parentId)}`)
+    .catch(() => undefined)) as { type?: unknown; displayId?: unknown } | undefined;
+  const isRequirement = parent?.type === 'CALMREQU';
+  const entry = {
+    id: parentId,
+    ...(typeof parent?.displayId === 'string' ? { displayId: parent.displayId } : {}),
+    ...(typeof parent?.type === 'string' && !isRequirement ? { type: parent.type } : {}),
+  };
+  const key = isRequirement ? 'requirement' : 'parent';
+  const where =
+    `calm_list({ resource: 'task_relations', task_id: '<new task id>' }) shows it as type 10; ` +
+    'parentId of the task stays null';
+
+  let relations: unknown;
+  try {
+    if (typeof task.id !== 'string') throw new Error('no id');
+    relations = await clients.getRest('tasks', `/tasks/${encodeURIComponent(task.id)}/relations`);
+    if (!Array.isArray(relations)) throw new Error('no list');
+  } catch {
+    return {
+      omit: ['parentId'],
+      result: {
+        [key]: { ...entry, linked: 'unknown' },
+        note:
+          `The task was created. Whether it is linked to its ${key} is unknown: the task's ` +
+          `relations could not be read. Do not create the task again. Check with ${where}.`,
+      },
+    };
+  }
+  const linked = (relations as { type?: unknown; relationTaskId?: unknown }[]).some(
+    (relation) => String(relation?.type) === '10' && relation?.relationTaskId === parentId,
+  );
+  if (linked) {
+    return {
+      omit: ['parentId'],
+      result: { [key]: { ...entry, linked: true, storedAs: 'relation (type 10 on the task)' } },
+    };
+  }
+  return {
+    omit: ['parentId'],
+    result: {
+      [key]: { ...entry, linked: false },
+      note:
+        `The task was created, but the link to its ${key} was NOT stored. Do not create the ` +
+        'task again. ' +
+        (isRequirement
+          ? "Link it with calm_create({ resource: 'task_requirement_link', data: { taskId: " +
+            "'<new task id>', requirementId } })."
+          : 'Tell the user; calmcp links a task only to a requirement.'),
+    },
+  };
+}
+
 /** A link on a task. The spec allows https only. */
 const taskReferenceSchema = z
   .object({
@@ -982,6 +1065,16 @@ export interface CreateResource {
    */
   refuse?: (clients: CalmClients, data: Record<string, unknown>) => Promise<Refusal | undefined>;
   /**
+   * A look at Cloud ALM after the create, for what the created entity's echo cannot confirm. It
+   * runs once the entity exists, so it must not throw: what it cannot find out it reports as
+   * unknown.
+   */
+  confirm?: (
+    clients: CalmClients,
+    sent: Record<string, unknown>,
+    created: unknown,
+  ) => Promise<Confirmation | undefined>;
+  /**
    * Whether an equal link already exists. Only for links Cloud ALM stores twice when asked twice;
    * it refuses duplicate assignments and relations itself.
    */
@@ -1013,6 +1106,7 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     entitySet: 'tasks',
     schema: taskCreateSchema,
     textFields: ['description'],
+    confirm: confirmTaskParent,
     description:
       'A new task in a project: project task, user story, sub-task, requirement, defect or risk, ' +
       'with optional HTML description, assignee, priority, dates and sprint',
@@ -1112,7 +1206,8 @@ export const CREATE_RESOURCES: Record<string, CreateResource> = {
     description:
       'Assign an existing project task or user story to a requirement of the same project. A ' +
       'task has one requirement. To create a task already assigned, pass the requirement as ' +
-      'parentId of a new task instead',
+      'parentId of a new task instead. Either way the link is a relation: task_relations shows ' +
+      'type 10 on the task and type 0 on the requirement, and parentId of the task stays null',
   },
   task_reference: {
     service: 'tasks',
