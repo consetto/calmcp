@@ -398,7 +398,9 @@ export const LIST_RESOURCES: Record<string, ListResource> = {
     'tasks',
     'task_id',
     (id) => `/tasks/${id}/relations`,
-    'Relations of a task to other tasks',
+    'Relations of a task to other tasks, by type: 0 child, 10 parent, 1 peer, 2 predecessor, ' +
+      '20 successor. The tasks assigned to a requirement: task_id = the requirement, type 0. The ' +
+      'requirement of a task: task_id = the task, type 10 (for a sub-task that is its task)',
   ),
   task_feature_assignments: childCollection(
     'tasks',

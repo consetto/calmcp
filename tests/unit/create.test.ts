@@ -861,6 +861,7 @@ describe('create registry', () => {
       'task_process_link',
       'task_reference',
       'task_relation',
+      'task_requirement_link',
       'test_case_task_link',
       'xlib_application',
       'xlib_configuration',

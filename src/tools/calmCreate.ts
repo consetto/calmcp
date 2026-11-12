@@ -76,6 +76,8 @@ export async function handleCalmCreate(
   let data: Record<string, unknown>;
   try {
     data = await resolveDisplayIds(clients, def, parsed.data);
+    const refusal = await def.refuse?.(clients, data);
+    if (refusal) return errorResult(refusal.message, refusal.code);
     if (def.exists && (await def.exists(clients, data))) {
       return errorResult(
         `An equal ${args.resource} already exists, and Cloud ALM would store a second one. ` +
@@ -87,7 +89,7 @@ export async function handleCalmCreate(
     return errorResultFrom(error);
   }
 
-  const { collection, body } = target(def.entitySet, data, def.sendAs);
+  const { collection, body } = target(def.entitySet, data, def.sendAs, def.fixed);
   const entry = { resource: args.resource, fields: Object.keys(parsed.data) };
   let created: unknown;
   try {
@@ -162,14 +164,15 @@ async function resolveDisplayIds(
 /**
  * Where the POST goes and what it carries: each `{field}` in the collection is replaced by that
  * payload field (a validated uuid) and the field is left out of the body. Fields in `sendAs` go
- * out under the spec's name.
+ * out under the spec's name, and `fixed` adds the fields the resource sets itself.
  */
 function target(
   collection: string,
   data: Record<string, unknown>,
   sendAs: Record<string, string> = {},
+  fixed: Record<string, unknown> = {},
 ): { collection: string; body: Record<string, unknown> } {
-  const body = { ...data };
+  const body = { ...data, ...fixed };
   const path = collection.replace(/\{(\w+)\}/g, (_, field: string) => {
     const value = String(body[field]);
     delete body[field];

@@ -47,7 +47,7 @@ const UPDATE_INSTRUCTIONS =
 const WRITE_INSTRUCTIONS =
   ' Write access is enabled for adding: calm_create adds a new document, feature, task (incl. ' +
   'user story, defect), comment on a task, library entry, or a link between existing objects ' +
-  '(task to feature, document, process node or task; a URL on a task or feature; test case to ' +
+  '(task to feature, document, process node, requirement or task; a URL on a task or feature; test case to ' +
   'user story). calm_create never changes or deletes an existing object. Before creating, check ' +
   'with calm_list whether an equivalent entry already exists, and confirm the target project ' +
   'with the user.';

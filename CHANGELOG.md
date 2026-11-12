@@ -13,6 +13,12 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
   `changes: { add: [...], remove: [...] }`. The task's other tags stay; a tag that does not exist
   yet is created. Needs `CALM_UPDATE_ENABLED=true` and the `calm-api.tasks.write` scope. See the
   README, "Tags of a task".
+- `calm_create` takes `task_requirement_link`: assign an existing project task or user story to
+  a requirement of the same project. calmcp reads both first and refuses anything else, a second
+  requirement for a task, and a repeat. The README, "Write access", also says how to create a task
+  already assigned (the requirement as `parentId`).
+- `calm_resources` says how to read the tasks of a requirement and the requirement of a task
+  (`task_relations`, types `0` and `10`), with two new recipes.
 - `expected_modified_at` of `calm_update` is optional in the tool schema. `feature` still requires
   it and refuses a call without it; `task_tags` refuses a call with it.
 ### Fixes

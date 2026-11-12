@@ -49,7 +49,7 @@
     },
     {
       "name": "calm_create",
-      "description": "Only with 'Write Access' on: create a new document, feature, task (incl. user story, defect), task comment or library entry (cross-library application, configuration, configuration activity, development, interface), or a link between existing objects. Never changes or deletes."
+      "description": "Only with 'Write Access' on: create a new document, feature, task (incl. user story, defect), task comment or library entry (cross-library application, configuration, configuration activity, development, interface), or a link between existing objects (e.g. a task to its requirement). Never changes or deletes."
     },
     {
       "name": "calm_update",
