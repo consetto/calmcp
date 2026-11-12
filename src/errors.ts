@@ -137,6 +137,13 @@ export interface ApiErrorDetails {
 const MAX_ERROR_BODY_CHARS = 500;
 
 /**
+ * Characters of an upstream body read for its summary. Stripping markup searches for the end of
+ * each `<script>`, which takes time quadratic in the body when none closes: minutes for the 8 MB
+ * calmcp reads. A summary of a few hundred characters needs only the start.
+ */
+const MAX_SUMMARY_SCAN_CHARS = 20_000;
+
+/**
  * Shorten an upstream response body for an error message. Gateways answer with whole HTML pages;
  * those reach the model and the logs, so markup is stripped and the text capped.
  *
@@ -145,11 +152,16 @@ const MAX_ERROR_BODY_CHARS = 500;
  * @returns Plain text of at most `max` characters (plus a truncation marker).
  */
 export function summarizeBody(body: string, max = MAX_ERROR_BODY_CHARS): string {
-  const text = /<[a-z!/][^>]*>/i.test(body)
-    ? body.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')
-    : body;
+  const cut = body.length > MAX_SUMMARY_SCAN_CHARS;
+  let head = cut ? body.slice(0, MAX_SUMMARY_SCAN_CHARS) : body;
+  // The cut may fall inside a tag; half a tag is not text.
+  const open = head.lastIndexOf('<');
+  if (cut && open > head.lastIndexOf('>')) head = head.slice(0, open);
+  const text = /<[a-z!/][^>]*>/i.test(head)
+    ? head.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')
+    : head;
   const compact = text.replace(/\s+/g, ' ').trim();
-  return compact.length > max ? `${compact.slice(0, max)}…(truncated)` : compact;
+  return compact.length > max || cut ? `${compact.slice(0, max)}…(truncated)` : compact;
 }
 
 /** Machine-readable error codes a tool result carries, so a client can branch without parsing. */
