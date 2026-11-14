@@ -12,6 +12,12 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
   Ed25519 code (GHSA-j8rw-jp99-435v, GHSA-6cv4-p8m7-4r25, GHSA-w4xr-hqv8-ch44,
   GHSA-6889-vf6x-f3g5). calmcp does not reach that code: the library comes in through the SAP
   Cloud SDK, which uses it only to read a Java keystore of a BTP destination.
+- `hono` 4.13.18 and `@hono/node-server` 2.1.8 by a lockfile update, for seven advisories in
+  Hono's router, `mount()`, `csrf()`, form validator and `css` helper and in the node server's
+  path parsing and WebSocket upgrade (GHSA-h7mg-cq63-vhpq, GHSA-4h7h-rv7c-7m2v,
+  GHSA-3gg2-335m-rxc6, GHSA-4m76-xfj5-7975, GHSA-46wx-v44x-9hh2, GHSA-jpvv-r467-5p4w,
+  GHSA-qv5m-9pm6-hqp3). calmcp does not reach that code: the MCP SDK uses one function of the
+  node server to convert a request, behind calmcp's own Express routing and bearer check.
 
 ## 1.1.0
 
