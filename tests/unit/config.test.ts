@@ -224,10 +224,42 @@ describe('transportFromEnv', () => {
 });
 
 describe('httpSettingsFromEnv', () => {
+  /** 32 characters, the shortest key accepted. */
+  const HTTP_KEY = 'k'.repeat(32);
+
+  it.each(['test', 'placeholder', 'k'.repeat(31), ` ${'k'.repeat(31)} `])(
+    'refuses an API key shorter than 32 characters: %s',
+    (key) => {
+      const attempt = () => httpSettingsFromEnv({ CALM_HTTP_API_KEY: key });
+      expect(attempt).toThrow(ConfigError);
+      expect(attempt).toThrow(`at least 32 characters, not ${key.trim().length}`);
+    },
+  );
+
+  it('does not repeat a refused API key in the message', () => {
+    const key = 'hunter2-hunter2';
+    let message = '';
+    try {
+      httpSettingsFromEnv({ CALM_HTTP_API_KEY: key });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('at least 32 characters');
+    expect(message).not.toContain(key);
+  });
+
+  it('reads an empty API key and an unfilled placeholder as no key', () => {
+    expect(httpSettingsFromEnv({ CALM_HTTP_API_KEY: '  ' }).apiKey).toBeUndefined();
+    expect(
+      httpSettingsFromEnv({ CALM_HTTP_API_KEY: `\${user_config.http_api_key_of_this_server}` })
+        .apiKey,
+    ).toBeUndefined();
+  });
+
   it('reads the HTTP variables', () => {
     const settings = httpSettingsFromEnv({
       PORT: '3000',
-      CALM_HTTP_API_KEY: ' key ',
+      CALM_HTTP_API_KEY: ` ${HTTP_KEY} `,
       CALM_CORS_ORIGINS: 'http://localhost:6274',
       CALM_DCR_SIGNING_SECRET: 'dcr',
       CALM_OAUTH_REDIRECT_PATTERNS: 'https://client.example.com/cb',
@@ -237,7 +269,7 @@ describe('httpSettingsFromEnv', () => {
       port: 3000,
       onCloudFoundry: false,
       allowUnauthenticated: true,
-      apiKey: 'key',
+      apiKey: HTTP_KEY,
       corsOrigins: ['http://localhost:6274'],
       dcrSigningSecret: 'dcr',
     });

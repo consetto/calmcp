@@ -109,7 +109,8 @@ jobs:
       - name: Start it and check /health
         run: |
           docker run -d --name calmcp -p 8080:8080 \
-            -e CALM_SANDBOX=true -e CALM_API_KEY=placeholder -e CALM_HTTP_API_KEY=placeholder \
+            -e CALM_SANDBOX=true -e CALM_API_KEY=placeholder \
+            -e CALM_HTTP_API_KEY=ci-placeholder-key-of-32-characters-or-more \
             calmcp:ci
           for attempt in $(seq 1 30); do
             if curl -fsS http://localhost:8080/health; then exit 0; fi

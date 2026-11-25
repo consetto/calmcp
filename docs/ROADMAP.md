@@ -122,17 +122,10 @@ From the architecture review of 2026-11-05, in the order proposed.
 
 From the security review of 2026-11-11 (fixed there: #72, #73, #74):
 
-- **`data-mce-*` attributes pass the rich-text allowlist** (`src/tools/richText.ts`, any `data-`
-  attribute is allowed). `<img src="/ui/imageServiceAPI/…" data-mce-src="https://elsewhere/p.png">`
-  and `data-mce-style="background:url(…)"` are accepted today. TinyMCE keeps the original `src`,
-  `href` and `style` in these attributes and writes them back when it saves, so the foreign URL
-  could become the real one once a user edits the object. Needs a tenant check (does Cloud ALM's
-  sanitiser strip them, does the editor restore them); refusing `data-mce-*` is safe either way.
-  Also accepted: a link styled `position:fixed` over the whole page.
-- **`CALM_HTTP_API_KEY` has no minimum length**, so `test` protects a public endpoint; CI itself
-  starts the image with `placeholder`. Require a length (32 characters, say) at startup. String
-  settings also skip the check for an unfilled `${user_config.…}` placeholder that booleans and
-  numbers get.
+- **A link can be styled to cover the page.** The rich-text allowlist (`src/tools/richText.ts`)
+  refuses styles that load something, not styles that position: `position:fixed` with a full
+  width and height on an `<a>` is accepted. Check on a tenant what Cloud ALM's sanitiser and UI
+  make of it, then refuse `position` and `z-index` or allow a list of properties.
 - **Inbound rate limit by caller.** The limit is per client address. Hosted clients (claude.ai,
   Copilot Studio) presumably call from a few shared addresses, so all their users would share one
   bucket of 120 requests a minute; not measured. Keep the address limit ahead of sign-in and add
@@ -140,8 +133,19 @@ From the security review of 2026-11-11 (fixed there: #72, #73, #74):
 - **A log line per read.** Only writes are audited. Every caller reads with the one technical
   identity, so calmcp's log is the only place that can say who read what: caller, tool and resource
   at `info`, no parameters or values. Goes with "Audit log retention" above.
-- Smaller: the `ignore` list in `mta.yaml` lacks the `*.local` entry `.cfignore` has. The
-  Dockerfile's base image is not pinned by digest and its `npm ci` runs install scripts.
+- **Debug mode writes Cloud ALM content to the log.** With `CALM_DEBUG=true` the log holds the
+  arguments of every tool call and the first 500 characters of every response; redaction covers
+  headers only. On Cloud Foundry that goes to the application-logs service. Say so in the README,
+  or log sizes and field names instead of values (review of 2026-11-25).
+- **Open HTTP mode gives every local caller the write tools.** With
+  `CALM_HTTP_ALLOW_UNAUTHENTICATED=true` and a write switch on, anything that reaches the port can
+  create and update. It listens on 127.0.0.1 only, checks the Host header and is ignored on Cloud
+  Foundry; nothing checks `Origin`. Refuse the combination at startup, or document it (review of
+  2026-11-25).
+- Smaller: the `ignore` list in `mta.yaml` lacks the `*.local` entry `.cfignore` has. String
+  settings other than `CALM_HTTP_API_KEY` do not read an unfilled `${user_config.…}` placeholder
+  as unset, as booleans and numbers do. The Dockerfile's base image is not pinned by digest and
+  its `npm ci` runs install scripts.
   `trust proxy` is set on Cloud Foundry only, so a container behind another reverse proxy puts
   every client into one rate-limit bucket.
 
