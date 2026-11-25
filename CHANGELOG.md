@@ -8,6 +8,11 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ### Security
 
+- `CALM_HTTP_API_KEY` must have at least 32 characters. A shorter key, such as `test`, started a
+  server that looked protected; it now stops at startup with a message that gives the length and
+  how to generate a key. **A deployment with a shorter key does not start after this update:** set
+  a new one first (`openssl rand -base64 48`) and update the clients that send it. An unfilled
+  `${user_config.…}` placeholder is read as no key instead of being used as the key.
 - `node-forge` 1.4.3 by a lockfile update, for four advisories in its TLS client, `forge.http` and
   Ed25519 code (GHSA-j8rw-jp99-435v, GHSA-6cv4-p8m7-4r25, GHSA-w4xr-hqv8-ch44,
   GHSA-6889-vf6x-f3g5). calmcp does not reach that code: the library comes in through the SAP

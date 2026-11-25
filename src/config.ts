@@ -378,7 +378,7 @@ export interface HttpSettings {
    * never expose Cloud ALM publicly.
    */
   allowUnauthenticated: boolean;
-  /** `CALM_HTTP_API_KEY`, the shared key of the API-key path. */
+  /** `CALM_HTTP_API_KEY`, the shared key of the API-key path; at least 32 characters. */
   apiKey?: string;
   /** Exact CORS origins, or false for no CORS headers. */
   corsOrigins: string[] | false;
@@ -389,13 +389,36 @@ export interface HttpSettings {
 }
 
 /**
+ * Shortest `CALM_HTTP_API_KEY` accepted. The key is the only thing between the internet and Cloud
+ * ALM on the API-key path, and nothing limits guesses per key, only requests per address; 32
+ * characters is out of reach of guessing even when they are hexadecimal (128 bits).
+ */
+export const MIN_HTTP_API_KEY_LENGTH = 32;
+
+/**
+ * `CALM_HTTP_API_KEY`, or undefined when unset or left as an unfilled placeholder. A key that is
+ * too short is refused rather than used: `test` would start a server that looks protected. The
+ * message gives the length, never the key.
+ */
+function httpApiKey(env: NodeJS.ProcessEnv): string | undefined {
+  const key = setValue(env, 'CALM_HTTP_API_KEY');
+  if (key !== undefined && key.length < MIN_HTTP_API_KEY_LENGTH) {
+    throw ConfigError.invalid(
+      `CALM_HTTP_API_KEY must have at least ${MIN_HTTP_API_KEY_LENGTH} characters, not ` +
+        `${key.length}. Generate one with: openssl rand -base64 48`,
+    );
+  }
+  return key;
+}
+
+/**
  * Read and check the HTTP transport settings. `CALM_PUBLIC_URL` is read by the auth package's
  * `resolveAppUrl` itself, and the XSUAA binding from `VCAP_SERVICES`.
  *
  * @param env - The environment.
  * @param cliPort - The `--port` option, which takes precedence over `PORT`.
  * @returns The settings.
- * @throws {ConfigError} On a malformed port or boolean.
+ * @throws {ConfigError} On a malformed port or boolean, or an API key that is too short.
  * @throws {Error} On a malformed CORS origin (see {@link parseCorsOrigins}).
  */
 export function httpSettingsFromEnv(env: NodeJS.ProcessEnv, cliPort?: string): HttpSettings {
@@ -409,7 +432,7 @@ export function httpSettingsFromEnv(env: NodeJS.ProcessEnv, cliPort?: string): H
     port,
     onCloudFoundry,
     allowUnauthenticated: allowOpen && !onCloudFoundry,
-    apiKey: env.CALM_HTTP_API_KEY?.trim() || undefined,
+    apiKey: httpApiKey(env),
     corsOrigins: parseCorsOrigins(env.CALM_CORS_ORIGINS),
     dcrSigningSecret: env.CALM_DCR_SIGNING_SECRET?.trim() || undefined,
     redirectPatterns: redirectPatterns(env),
