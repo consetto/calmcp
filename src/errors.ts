@@ -237,6 +237,16 @@ function describeApiError(error: ApiError, message: string): ErrorInfo {
     return { error: 'NETWORK', retryable: true, message };
   }
   const base = { status, message };
+  if (status >= 300 && status < 400) {
+    return {
+      ...base,
+      error: 'UPSTREAM_ERROR',
+      retryable: false,
+      hint:
+        'Something between calmcp and Cloud ALM (a proxy, a gateway) redirects the request; ' +
+        'the operator must check the tenant, the region and the network path.',
+    };
+  }
   if (status === 401) return { ...base, error: 'UNAUTHORIZED', retryable: false };
   if (status === 403) {
     return {
