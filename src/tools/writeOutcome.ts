@@ -5,13 +5,14 @@
 import { ApiError } from '../errors.js';
 
 /**
- * Whether a failed write may still have been applied: no answer, a server-side failure, or a 408
- * from a gateway that stopped waiting while Cloud ALM may have gone on processing.
+ * Whether a failed write may still have been applied: no answer, a server-side failure, a 408
+ * from a gateway that stopped waiting while Cloud ALM may have gone on processing, or a redirect,
+ * which calmcp does not follow (a 303 is how a server points to the result of a write it made).
  */
 export function outcomeUnknown(error: unknown): boolean {
-  return (
-    error instanceof ApiError && (error.status === 0 || error.status === 408 || error.status >= 500)
-  );
+  if (!(error instanceof ApiError)) return false;
+  const { status } = error;
+  return status === 0 || status === 408 || status >= 500 || (status >= 300 && status < 400);
 }
 
 /** Whether Cloud ALM accepted the write (2xx) but its answer could not be read. */

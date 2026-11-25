@@ -142,6 +142,15 @@ From the security review of 2026-11-11 (fixed there: #72, #73, #74):
 - **A log line per read.** Only writes are audited. Every caller reads with the one technical
   identity, so calmcp's log is the only place that can say who read what: caller, tool and resource
   at `info`, no parameters or values. Goes with "Audit log retention" above.
+- **Debug mode writes Cloud ALM content to the log.** With `CALM_DEBUG=true` the log holds the
+  arguments of every tool call and the first 500 characters of every response; redaction covers
+  headers only. On Cloud Foundry that goes to the application-logs service. Say so in the README,
+  or log sizes and field names instead of values (review of 2026-11-25).
+- **Open HTTP mode gives every local caller the write tools.** With
+  `CALM_HTTP_ALLOW_UNAUTHENTICATED=true` and a write switch on, anything that reaches the port can
+  create and update. It listens on 127.0.0.1 only, checks the Host header and is ignored on Cloud
+  Foundry; nothing checks `Origin`. Refuse the combination at startup, or document it (review of
+  2026-11-25).
 - Smaller: the `ignore` list in `mta.yaml` lacks the `*.local` entry `.cfignore` has. The
   Dockerfile's base image is not pinned by digest and its `npm ci` runs install scripts.
   `trust proxy` is set on Cloud Foundry only, so a container behind another reverse proxy puts
