@@ -8,6 +8,11 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ### Security
 
+- Rich text with `data-mce-*` attributes is refused. These belong to Cloud ALM's editor, which
+  keeps the original `src`, `href` and `style` of an element in them and writes them back on save,
+  so a value there could have replaced the attribute calmcp checked once a user edited the object.
+  Cloud ALM's server removes them today; calmcp no longer relies on that. Other `data-` attributes
+  are still accepted.
 - `node-forge` 1.4.3 by a lockfile update, for four advisories in its TLS client, `forge.http` and
   Ed25519 code (GHSA-j8rw-jp99-435v, GHSA-6cv4-p8m7-4r25, GHSA-w4xr-hqv8-ch44,
   GHSA-6889-vf6x-f3g5). calmcp does not reach that code: the library comes in through the SAP
