@@ -150,6 +150,21 @@ describe('unsafeHtml', () => {
     expect(unsafeHtml(template)).toEqual([]);
   });
 
+  it.each([
+    [
+      `<img src="/ui/imageServiceAPI/v1/getImage?imageId=a" data-mce-src="https://x.example/p.png">`,
+    ],
+    ['<a href="https://sap.com" data-mce-href="https://x.example/login">a</a>'],
+    ['<p data-mce-style="background: red">a</p>'],
+    ['<p DATA-MCE-SELECTED="1">a</p>'],
+  ])("refuses the editor's own attributes: %s", (html) => {
+    expect(unsafeHtml(html).join(' ')).toContain('data-mce-* attributes belong to the editor');
+  });
+
+  it('still accepts other data attributes', () => {
+    expect(unsafeHtml('<p data-id="7" data-mcelike="x">a</p>')).toEqual([]);
+  });
+
   it('lets an image stay that the current text already has, from wherever', () => {
     const outside = '<img src="https://intranet.example/d.png">';
     expect(unsafeHtml(`<p>new</p>${outside}`, `<p>old</p>${outside}`)).toEqual([]);

@@ -219,6 +219,24 @@ describe('handleCalmCreate', () => {
     expect(audit).toMatchObject([{ resource: 'document', outcome: 'unknown' }]);
   });
 
+  it('reports a create answered with a redirect as maybe applied, and does not follow it', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-documents/v1/Documents', method: 'POST' })
+      .reply(303, '', { headers: { location: 'https://elsewhere.example/Documents/1' } });
+    const audit: CreateAuditEntry[] = [];
+    const result = await handleCalmCreate(
+      makeClients({ writeEnabled: true }),
+      { resource: 'document', data: { title: 'Design', projectId: PROJECT } },
+      (entry) => audit.push(entry),
+    );
+    // Following it would be a request to a host the mock refuses: NETWORK, not this status.
+    expect(parse(result)).toMatchObject({ error: 'UPSTREAM_ERROR', retryable: false });
+    expect(textOf(result)).toContain('a redirect (HTTP 303) to elsewhere.example');
+    expect(textOf(result)).toContain('may or may not have been created');
+    expect(audit).toMatchObject([{ resource: 'document', outcome: 'unknown' }]);
+  });
+
   it('reports a create Cloud ALM accepted with an unreadable answer as created', async () => {
     agent
       .get(ORIGIN)
@@ -303,6 +321,22 @@ describe('handleCalmCreate', () => {
     });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('image service');
+  });
+
+  it("refuses the editor's own attributes in a text field before sending anything", async () => {
+    // No intercept: a POST that slipped through would fail the call as NETWORK instead.
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'feature',
+      data: {
+        title: 'Close periods',
+        projectId: PROJECT,
+        description:
+          '<p><a href="/launchpad" data-mce-href="https://evil.example/login">Open</a></p>',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(parse(result)).toMatchObject({ error: 'INVALID_ARGUMENT' });
+    expect(textOf(result)).toContain('data-mce-href attribute is not allowed');
   });
 
   it('sends exactly the validated payload, nothing added', async () => {
