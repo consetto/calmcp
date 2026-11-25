@@ -39,6 +39,9 @@ Implemented on this basis:
   kept. Cloud ALM's image service answers 403 to the API's technical user (`updateUsedImages`), the
   PATCH fails with 500 and nothing is saved. The image guard below still matters for features
   whose images are added later in the UI; see the README, "Update access".
+  **No longer seen (tenant tests 2026-11-12 and 2026-11-25):** such a description was changed
+  with every image kept, and with one image removed through `remove_images`; the change was
+  stored and `modifiedAt` moved.
 
 ## Summary
 

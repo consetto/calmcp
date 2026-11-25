@@ -46,9 +46,6 @@ From the architecture review of 2026-11-05, in the order proposed.
 
 ## Watch
 
-- **Feature descriptions with images cannot be changed through the API.** Cloud ALM's image service
-  answers 403 to the API's technical user (`updateUsedImages`), so the PATCH fails with 500 and
-  nothing is saved (tenant test 2026-10-31). Reported to SAP; when fixed, re-test `remove_images`.
 - **Analytics `QualityGates` answers 403** with every documented read scope on the instance; the
   scope it needs is not documented. `document_approval_states` answers 404 on a tenant whose
   `$metadata` lists it.

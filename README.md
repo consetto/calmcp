@@ -337,12 +337,13 @@ their own):
   modification timestamps, so a change can be undone by hand; Cloud ALM records only the
   technical user.
 
-**Known Cloud ALM limitation: descriptions with images.** Cloud ALM refuses any change to the
-description of a feature that contains images when it comes through the API: its image service
-answers 403 to the API's technical user, and Cloud ALM reports a 500 (`updateUsedImages`). Nothing is
-saved (`modifiedAt` stays the same), so calmcp reports that the update may not have been applied.
-Other fields of such a feature, and descriptions of features without images, can be changed. Change
-those descriptions in the Cloud ALM UI. Reported to SAP.
+**Descriptions with images.** Until November 2026 Cloud ALM refused any change to the description
+of a feature that contains images when it came through the API: its image service answered 403 to
+the API's technical user, and Cloud ALM reported a 500 (`updateUsedImages`) without saving
+anything. On a test tenant this has worked since 2026-11-12, both with every image kept and with
+one removed through `remove_images`. If a tenant still answers that 500, nothing is saved
+(`modifiedAt` stays the same), calmcp reports that the update may not have been applied, and the
+description has to be changed in the Cloud ALM UI.
 
 Like `calm_create`, `calm_update` is offered over HTTP only to callers with the `Writer` scope
 (role collection `CALMCP_Editor`), and the OAuth2 client needs `calm-api.features.write` for
