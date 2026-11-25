@@ -57,6 +57,16 @@ const FORBIDDEN_ELEMENTS = [
   ...['audio', 'source', 'picture', 'track', 'template', 'portal'],
 ];
 
+/**
+ * TinyMCE's own attributes. It keeps the original `src`, `href` and `style` of an element in
+ * `data-mce-src`, `data-mce-href` and `data-mce-style` while a text is edited and writes them back
+ * on save, so a value in one of them could replace the checked attribute once a user edits the
+ * object. Other `data-` attributes are inert and stay allowed. Cloud ALM's server removes every
+ * `data-` attribute from features, documents and tasks today (checked on a tenant, 2026-11-25);
+ * this refusal does not rely on that.
+ */
+const EDITOR_ATTRIBUTE_PREFIX = 'data-mce-';
+
 /** Link targets: http(s), mailto, or a path within Cloud ALM. */
 const LINK_SCHEME = /^(https?|mailto):/i;
 
@@ -273,6 +283,11 @@ export function unsafeHtml(html: unknown, current?: unknown): string[] {
         );
       } else if (name.startsWith('on')) {
         problems.add(`event handler attributes such as ${name}= are not allowed`);
+      } else if (name.startsWith(EDITOR_ATTRIBUTE_PREFIX)) {
+        problems.add(
+          `the ${name} attribute is not allowed: ${EDITOR_ATTRIBUTE_PREFIX}* attributes belong ` +
+            'to the editor; put the value into the real attribute',
+        );
       } else if (
         !GLOBAL_ATTRIBUTES.has(name) &&
         !ELEMENT_ATTRIBUTES[tag.name]?.includes(name) &&

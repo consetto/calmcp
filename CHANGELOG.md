@@ -8,6 +8,11 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ### Security
 
+- Rich text with `data-mce-*` attributes is refused. These belong to Cloud ALM's editor, which
+  keeps the original `src`, `href` and `style` of an element in them and writes them back on save,
+  so a value there could have replaced the attribute calmcp checked once a user edited the object.
+  Cloud ALM's server removes them today; calmcp no longer relies on that. Other `data-` attributes
+  are still accepted.
 - A redirect is no longer followed. Until now calmcp went wherever a redirect pointed and reported
   that answer; on a redirect to another host the sandbox API key and the headers of a BTP
   destination would have gone along, and a 307 or 308 would have sent a write there a second

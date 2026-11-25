@@ -323,6 +323,22 @@ describe('handleCalmCreate', () => {
     expect(textOf(result)).toContain('image service');
   });
 
+  it("refuses the editor's own attributes in a text field before sending anything", async () => {
+    // No intercept: a POST that slipped through would fail the call as NETWORK instead.
+    const result = await handleCalmCreate(makeClients({ writeEnabled: true }), {
+      resource: 'feature',
+      data: {
+        title: 'Close periods',
+        projectId: PROJECT,
+        description:
+          '<p><a href="/launchpad" data-mce-href="https://evil.example/login">Open</a></p>',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(parse(result)).toMatchObject({ error: 'INVALID_ARGUMENT' });
+    expect(textOf(result)).toContain('data-mce-href attribute is not allowed');
+  });
+
   it('sends exactly the validated payload, nothing added', async () => {
     let sent: unknown;
     agent

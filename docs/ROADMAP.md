@@ -127,13 +127,10 @@ From the security review of 2026-11-11 (fixed there: #72, #73, #74):
   repository someone else wrote can set whatever the host left unset: `CALM_WRITE_ENABLED`,
   `CALM_UPDATE_ENABLED`, `NODE_TLS_REJECT_UNAUTHORIZED`. Reasoned from dotenv's defaults, not yet
   reproduced. Load it only for `npm run dev` and the integration tests, or from an explicit path.
-- **`data-mce-*` attributes pass the rich-text allowlist** (`src/tools/richText.ts`, any `data-`
-  attribute is allowed). `<img src="/ui/imageServiceAPI/…" data-mce-src="https://elsewhere/p.png">`
-  and `data-mce-style="background:url(…)"` are accepted today. TinyMCE keeps the original `src`,
-  `href` and `style` in these attributes and writes them back when it saves, so the foreign URL
-  could become the real one once a user edits the object. Needs a tenant check (does Cloud ALM's
-  sanitiser strip them, does the editor restore them); refusing `data-mce-*` is safe either way.
-  Also accepted: a link styled `position:fixed` over the whole page.
+- **A link can be styled to cover the page.** The rich-text allowlist (`src/tools/richText.ts`)
+  refuses styles that load something, not styles that position: `position:fixed` with a full
+  width and height on an `<a>` is accepted. Check on a tenant what Cloud ALM's sanitiser and UI
+  make of it, then refuse `position` and `z-index` or allow a list of properties.
 - **`CALM_HTTP_API_KEY` has no minimum length**, so `test` protects a public endpoint; CI itself
   starts the image with `placeholder`. Require a length (32 characters, say) at startup. String
   settings also skip the check for an unfilled `${user_config.…}` placeholder that booleans and
