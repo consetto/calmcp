@@ -8,6 +8,12 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ### Security
 
+- A redirect is no longer followed. Until now calmcp went wherever a redirect pointed and reported
+  that answer; on a redirect to another host the sandbox API key and the headers of a BTP
+  destination would have gone along, and a 307 or 308 would have sent a write there a second
+  time. A redirect is now an `UPSTREAM_ERROR` that names the host it pointed to, and for a write
+  the result says the outcome is unknown. Cloud ALM's API does not redirect (every read resource
+  and analytics provider checked on a tenant), so nothing changes in normal operation.
 - `node-forge` 1.4.3 by a lockfile update, for four advisories in its TLS client, `forge.http` and
   Ed25519 code (GHSA-j8rw-jp99-435v, GHSA-6cv4-p8m7-4r25, GHSA-w4xr-hqv8-ch44,
   GHSA-6889-vf6x-f3g5). calmcp does not reach that code: the library comes in through the SAP

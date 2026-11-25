@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AuthContext, AuthProvider } from '../../src/auth/index.js';
 import { CalmHttpClient, parseErrorResponse } from '../../src/calm/httpClient.js';
 import { forbiddenHint } from '../../src/calm/scopes.js';
-import { ApiError } from '../../src/errors.js';
+import { ApiError, describeError } from '../../src/errors.js';
 import { createLogger } from '../../src/logging.js';
 
 const ORIGIN = 'https://acme.eu10.alm.cloud.sap';
@@ -196,5 +196,102 @@ describe('CalmHttpClient token renewal and body limit', () => {
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).tooLarge).toBe(true);
+  });
+});
+
+describe('CalmHttpClient and redirects', () => {
+  const ELSEWHERE = 'https://elsewhere.example';
+  let agent: MockAgent;
+
+  beforeEach(() => {
+    agent = new MockAgent();
+    agent.disableNetConnect();
+    setGlobalDispatcher(agent);
+  });
+
+  afterEach(async () => {
+    await agent.close();
+  });
+
+  /** The sandbox sends its key in a header fetch would keep on a redirect to another host. */
+  class ApiKeyAuth implements AuthProvider {
+    async authorize(): Promise<AuthContext> {
+      return { baseUrl: `${ORIGIN}/api`, headers: { APIKey: 'sandbox-key' } };
+    }
+  }
+
+  /** Answer anything sent to the other host, so a followed redirect would succeed and be seen. */
+  function elsewhereAnswers(method: string) {
+    agent.get(ELSEWHERE).intercept({ path: '/login?next=secret', method }).reply(200, { ok: true });
+  }
+  const notSentElsewhere = () =>
+    agent.pendingInterceptors().filter((pending) => pending.origin === ELSEWHERE);
+
+  it('does not follow a redirected GET, and names only the host it pointed to', async () => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-features/v1/Features', method: 'GET' })
+      .reply(302, '', { headers: { location: `${ELSEWHERE}/login?next=secret` } });
+    elsewhereAnswers('GET');
+
+    const error = await makeClient()
+      .get('/Features')
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(302);
+    expect((error as ApiError).message).toContain('elsewhere.example');
+    expect((error as ApiError).message).not.toContain('secret');
+    expect(notSentElsewhere()).toHaveLength(1);
+    expect(describeError(error)).toMatchObject({ error: 'UPSTREAM_ERROR', retryable: false });
+  });
+
+  it.each([307, 308])('does not resend a write or the API key on a %i', async (status) => {
+    agent
+      .get(ORIGIN)
+      .intercept({ path: '/api/calm-features/v1/Features', method: 'POST' })
+      .reply(status, '', { headers: { location: `${ELSEWHERE}/login?next=secret` } });
+    elsewhereAnswers('POST');
+
+    const client = new CalmHttpClient(new ApiKeyAuth(), 'features', {
+      timeoutMs: 5000,
+      logger: createLogger(false),
+    });
+    const error = await client.post('/Features', { title: 'x' }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(status);
+    expect(notSentElsewhere()).toHaveLength(1);
+  });
+
+  it('does not follow a redirect within Cloud ALM either', async () => {
+    const pool = agent.get(ORIGIN);
+    pool
+      .intercept({ path: '/api/calm-features/v1/Features', method: 'GET' })
+      .reply(301, '', { headers: { location: '/api/calm-features/v2/Features' } });
+    pool.intercept({ path: '/api/calm-features/v2/Features', method: 'GET' }).reply(200, {});
+
+    const error = await makeClient()
+      .get('/Features')
+      .catch((e: unknown) => e);
+    expect((error as ApiError).status).toBe(301);
+    expect((error as ApiError).message).toContain('acme.eu10.alm.cloud.sap');
+    expect(agent.pendingInterceptors()).toHaveLength(1);
+  });
+
+  it('reports a redirect that names no readable address', async () => {
+    const pool = agent.get(ORIGIN);
+    pool.intercept({ path: '/api/calm-features/v1/Features', method: 'GET' }).reply(302, '');
+    pool
+      .intercept({ path: '/api/calm-features/v1/Features', method: 'GET' })
+      .reply(302, '', { headers: { location: 'https://[not a host' } });
+
+    const none = await makeClient()
+      .get('/Features')
+      .catch((e: unknown) => e);
+    expect((none as ApiError).message).toContain('an address it did not name');
+    const unreadable = await makeClient()
+      .get('/Features')
+      .catch((e: unknown) => e);
+    expect((unreadable as ApiError).message).toContain('an address that cannot be read');
+    expect((unreadable as ApiError).message).not.toContain('not a host');
   });
 });
