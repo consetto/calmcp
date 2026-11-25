@@ -397,8 +397,8 @@ calmcp reads the task, and sends the merged list. What else it does, and why (ch
 
 ## Configuration
 
-Configuration is read from environment variables (see [`.env.example`](.env.example)). Two local
-auth modes, plus a BTP destination mode:
+Configuration is read from environment variables (see [`.env.example`](.env.example)), or from an
+env file named with `--dotenv <path>`. Two local auth modes, plus a BTP destination mode:
 
 | Variable | Description |
 | --- | --- |
@@ -542,7 +542,13 @@ npm run lint      # biome
 
 ```bash
 CALM_SANDBOX=true CALM_API_KEY=<key> node dist/index.js
+node dist/index.js --dotenv /absolute/path/to/.env   # or the settings from an env file
 ```
+
+calmcp reads an env file only when `--dotenv` names it. A `.env` in the working directory is not
+read on its own: an MCP client often starts a server in the folder of the project you have open,
+and a file in someone else's repository must not be able to switch on writes. Variables that are
+already set win over the file.
 
 Example client config (Claude Desktop):
 
@@ -699,7 +705,7 @@ Relevant environment variables (HTTP transport):
 | `CALM_DCR_SIGNING_SECRET` | Secret for HMAC-signing dynamic client registrations. Set it (e.g. `cf set-env calmcp-srv CALM_DCR_SIGNING_SECRET "$(openssl rand -base64 48)"`) so registered clients survive a `cf deploy` (which rotates the XSUAA `clientsecret`). Defaults to the XSUAA `clientsecret`, with a warning in the log at startup. |
 | `CALM_HTTP_ALLOW_UNAUTHENTICATED` | `true` allows an open `/mcp` on `127.0.0.1` when no auth is configured. Local development only; ignored on Cloud Foundry. |
 | `CALM_OAUTH_REDIRECT_PATTERNS` | Extra redirect URIs (comma-separated globs, `*` within a segment, `**` across) an MCP client may receive its OAuth code at. calmcp accepts localhost, Claude, ChatGPT, Cursor, VS Code, Mistral and Copilot Studio; any other `https://` redirect is refused at registration, so a link to someone else's app cannot carry a user's code there. |
-| `CALM_HTTP_API_KEY` | Shared secret for the alternative API-key path. Generate with `openssl rand -base64 48`. Leave empty to rely on XSUAA only. See the [Copilot Studio guide](docs/copilot-studio.md). |
+| `CALM_HTTP_API_KEY` | Shared secret for the alternative API-key path, at least 32 characters (a shorter one is refused at startup). Generate with `openssl rand -base64 48`. Leave empty to rely on XSUAA only. See the [Copilot Studio guide](docs/copilot-studio.md). |
 
 ### Consuming the deployed server from an AI tool
 

@@ -2,10 +2,11 @@
 // calmcp entry point. Parses CLI flags, loads configuration from the environment, and starts the
 // requested transport: stdio (default, for local MCP clients) or Streamable HTTP (for BTP / remote).
 
-import 'dotenv/config';
 import { loadXsuaaCredentials, resolveAppUrl, type XsuaaCredentials } from '@arc-mcp/xsuaa-auth';
 import { Command } from 'commander';
 import { Config, httpSettingsFromEnv, transportFromEnv } from './config.js';
+import { loadEnvFile, unreadEnvFileHint } from './envFile.js';
+import { ConfigError } from './errors.js';
 import { createLogger } from './logging.js';
 import { buildMcpServer, createClients, VIEWER_SCOPE, WRITER_SCOPE } from './server.js';
 import { createHttpApp } from './transport/http.js';
@@ -18,7 +19,11 @@ const DEFAULT_RATE_LIMIT = 120;
 interface CliOptions {
   http?: boolean;
   port?: string;
+  dotenv?: string;
 }
+
+/** Whether `--dotenv` was given; decides the hint a configuration error gets. */
+let envFileGiven = false;
 
 /**
  * Load the XSUAA credentials when an xsuaa service is bound. A bound but unreadable binding is a
@@ -47,8 +52,17 @@ async function main(): Promise<void> {
     )
     .option('--http', 'run the Streamable HTTP transport (default: stdio)')
     .option('-p, --port <port>', 'HTTP port (HTTP transport only)')
+    .option(
+      '--dotenv <path>',
+      'read settings from this env file; a .env in the working directory is not read on its own',
+    )
     .parse();
   const options = program.opts<CliOptions>();
+  // Only a file the operator names: see src/envFile.ts. Variables already set keep their value.
+  if (options.dotenv !== undefined) {
+    envFileGiven = true;
+    loadEnvFile(options.dotenv);
+  }
 
   // Every setting is read and checked before anything starts, so a typo stops the server here.
   const config = Config.fromEnv();
@@ -127,6 +141,7 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   // The logger may not exist yet if config failed; write the fatal error to stderr directly.
-  process.stderr.write(`calmcp failed to start: ${(error as Error).message}\n`);
+  const hint = error instanceof ConfigError ? unreadEnvFileHint(envFileGiven) : '';
+  process.stderr.write(`calmcp failed to start: ${(error as Error).message}${hint}\n`);
   process.exit(1);
 });

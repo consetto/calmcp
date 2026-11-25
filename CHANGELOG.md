@@ -8,6 +8,29 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ### Security
 
+- A `.env` file in the working directory is no longer read on its own. An MCP client often starts
+  a stdio server in the folder of the project a user has open, so a `.env` in someone else's
+  repository could set whatever the client had left unset, `CALM_WRITE_ENABLED` and
+  `CALM_UPDATE_ENABLED` among them (reproduced: the write tools appeared). **If you start calmcp
+  next to a `.env` and rely on it, add `--dotenv .env`** (or an absolute path); calmcp says so
+  when it cannot start and finds an unread `.env`. Settings passed by the MCP client, the MCPB
+  bundle, Docker or Cloud Foundry are not affected.
+- `CALM_HTTP_API_KEY` must have at least 32 characters. A shorter key, such as `test`, started a
+  server that looked protected; it now stops at startup with a message that gives the length and
+  how to generate a key. **A deployment with a shorter key does not start after this update:** set
+  a new one first (`openssl rand -base64 48`) and update the clients that send it. An unfilled
+  `${user_config.…}` placeholder is read as no key instead of being used as the key.
+- Rich text with `data-mce-*` attributes is refused. These belong to Cloud ALM's editor, which
+  keeps the original `src`, `href` and `style` of an element in them and writes them back on save,
+  so a value there could have replaced the attribute calmcp checked once a user edited the object.
+  Cloud ALM's server removes them today; calmcp no longer relies on that. Other `data-` attributes
+  are still accepted.
+- A redirect is no longer followed. Until now calmcp went wherever a redirect pointed and reported
+  that answer; on a redirect to another host the sandbox API key and the headers of a BTP
+  destination would have gone along, and a 307 or 308 would have sent a write there a second
+  time. A redirect is now an `UPSTREAM_ERROR` that names the host it pointed to, and for a write
+  the result says the outcome is unknown. Cloud ALM's API does not redirect (every read resource
+  and analytics provider checked on a tenant), so nothing changes in normal operation.
 - `node-forge` 1.4.3 by a lockfile update, for four advisories in its TLS client, `forge.http` and
   Ed25519 code (GHSA-j8rw-jp99-435v, GHSA-6cv4-p8m7-4r25, GHSA-w4xr-hqv8-ch44,
   GHSA-6889-vf6x-f3g5). calmcp does not reach that code: the library comes in through the SAP
@@ -18,6 +41,11 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
   GHSA-3gg2-335m-rxc6, GHSA-4m76-xfj5-7975, GHSA-46wx-v44x-9hh2, GHSA-jpvv-r467-5p4w,
   GHSA-qv5m-9pm6-hqp3). calmcp does not reach that code: the MCP SDK uses one function of the
   node server to convert a request, behind calmcp's own Express routing and bearer check.
+
+### Added
+
+- `--dotenv <path>` reads settings from an env file. Variables that are already set keep their
+  value, and a file that cannot be read stops the server.
 
 ### Documentation
 

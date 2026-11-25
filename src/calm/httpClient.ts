@@ -41,6 +41,9 @@ const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 /** Statuses that mean "try again shortly" rather than "this request is wrong". */
 const RETRYABLE_STATUSES = new Set([429, 503]);
 
+/** Statuses that send a client to another address; calmcp reports them instead of following. */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
 /** Options shared by every HTTP client instance. */
 export interface HttpClientOptions {
   /** Request timeout in milliseconds. */
@@ -123,7 +126,8 @@ export class CalmHttpClient {
    * A GET answered with 429/503 is retried once, after the service's `Retry-After` (at most
    * {@link MAX_RETRY_WAIT_SECONDS}). A POST or PATCH never is: the write may have happened, and a
    * second attempt would make a duplicate entry. A 401 is retried once with a fresh token, for any
-   * method: Cloud ALM refused the request before processing it.
+   * method: Cloud ALM refused the request before processing it. A redirect is never followed: see
+   * {@link redirectRefused}.
    */
   private async request<T>(
     method: HttpMethod,
@@ -147,6 +151,10 @@ export class CalmHttpClient {
         this.auth.invalidate(context);
         await response.body?.cancel();
         continue;
+      }
+      if (REDIRECT_STATUSES.has(response.status)) {
+        await response.body?.cancel();
+        throw redirectRefused(response, url, method);
       }
       const wait = retryWait(response);
       if (method === 'GET' && !throttleRetried && wait !== undefined) {
@@ -182,6 +190,8 @@ export class CalmHttpClient {
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: cancel ? AbortSignal.any([timeout, cancel]) : timeout,
+        // Not 'follow': see redirectRefused. With 'manual' undici hands back the 3xx itself.
+        redirect: 'manual',
       });
       return { response, timeout };
     } catch (error) {
@@ -276,6 +286,32 @@ async function readBody(
     throw new ApiError(`HTTP response error: ${(error as Error).message}`, 0, { transport });
   }
   return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+/**
+ * The error for a redirect, which calmcp does not follow. Following one to another host would send
+ * along every header fetch does not strip (it strips `Authorization` and `Cookie` only, so the
+ * sandbox `APIKey` and headers of a BTP destination would go), and a 307 or 308 would send a
+ * write's body there as well. Cloud ALM's API does not redirect; a redirect comes from something
+ * in between, such as a proxy asking for a sign-in.
+ *
+ * The message names the host of the target only: its path and query are text from elsewhere.
+ */
+function redirectRefused(response: Response, url: string, method: HttpMethod): ApiError {
+  let target = 'an address it did not name';
+  const location = response.headers.get('location');
+  if (location) {
+    try {
+      target = new URL(location, url).host || target;
+    } catch {
+      target = 'an address that cannot be read';
+    }
+  }
+  return new ApiError(
+    `The ${method} was answered with a redirect (HTTP ${response.status}) to ${target}. ` +
+      'calmcp does not follow redirects.',
+    response.status,
+  );
 }
 
 /** Seconds a response asks the caller to wait (`Retry-After` as seconds or an HTTP date). */
