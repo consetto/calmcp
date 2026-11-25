@@ -47,6 +47,13 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 - `--dotenv <path>` reads settings from an env file. Variables that are already set keep their
   value, and a file that cannot be read stops the server.
 
+### Documentation
+
+- The README no longer calls it a limitation that a feature description with images cannot be
+  changed. Cloud ALM answered such a change with a 500 until November 2026; on a test tenant it
+  has been stored since (2026-11-12 and 2026-11-25), with every image kept and with one removed
+  through `remove_images`. The README says what to expect from a tenant that still refuses.
+
 ## 1.1.0
 
 Tags of tasks and requirement assignments, stricter handling of what calmcp cannot honour
