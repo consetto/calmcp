@@ -396,8 +396,8 @@ calmcp reads the task, and sends the merged list. What else it does, and why (ch
 
 ## Configuration
 
-Configuration is read from environment variables (see [`.env.example`](.env.example)). Two local
-auth modes, plus a BTP destination mode:
+Configuration is read from environment variables (see [`.env.example`](.env.example)), or from an
+env file named with `--dotenv <path>`. Two local auth modes, plus a BTP destination mode:
 
 | Variable | Description |
 | --- | --- |
@@ -541,7 +541,13 @@ npm run lint      # biome
 
 ```bash
 CALM_SANDBOX=true CALM_API_KEY=<key> node dist/index.js
+node dist/index.js --dotenv /absolute/path/to/.env   # or the settings from an env file
 ```
+
+calmcp reads an env file only when `--dotenv` names it. A `.env` in the working directory is not
+read on its own: an MCP client often starts a server in the folder of the project you have open,
+and a file in someone else's repository must not be able to switch on writes. Variables that are
+already set win over the file.
 
 Example client config (Claude Desktop):
 
