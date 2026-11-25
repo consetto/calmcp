@@ -8,6 +8,11 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ### Security
 
+- `CALM_HTTP_API_KEY` must have at least 32 characters. A shorter key, such as `test`, started a
+  server that looked protected; it now stops at startup with a message that gives the length and
+  how to generate a key. **A deployment with a shorter key does not start after this update:** set
+  a new one first (`openssl rand -base64 48`) and update the clients that send it. An unfilled
+  `${user_config.…}` placeholder is read as no key instead of being used as the key.
 - Rich text with `data-mce-*` attributes is refused. These belong to Cloud ALM's editor, which
   keeps the original `src`, `href` and `style` of an element in them and writes them back on save,
   so a value there could have replaced the attribute calmcp checked once a user edited the object.

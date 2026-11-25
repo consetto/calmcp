@@ -131,10 +131,6 @@ From the security review of 2026-11-11 (fixed there: #72, #73, #74):
   refuses styles that load something, not styles that position: `position:fixed` with a full
   width and height on an `<a>` is accepted. Check on a tenant what Cloud ALM's sanitiser and UI
   make of it, then refuse `position` and `z-index` or allow a list of properties.
-- **`CALM_HTTP_API_KEY` has no minimum length**, so `test` protects a public endpoint; CI itself
-  starts the image with `placeholder`. Require a length (32 characters, say) at startup. String
-  settings also skip the check for an unfilled `${user_config.…}` placeholder that booleans and
-  numbers get.
 - **Inbound rate limit by caller.** The limit is per client address. Hosted clients (claude.ai,
   Copilot Studio) presumably call from a few shared addresses, so all their users would share one
   bucket of 120 requests a minute; not measured. Keep the address limit ahead of sign-in and add
@@ -151,8 +147,10 @@ From the security review of 2026-11-11 (fixed there: #72, #73, #74):
   create and update. It listens on 127.0.0.1 only, checks the Host header and is ignored on Cloud
   Foundry; nothing checks `Origin`. Refuse the combination at startup, or document it (review of
   2026-11-25).
-- Smaller: the `ignore` list in `mta.yaml` lacks the `*.local` entry `.cfignore` has. The
-  Dockerfile's base image is not pinned by digest and its `npm ci` runs install scripts.
+- Smaller: the `ignore` list in `mta.yaml` lacks the `*.local` entry `.cfignore` has. String
+  settings other than `CALM_HTTP_API_KEY` do not read an unfilled `${user_config.…}` placeholder
+  as unset, as booleans and numbers do. The Dockerfile's base image is not pinned by digest and
+  its `npm ci` runs install scripts.
   `trust proxy` is set on Cloud Foundry only, so a container behind another reverse proxy puts
   every client into one rate-limit bucket.
 
