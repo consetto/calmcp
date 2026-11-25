@@ -21,7 +21,7 @@
     "version:check": "node scripts/sync-version.mjs --check",
     "version:sync": "node scripts/sync-version.mjs",
     "version": "node scripts/sync-version.mjs && git add mcpb-manifest.json mta.yaml src/server.ts",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch src/index.ts --dotenv .env",
     "start": "node dist/index.js",
     "start:http": "node dist/index.js --http",
     "typecheck": "tsc -p tsconfig.test.json",

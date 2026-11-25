@@ -8,6 +8,13 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
 
 ### Security
 
+- A `.env` file in the working directory is no longer read on its own. An MCP client often starts
+  a stdio server in the folder of the project a user has open, so a `.env` in someone else's
+  repository could set whatever the client had left unset, `CALM_WRITE_ENABLED` and
+  `CALM_UPDATE_ENABLED` among them (reproduced: the write tools appeared). **If you start calmcp
+  next to a `.env` and rely on it, add `--dotenv .env`** (or an absolute path); calmcp says so
+  when it cannot start and finds an unread `.env`. Settings passed by the MCP client, the MCPB
+  bundle, Docker or Cloud Foundry are not affected.
 - `CALM_HTTP_API_KEY` must have at least 32 characters. A shorter key, such as `test`, started a
   server that looked protected; it now stops at startup with a message that gives the length and
   how to generate a key. **A deployment with a shorter key does not start after this update:** set
@@ -34,6 +41,11 @@ described on the [GitHub releases page](https://github.com/consetto/calmcp/relea
   GHSA-3gg2-335m-rxc6, GHSA-4m76-xfj5-7975, GHSA-46wx-v44x-9hh2, GHSA-jpvv-r467-5p4w,
   GHSA-qv5m-9pm6-hqp3). calmcp does not reach that code: the MCP SDK uses one function of the
   node server to convert a request, behind calmcp's own Express routing and bearer check.
+
+### Added
+
+- `--dotenv <path>` reads settings from an env file. Variables that are already set keep their
+  value, and a file that cannot be read stops the server.
 
 ## 1.1.0
 

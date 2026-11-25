@@ -122,11 +122,6 @@ From the architecture review of 2026-11-05, in the order proposed.
 
 From the security review of 2026-11-11 (fixed there: #72, #73, #74):
 
-- **`.env` is loaded from the working directory in every mode** (`import 'dotenv/config'` in
-  `src/index.ts`). An MCP host often starts a stdio server in the project folder, so a `.env` in a
-  repository someone else wrote can set whatever the host left unset: `CALM_WRITE_ENABLED`,
-  `CALM_UPDATE_ENABLED`, `NODE_TLS_REJECT_UNAUTHORIZED`. Reasoned from dotenv's defaults, not yet
-  reproduced. Load it only for `npm run dev` and the integration tests, or from an explicit path.
 - **A link can be styled to cover the page.** The rich-text allowlist (`src/tools/richText.ts`)
   refuses styles that load something, not styles that position: `position:fixed` with a full
   width and height on an `<a>` is accepted. Check on a tenant what Cloud ALM's sanitiser and UI
